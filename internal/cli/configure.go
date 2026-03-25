@@ -104,3 +104,25 @@ var doctorCmd = &cobra.Command{
 func isTerminal() bool {
 	return term.IsTerminal(int(syscall.Stdin))
 }
+
+var upgradeCmd = &cobra.Command{
+	Use:   "upgrade",
+	Short: "Self-update to the latest release",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return ops.Upgrade(appVersion)
+	},
+}
+
+var diffCmd = &cobra.Command{
+	Use:   "diff",
+	Short: "Show what would change on next sync (dry-run)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if steerRoot == "" {
+			return fmt.Errorf("steer-runtime not found")
+		}
+		target := config.TargetDir(projectDir)
+		entries := ops.DiffSync(steerRoot, target)
+		ops.PrintDiff(entries)
+		return nil
+	},
+}

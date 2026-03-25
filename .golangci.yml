@@ -1,0 +1,26 @@
+run:
+  timeout: 2m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - gosimple
+  disable:
+    - depguard
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+    - path: internal/tui/
+      linters:
+        - errcheck
+    - linters:
+        - errcheck
+      text: "Error return value"
+      path: internal/(ops|cli)/

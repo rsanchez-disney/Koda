@@ -30,6 +30,8 @@ const (
 	screenWorkspaces
 	screenAgents
 	screenCleanConfirm
+	screenDoctor
+	screenRules
 )
 
 type model struct {
@@ -45,8 +47,9 @@ type model struct {
 	agents      []ops.AgentInfo
 	agentFilter string
 	statusMsg   string
-	quitting     bool
-	confirmClean bool
+	quitting      bool
+	doctorResults []ops.DoctorResult
+	rules         []ruleItem
 }
 
 type profileItem struct {
@@ -54,6 +57,11 @@ type profileItem struct {
 	agentCount int
 	installed  bool
 	selected   bool
+}
+
+type ruleItem struct {
+	name     string
+	selected bool
 }
 
 func Run(steerRoot, targetDir string) error {
@@ -80,6 +88,12 @@ func (m *model) refresh() {
 	m.tokens = ops.ReadTokens()
 	m.workspaces, _ = ops.ListWorkspaces(m.steerRoot)
 	m.agents = ops.AllAgents(m.steerRoot, m.targetDir)
+	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
+	availRules := ops.ListRules(m.steerRoot)
+	m.rules = nil
+	for _, r := range availRules {
+		m.rules = append(m.rules, ruleItem{name: r})
+	}
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -100,6 +114,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateAgents(msg)
 		case screenCleanConfirm:
 			return m.updateCleanConfirm(msg)
+		case screenDoctor:
+			return m.updateDoctor(msg)
+		case screenRules:
+			return m.updateRules(msg)
 		}
 	}
 	return m, nil
@@ -137,6 +155,11 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.statusMsg = "Synced!"
 	case "c":
 		m.screen = screenCleanConfirm
+	case "d":
+		m.screen = screenDoctor
+	case "r":
+		m.screen = screenRules
+		m.cursor = 0
 	}
 	return m, nil
 }
@@ -180,9 +203,11 @@ func (m model) viewDashboard() string {
 	b.WriteString(activeStyle.Render("[t]") + " Tokens    ")
 	b.WriteString(activeStyle.Render("[w]") + " Workspaces\n")
 	b.WriteString(activeStyle.Render("  [a]") + " Agents      ")
-	b.WriteString(activeStyle.Render("[s]") + " Sync      ")
-	b.WriteString(activeStyle.Render("[c]") + " Clean\n")
-	b.WriteString(activeStyle.Render("  [q]") + " Quit\n")
+	b.WriteString(activeStyle.Render("[d]") + " Doctor    ")
+	b.WriteString(activeStyle.Render("[r]") + " Rules\n")
+	b.WriteString(activeStyle.Render("  [s]") + " Sync        ")
+	b.WriteString(activeStyle.Render("[c]") + " Clean     ")
+	b.WriteString(activeStyle.Render("[q]") + " Quit\n")
 
 	if m.statusMsg != "" {
 		b.WriteString("\n  " + checkStyle.Render(m.statusMsg) + "\n")
@@ -199,6 +224,92 @@ func (m model) viewCleanConfirm() string {
 	b.WriteString(fmt.Sprintf("  %s\n\n", dimStyle.Render(m.targetDir)))
 	b.WriteString(activeStyle.Render("  [y]") + " Yes, clean    ")
 	b.WriteString(activeStyle.Render("[n]") + " Cancel\n")
+	return boxStyle.Render(b.String())
+}
+
+// --- Doctor ---
+
+func (m model) updateDoctor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q", "d":
+		m.screen = screenDashboard
+		m.statusMsg = ""
+	}
+	return m, nil
+}
+
+func (m model) viewDoctor() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Doctor") + dimStyle.Render("  esc=back"))
+	b.WriteString("\n\n")
+	for _, r := range m.doctorResults {
+		icon := checkStyle.Render("\u2713")
+		if !r.OK {
+			icon = errStyle.Render("\u2717")
+		}
+		b.WriteString(fmt.Sprintf("  %s %-16s %s\n", icon, r.Name, dimStyle.Render(r.Detail)))
+	}
+	return boxStyle.Render(b.String())
+}
+
+// --- Rules ---
+
+func (m model) updateRules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		m.screen = screenDashboard
+		m.statusMsg = ""
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.rules)-1 {
+			m.cursor++
+		}
+	case " ":
+		if m.cursor < len(m.rules) {
+			m.rules[m.cursor].selected = !m.rules[m.cursor].selected
+		}
+	case "enter":
+		var names []string
+		for _, r := range m.rules {
+			if r.selected {
+				names = append(names, r.name)
+			}
+		}
+		if len(names) > 0 {
+			ops.InstallRules(m.steerRoot, m.targetDir, names)
+		}
+		m.screen = screenDashboard
+		m.statusMsg = fmt.Sprintf("%d rules installed!", len(names))
+	}
+	return m, nil
+}
+
+func (m model) viewRules() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Rules") + dimStyle.Render("  space=toggle  enter=install  esc=back"))
+	b.WriteString("\n\n")
+	if len(m.rules) == 0 {
+		b.WriteString(dimStyle.Render("  No rules found"))
+		return boxStyle.Render(b.String())
+	}
+	for i, r := range m.rules {
+		cursor := "  "
+		if i == m.cursor {
+			cursor = activeStyle.Render("\u25b8 ")
+		}
+		check := dimStyle.Render("[ ]")
+		if r.selected {
+			check = checkStyle.Render("[\u2713]")
+		}
+		name := r.name
+		if i == m.cursor {
+			name = activeStyle.Render(name)
+		}
+		b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, check, name))
+	}
 	return boxStyle.Render(b.String())
 }
 
@@ -543,6 +654,10 @@ func (m model) View() string {
 		return m.viewAgents()
 	case screenCleanConfirm:
 		return m.viewCleanConfirm()
+	case screenDoctor:
+		return m.viewDoctor()
+	case screenRules:
+		return m.viewRules()
 	default:
 		return m.viewDashboard()
 	}
