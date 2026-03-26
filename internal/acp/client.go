@@ -78,7 +78,18 @@ func Spawn(agent string) (*Client, error) {
 	}
 
 	cmd := exec.Command(kiroPath, args...)
-	cmd.Stderr = os.Stderr
+	if debugLog != nil {
+		stderrPipe, _ := cmd.StderrPipe()
+		go func() {
+			if stderrPipe == nil { return }
+			sc := bufio.NewScanner(stderrPipe)
+			for sc.Scan() {
+				dbg("STDERR: %s", sc.Text())
+			}
+		}()
+	} else {
+		cmd.Stderr = os.Stderr
+	}
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
