@@ -1,6 +1,6 @@
 APP      := koda
 MODULE   := github.disney.com/SANCR225/koda
-GH_REPO  := SANCR225/Koda
+GH_REPO  := SANCR225/steer-runtime
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  := -s -w -X main.version=$(VERSION)
 BIN      := ./bin/$(APP)
@@ -55,7 +55,7 @@ publish: ## Tag + build + upload to GitHub releases (make publish TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make publish TAG=v0.1.0"; exit 1; }
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
 	$(MAKE) release TAG=$(TAG)
-	gh release create $(TAG) bin/$(APP)-* --repo $(GH_REPO) --title "$(TAG)" --notes "Koda $(TAG)\n\nInstall: \`curl -fsSL https://github.disney.com/raw/$(GH_REPO)/main/install.sh | bash\`"
+	gh release create $(TAG) bin/$(APP)-* --repo $(GH_REPO) --title "$(TAG)" --notes "Koda $(TAG)\n\nInstall: \`curl -fsSL https://github.disney.com/raw/SANCR225/steer-runtime/main/tools/install-koda.sh | bash\`"
 	@echo "\n✅ Published $(TAG) to GitHub releases"
 
 help: ## Show this help

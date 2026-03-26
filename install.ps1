@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$repo = 'SANCR225/Koda'
+$repo = 'SANCR225/steer-runtime'
 $ghHost = 'github.disney.com'
 $installDir = if ($env:KODA_INSTALL_DIR) { $env:KODA_INSTALL_DIR } else { "$env:LOCALAPPDATA\koda" }
 $binary = 'koda-windows-amd64.exe'
