@@ -1,0 +1,240 @@
+package acp
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"sync"
+	"sync/atomic"
+)
+
+// Event types emitted by the ACP read loop.
+type Event struct {
+	Type    string // MessageChunk, ToolCall, ToolResult, Complete, Metadata
+	Chunk   string
+	Name    string
+	Reason  string
+	Usage   float64
+}
+
+// Client wraps a kiro-cli acp subprocess.
+type Client struct {
+	cmd       *exec.Cmd
+	stdin     *json.Encoder
+	mu        sync.Mutex
+	reqID     atomic.Uint64
+	pending   map[uint64]chan json.RawMessage
+	pendingMu sync.Mutex
+	Events    chan Event
+	sessionID string
+}
+
+type jsonRPCRequest struct {
+	JSONRPC string      `json:"jsonrpc"`
+	ID      uint64      `json:"id"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params"`
+}
+
+type jsonRPCResponse struct {
+	ID     *uint64          `json:"id,omitempty"`
+	Result json.RawMessage  `json:"result,omitempty"`
+	Error  *struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+	Method string           `json:"method,omitempty"`
+	Params json.RawMessage  `json:"params,omitempty"`
+}
+
+// Spawn starts kiro-cli acp and returns a connected client.
+func Spawn(agent string) (*Client, error) {
+	home, _ := os.UserHomeDir()
+	kiroPath := home + "/.local/bin/kiro-cli"
+
+	args := []string{"acp"}
+	if agent != "" {
+		args = append(args, "--agent", agent)
+	}
+
+	cmd := exec.Command(kiroPath, args...)
+	cmd.Stderr = os.Stderr
+
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start kiro-cli: %w", err)
+	}
+
+	c := &Client{
+		cmd:     cmd,
+		stdin:   json.NewEncoder(stdinPipe),
+		pending: make(map[uint64]chan json.RawMessage),
+		Events:  make(chan Event, 100),
+	}
+
+	// Read loop
+	go func() {
+		scanner := bufio.NewScanner(stdoutPipe)
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+		for scanner.Scan() {
+			var resp jsonRPCResponse
+			if json.Unmarshal(scanner.Bytes(), &resp) != nil {
+				continue
+			}
+
+			// Response to a request
+			if resp.ID != nil {
+				c.pendingMu.Lock()
+				if ch, ok := c.pending[*resp.ID]; ok {
+					delete(c.pending, *resp.ID)
+					if resp.Error != nil {
+						ch <- json.RawMessage(fmt.Sprintf(`{"error":%q}`, resp.Error.Message))
+					} else {
+						ch <- resp.Result
+					}
+				}
+				c.pendingMu.Unlock()
+
+				// Check for stopReason in result
+				var result map[string]interface{}
+				if json.Unmarshal(resp.Result, &result) == nil {
+					if reason, ok := result["stopReason"].(string); ok {
+						c.Events <- Event{Type: "Complete", Reason: reason}
+					}
+				}
+				continue
+			}
+
+			// Notification
+			if resp.Method != "" {
+				c.handleNotification(resp.Method, resp.Params)
+			}
+		}
+		close(c.Events)
+	}()
+
+	// Initialize
+	_, err = c.request("initialize", map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{},
+		"clientInfo":      map[string]string{"name": "koda", "version": "0.1.0"},
+	})
+	if err != nil {
+		cmd.Process.Kill()
+		return nil, fmt.Errorf("ACP initialize failed: %w", err)
+	}
+
+	return c, nil
+}
+
+// CreateSession creates a new ACP session.
+func (c *Client) CreateSession(agent string) error {
+	home, _ := os.UserHomeDir()
+	params := map[string]interface{}{
+		"cwd":        home + "/.kiro",
+		"mcpServers": []interface{}{},
+	}
+	if agent != "" {
+		params["agentId"] = agent
+	}
+
+	result, err := c.request("session/new", params)
+	if err != nil {
+		return err
+	}
+
+	var parsed map[string]interface{}
+	if json.Unmarshal(result, &parsed) == nil {
+		if sid, ok := parsed["sessionId"].(string); ok {
+			c.sessionID = sid
+		}
+	}
+	return nil
+}
+
+// SendMessage sends a prompt to the current session (fire-and-forget).
+func (c *Client) SendMessage(content string) error {
+	if c.sessionID == "" {
+		return fmt.Errorf("no session")
+	}
+
+	id := c.reqID.Add(1)
+	req := jsonRPCRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  "session/prompt",
+		Params: map[string]interface{}{
+			"sessionId": c.sessionID,
+			"prompt":    []map[string]string{{"type": "text", "text": content}},
+		},
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.stdin.Encode(req)
+}
+
+// Close kills the subprocess.
+func (c *Client) Close() {
+	if c.cmd.Process != nil {
+		c.cmd.Process.Kill()
+	}
+}
+
+func (c *Client) request(method string, params interface{}) (json.RawMessage, error) {
+	id := c.reqID.Add(1)
+	ch := make(chan json.RawMessage, 1)
+
+	c.pendingMu.Lock()
+	c.pending[id] = ch
+	c.pendingMu.Unlock()
+
+	req := jsonRPCRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params}
+	c.mu.Lock()
+	err := c.stdin.Encode(req)
+	c.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+
+	result := <-ch
+	return result, nil
+}
+
+func (c *Client) handleNotification(method string, params json.RawMessage) {
+	var p map[string]interface{}
+	if json.Unmarshal(params, &p) != nil {
+		return
+	}
+
+	switch method {
+	case "session/update":
+		update, _ := p["update"].(map[string]interface{})
+		if update == nil {
+			return
+		}
+		switch update["sessionUpdate"] {
+		case "agent_message_chunk":
+			content, _ := update["content"].(map[string]interface{})
+			if text, ok := content["text"].(string); ok {
+				c.Events <- Event{Type: "MessageChunk", Chunk: text}
+			}
+		case "tool_call", "tool_call_update":
+			name, _ := update["title"].(string)
+			c.Events <- Event{Type: "ToolCall", Name: name}
+		}
+	case "_kiro.dev/metadata":
+		if usage, ok := p["contextUsagePercentage"].(float64); ok {
+			c.Events <- Event{Type: "Metadata", Usage: usage}
+		}
+	}
+}

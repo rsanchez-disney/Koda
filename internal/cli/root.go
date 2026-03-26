@@ -81,4 +81,5 @@ func init() {
 	rootCmd.AddCommand(upgradeCmd)
 	rootCmd.AddCommand(diffCmd)
 	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(chatCmd)
 }

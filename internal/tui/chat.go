@@ -1,0 +1,264 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
+	"github.disney.com/SANCR225/koda/internal/acp"
+)
+
+var (
+	userStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#22D3EE")).Bold(true)
+	botStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA"))
+	toolStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")).Italic(true)
+	inputStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+	headerStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7C3AED"))
+)
+
+type chatMsg struct {
+	role    string // user, assistant, tool, system
+	content string
+}
+
+type acpEventMsg acp.Event
+
+type chatModel struct {
+	agent     string
+	client    *acp.Client
+	messages  []chatMsg
+	streaming string // current streaming buffer
+	input     string
+	scroll    int
+	width     int
+	height    int
+	ready     bool
+	quitting  bool
+	toolName  string
+}
+
+// RunChat launches the chat TUI.
+func RunChat(agent string) error {
+	p := tea.NewProgram(initialChatModel(agent), tea.WithAltScreen())
+	_, err := p.Run()
+	return err
+}
+
+func initialChatModel(agent string) chatModel {
+	return chatModel{agent: agent}
+}
+
+func (m chatModel) Init() tea.Cmd {
+	return func() tea.Msg {
+		client, err := acp.Spawn(m.agent)
+		if err != nil {
+			return chatMsg{role: "system", content: fmt.Sprintf("Failed to start kiro-cli: %v", err)}
+		}
+		if err := client.CreateSession(m.agent); err != nil {
+			client.Close()
+			return chatMsg{role: "system", content: fmt.Sprintf("Session failed: %v", err)}
+		}
+		return acpConnected{client: client}
+	}
+}
+
+type acpConnected struct{ client *acp.Client }
+
+func listenForEvents(client *acp.Client) tea.Cmd {
+	return func() tea.Msg {
+		event, ok := <-client.Events
+		if !ok {
+			return chatMsg{role: "system", content: "kiro-cli disconnected"}
+		}
+		return acpEventMsg(event)
+	}
+}
+
+func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case acpConnected:
+		m.client = msg.client
+		m.ready = true
+		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Connected to %s", agentLabel(m.agent))})
+		return m, listenForEvents(m.client)
+
+	case acpEventMsg:
+		switch msg.Type {
+		case "MessageChunk":
+			m.streaming += msg.Chunk
+			m.toolName = ""
+		case "ToolCall":
+			m.toolName = msg.Name
+		case "Complete":
+			if m.streaming != "" {
+				m.messages = append(m.messages, chatMsg{role: "assistant", content: m.streaming})
+				m.streaming = ""
+			}
+			m.toolName = ""
+			m.scrollToBottom()
+		}
+		return m, listenForEvents(m.client)
+
+	case chatMsg:
+		m.messages = append(m.messages, msg)
+		m.scrollToBottom()
+		return m, nil
+
+	case tea.KeyMsg:
+		return m.handleKey(msg)
+	}
+	return m, nil
+}
+
+func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		m.quitting = true
+		if m.client != nil {
+			m.client.Close()
+		}
+		return m, tea.Quit
+	case "enter":
+		text := strings.TrimSpace(m.input)
+		m.input = ""
+		if text == "" {
+			return m, nil
+		}
+		// Slash commands
+		if strings.HasPrefix(text, "/") {
+			return m.handleSlash(text)
+		}
+		// Send to ACP
+		m.messages = append(m.messages, chatMsg{role: "user", content: text})
+		m.scrollToBottom()
+		if m.client != nil {
+			m.client.SendMessage(text)
+		}
+		return m, nil
+	case "backspace":
+		if len(m.input) > 0 {
+			m.input = m.input[:len(m.input)-1]
+		}
+	case "ctrl+u":
+		m.input = ""
+	case "pgup":
+		if m.scroll > 0 {
+			m.scroll -= 5
+			if m.scroll < 0 {
+				m.scroll = 0
+			}
+		}
+	case "pgdown":
+		m.scroll += 5
+	default:
+		key := msg.String()
+		if len(key) == 1 && key[0] >= 32 {
+			m.input += key
+		}
+	}
+	return m, nil
+}
+
+func (m chatModel) handleSlash(text string) (tea.Model, tea.Cmd) {
+	parts := strings.Fields(text)
+	switch parts[0] {
+	case "/quit", "/q":
+		m.quitting = true
+		if m.client != nil {
+			m.client.Close()
+		}
+		return m, tea.Quit
+	case "/clear":
+		m.messages = nil
+		m.streaming = ""
+	default:
+		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Unknown command: %s", parts[0])})
+	}
+	return m, nil
+}
+
+func (m *chatModel) scrollToBottom() {
+	m.scroll = len(m.messages)
+}
+
+func (m chatModel) View() string {
+	if m.quitting {
+		return ""
+	}
+
+	w := m.width
+	if w == 0 {
+		w = 80
+	}
+	h := m.height
+	if h == 0 {
+		h = 24
+	}
+
+	// Header
+	header := headerStyle.Render(fmt.Sprintf(" \U0001f43e %s ", agentLabel(m.agent)))
+
+	// Messages area
+	var lines []string
+	for _, msg := range m.messages {
+		switch msg.role {
+		case "user":
+			lines = append(lines, userStyle.Render("You: ")+msg.content)
+		case "assistant":
+			lines = append(lines, botStyle.Render("\U0001f916 ")+msg.content)
+		case "system":
+			lines = append(lines, toolStyle.Render("\u2022 "+msg.content))
+		}
+		lines = append(lines, "")
+	}
+
+	// Streaming
+	if m.streaming != "" {
+		lines = append(lines, botStyle.Render("\U0001f916 ")+m.streaming+"\u2588")
+		lines = append(lines, "")
+	}
+
+	// Tool indicator
+	if m.toolName != "" {
+		lines = append(lines, toolStyle.Render(fmt.Sprintf("\u2699 %s...", m.toolName)))
+	}
+
+	// Scroll
+	msgArea := strings.Join(lines, "\n")
+	msgLines := strings.Split(msgArea, "\n")
+	available := h - 5 // header + input + borders
+	if available < 3 {
+		available = 3
+	}
+	start := 0
+	if len(msgLines) > available {
+		start = len(msgLines) - available
+	}
+	visible := strings.Join(msgLines[start:], "\n")
+
+	// Input
+	prompt := "> "
+	if !m.ready {
+		prompt = "Connecting..."
+	}
+	inputLine := inputStyle.Width(w - 4).Render(prompt + m.input + "\u2588")
+
+	// Status bar
+	status := toolStyle.Render("/quit \u00b7 /clear \u00b7 pgup/pgdn")
+
+	return fmt.Sprintf("%s\n%s\n%s\n%s", header, visible, inputLine, status)
+}
+
+func agentLabel(agent string) string {
+	if agent == "" {
+		return "kiro (default)"
+	}
+	return agent
+}
