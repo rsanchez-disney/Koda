@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -16,8 +18,11 @@ var (
 	botStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA"))
 	toolStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")).Italic(true)
 	inputStyle  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
-	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7C3AED"))
+	headerStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7C3AED"))
+	completionStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Bold(true)
 )
+
+var slashCommands = []string{"/quit", "/clear", "/agent", "/save"}
 
 var delegateRe = regexp.MustCompile(`<delegate\s+agent="([^"]+)">((?s).*?)</delegate>`)
 
@@ -45,6 +50,9 @@ type chatModel struct {
 	ready     bool
 	quitting  bool
 	toolName  string
+	suggestions []string
+	suggestIdx  int
+	agentNames  []string
 }
 
 // RunChat launches the chat TUI.
@@ -94,6 +102,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case acpConnected:
 		m.client = msg.client
 		m.ready = true
+		m.agentNames = loadAgentNames()
 		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Connected to %s", agentLabel(m.agent))})
 		return m, listenForEvents(m.client)
 
@@ -181,6 +190,47 @@ func (m chatModel) runDelegations(matches [][]string) tea.Cmd {
 	}
 }
 
+func loadAgentNames() []string {
+	home, _ := os.UserHomeDir()
+	dir := filepath.Join(home, ".kiro", "agents")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+			names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+		}
+	}
+	return names
+}
+
+func (m *chatModel) updateSuggestions() {
+	m.suggestions = nil
+	m.suggestIdx = 0
+	if m.input == "" {
+		return
+	}
+	if strings.HasPrefix(m.input, "/") {
+		for _, cmd := range slashCommands {
+			if strings.HasPrefix(cmd, m.input) && cmd != m.input {
+				m.suggestions = append(m.suggestions, cmd)
+			}
+		}
+		return
+	}
+	atIdx := strings.LastIndex(m.input, "@")
+	if atIdx >= 0 {
+		prefix := strings.ToLower(m.input[atIdx+1:])
+		for _, name := range m.agentNames {
+			if strings.HasPrefix(strings.ToLower(name), prefix) {
+				m.suggestions = append(m.suggestions, name)
+			}
+		}
+	}
+}
+
 func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
@@ -190,6 +240,17 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	case "enter":
+		// Accept suggestion
+		if len(m.suggestions) > 0 {
+			selected := m.suggestions[m.suggestIdx]
+			if strings.HasPrefix(m.input, "/") {
+				m.input = selected + " "
+			} else if atIdx := strings.LastIndex(m.input, "@"); atIdx >= 0 {
+				m.input = m.input[:atIdx+1] + selected + " "
+			}
+			m.suggestions = nil
+			return m, nil
+		}
 		text := strings.TrimSpace(m.input)
 		m.input = ""
 		if text == "" {
@@ -221,12 +282,17 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "pgdown":
 		m.scroll += 5
+	case "tab":
+		if len(m.suggestions) > 0 {
+			m.suggestIdx = (m.suggestIdx + 1) % len(m.suggestions)
+		}
 	default:
 		key := msg.String()
 		if len(key) == 1 && key[0] >= 32 {
 			m.input += key
 		}
 	}
+	m.updateSuggestions()
 	return m, nil
 }
 
@@ -319,6 +385,24 @@ func (m chatModel) View() string {
 	}
 	visible := strings.Join(msgLines[start:], "\n")
 
+	// Suggestions
+	var suggestLine string
+	if len(m.suggestions) > 0 {
+		var parts []string
+		for i, s := range m.suggestions {
+			if i > 5 {
+				parts = append(parts, toolStyle.Render(fmt.Sprintf("+%d more", len(m.suggestions)-5)))
+				break
+			}
+			if i == m.suggestIdx {
+				parts = append(parts, completionStyle.Render(s))
+			} else {
+				parts = append(parts, toolStyle.Render(s))
+			}
+		}
+		suggestLine = "  " + strings.Join(parts, "  ") + "\n"
+	}
+
 	// Input
 	prompt := "> "
 	if !m.ready {
@@ -329,7 +413,7 @@ func (m chatModel) View() string {
 	// Status bar
 	status := toolStyle.Render("/quit \u00b7 /clear \u00b7 /agent <name> \u00b7 pgup/pgdn")
 
-	return fmt.Sprintf("%s\n%s\n%s\n%s", header, visible, inputLine, status)
+	return fmt.Sprintf("%s\n%s\n%s%s\n%s", header, visible, suggestLine, inputLine, status)
 }
 
 func agentLabel(agent string) string {
