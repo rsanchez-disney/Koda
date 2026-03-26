@@ -1,31 +1,72 @@
-# Koda
+# Koda 🐾
 
-Interactive CLI for managing [steer-runtime](https://github.disney.com/SANCR225/steer-runtime) agent profiles, tokens, workspaces, and IDE integrations.
+Interactive terminal companion for [steer-runtime](https://github.disney.com/SANCR225/steer-runtime) — manage agent profiles, chat with AI agents, configure tokens, and apply team workspaces. All from the terminal.
 
-Part of the Kiro ecosystem: **Kiro** (CLI agent runtime) > **Kite** (desktop GUI) > **Koda** (setup companion).
+Part of the Kiro ecosystem:
+- **Kiro** — CLI agent runtime (the engine)
+- **Kite** — Desktop GUI (Tauri + React)
+- **Koda** — Terminal companion (Go + Bubbletea)
+
+Koda shares settings with Kite via `~/.kiro/settings/kite.json` — switch between them seamlessly.
 
 ## Install
 
+**macOS / Linux** (one-liner):
 ```bash
-make build          # Build bin/koda
-make install        # Copy to ~/go/bin/
+curl -fsSL https://github.disney.com/raw/SANCR225/steer-runtime/main/tools/install-koda.sh | bash
 ```
 
-Or cross-compile for all platforms:
-
-```bash
-make cross          # macOS (arm64/amd64), Linux, Windows
+**Windows** (PowerShell):
+```powershell
+irm https://github.disney.com/raw/SANCR225/steer-runtime/main/tools/install-koda.ps1 | iex
 ```
 
-## Usage
-
-### Interactive TUI
-
+**From source:**
 ```bash
-koda                              # Launch interactive dashboard
+git clone git@github.disney.com:SANCR225/Koda.git
+cd Koda && make install
 ```
 
-The TUI provides 9 screens:
+**Self-update:**
+```bash
+koda upgrade
+```
+
+## Quick Start
+
+```bash
+koda setup                        # Check & install dependencies (node, git, kiro-cli)
+koda install dev                  # Install all dev agents
+koda mcp-install                  # Setup MCP servers + tokens
+koda configure                    # Configure tokens (masked input)
+koda                              # Launch TUI dashboard
+```
+
+## Chat Mode
+
+Koda wraps `kiro-cli` via the ACP protocol — same engine as Kite, in your terminal.
+
+```bash
+koda chat                         # Chat with last-used agent
+koda chat --agent orchestrator    # Chat with specific agent
+koda chat --agent backend         # Chat with backend specialist
+```
+
+Inside chat:
+- Type messages and get streaming responses
+- `/profile dev` — switch profile, filters agents (dev = dev-core + dev-web + dev-mobile)
+- `/agent backend` — switch agent mid-conversation
+- `@agent_name` — mention agents with tab-complete
+- `/clear` — clear history
+- `/quit` — exit
+- `pgup`/`pgdn` — scroll
+- Delegation: orchestrator `<delegate>` tags are intercepted and run as sub-sessions
+
+## Interactive TUI
+
+```bash
+koda                              # Launch dashboard
+```
 
 | Key | Screen | What it does |
 |-----|--------|--------------|
@@ -38,11 +79,19 @@ The TUI provides 9 screens:
 | `m` | MCP | MCP server bundle status |
 | `s` | Sync | One-key sync of installed profiles |
 | `c` | Clean | Remove all with y/n confirmation |
+| `enter` | Chat | Launch chat mode |
+| `q` | Quit | Exit |
 
-### CLI Commands
+## CLI Commands
 
 ```bash
-# Profile management
+# Setup & Dependencies
+koda setup                          # Check & install missing deps
+koda mcp-install                    # Verify MCP bundles, install context7, generate mcp.json
+koda configure                      # Interactive token setup (masked input)
+koda enable-tools                   # Enable thinking/todo/knowledge in kiro-cli
+
+# Profile Management
 koda install dev-core dev-web       # Install profiles
 koda install dev                    # Alias: dev-core + dev-web + dev-mobile
 koda remove qa                      # Remove a profile
@@ -51,15 +100,13 @@ koda list [--json]                  # List all profiles
 koda clean                          # Remove everything
 koda status                         # One-liner: profiles, agents, tokens, branch
 
-# Health
+# Health & Diagnostics
 koda check [--json]                 # Quick health check
-koda doctor                         # Deep health check (MCP, node, git, etc.)
+koda doctor                         # Deep check (kiro-cli, node, git, MCP, tokens)
 koda diff                           # Preview what sync would change
 
-# Configuration
-koda configure                      # Interactive token setup (masked input)
-koda enable-tools                   # Enable thinking/todo/knowledge in kiro-cli
-koda mcp-install                    # Verify MCP bundles, install context7, generate mcp.json
+# Chat
+koda chat [--agent NAME]            # Interactive chat with streaming
 
 # Workspaces
 koda workspace list [--json]        # List team workspaces
@@ -81,14 +128,13 @@ koda amazonq sync DIR               # Update Amazon Q rules
 koda amazonq remove DIR             # Remove .amazonq/
 
 # Other
-koda upgrade                        # Self-update from GitHub releases
-koda version                        # Print version
+koda upgrade                        # Self-update from latest release
+koda version                        # Print version with banner
 ```
 
-### JSON Output
+## JSON Output
 
 For scripting and CI:
-
 ```bash
 koda list --json
 koda check --json
@@ -98,14 +144,9 @@ koda workspace show payments-core --json
 ## Shell Completions
 
 ```bash
-# Bash
-koda completion bash > /usr/local/etc/bash_completion.d/koda
-
-# Zsh
-koda completion zsh > "${fpath[1]}/_koda"
-
-# Fish
-koda completion fish > ~/.config/fish/completions/koda.fish
+koda completion bash > /usr/local/etc/bash_completion.d/koda   # Bash
+koda completion zsh > "${fpath[1]}/_koda"                      # Zsh
+koda completion fish > ~/.config/fish/completions/koda.fish    # Fish
 ```
 
 ## Architecture
@@ -113,6 +154,7 @@ koda completion fish > ~/.config/fish/completions/koda.fish
 ```
 cmd/koda/main.go              # Entry point
 internal/
+  acp/client.go               # ACP protocol client (JSON-RPC over stdio)
   config/paths.go             # Path resolution (~/.kiro, steer-root)
   model/                      # Domain types (Agent, Profile, Workspace, Token)
   ops/                        # Business logic (zero UI deps)
@@ -122,13 +164,19 @@ internal/
     workspaces.go             # Workspace management
     mcp.go                    # MCP install + profiles manifest
     doctor.go                 # Deep diagnostics
+    settings.go               # Shared settings with Kite
+    setup.go                  # Dependency checker/installer
     status.go                 # One-liner status
     diff.go                   # Dry-run sync diff
     upgrade.go                # Self-update
     extras.go                 # Rules, prompts, memory, amazonq, agents
   cli/                        # Cobra commands
-  tui/app.go                  # Bubbletea TUI (9 screens)
-Makefile
+  tui/
+    app.go                    # Dashboard TUI (10 screens)
+    chat.go                   # Chat TUI (ACP streaming, delegation, autocomplete)
+install.sh                    # macOS/Linux installer
+install.ps1                   # Windows installer
+Makefile                      # build, test, cross, publish
 ```
 
 Key design: `ops/` has zero UI dependencies. Both `cli/` and `tui/` call into `ops/`.
@@ -136,21 +184,21 @@ Key design: `ops/` has zero UI dependencies. Both `cli/` and `tui/` call into `o
 ## Development
 
 ```bash
-make help           # Show all targets
-make build          # Build binary
-make run            # Build + launch TUI
-make test           # Run tests (10 unit tests)
-make vet            # Go vet
-make fmt            # Format code
-make lint           # golangci-lint
-make cross          # Cross-compile
-make release TAG=v0.1.0  # Tag + cross-compile
+make help                     # Show all targets
+make build                    # Build binary
+make run                      # Build + launch TUI
+make test                     # Run tests (10 unit tests)
+make vet                      # Go vet
+make lint                     # golangci-lint
+make cross                    # Cross-compile (macOS arm64/amd64, Linux, Windows)
+make publish TAG=v0.1.0       # Tag + build + upload to steer-runtime releases
 ```
 
 ## Requirements
 
-- Go 1.23+
+- Go 1.23+ (for building from source)
 - [steer-runtime](https://github.disney.com/SANCR225/steer-runtime) repo (sibling directory or `--steer-root`)
+- [kiro-cli](https://github.disney.com/SANCR225/steer-runtime) (for chat mode)
 
 ## License
 
