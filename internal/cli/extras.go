@@ -98,6 +98,8 @@ var promptsInstallCmd = &cobra.Command{
 	},
 }
 
+var initMemoryFrom string
+
 var initMemoryCmd = &cobra.Command{
 	Use:   "init-memory [dir]",
 	Short: "Initialize project memory bank",
@@ -115,7 +117,7 @@ var initMemoryCmd = &cobra.Command{
 			return fmt.Errorf("directory not found: %s", dir)
 		}
 		fmt.Printf("\U0001f9e0 Initializing memory bank for %s...\n", filepath.Base(dir))
-		if err := ops.InitMemory(steerRoot, dir); err != nil {
+		if err := ops.InitMemory(steerRoot, dir, initMemoryFrom); err != nil {
 			return err
 		}
 		fmt.Println("\u2705 Memory bank initialized")
@@ -169,6 +171,7 @@ var mcpInstallCmd = &cobra.Command{
 }
 
 func init() {
+	initMemoryCmd.Flags().StringVar(&initMemoryFrom, "from", "", "Copy memory bank from a known project")
 	rulesInstallCmd.Flags().BoolVar(&rulesInstallAll, "all", false, "Install all rules")
 	rulesCmd.AddCommand(rulesListCmd)
 	rulesCmd.AddCommand(rulesInstallCmd)

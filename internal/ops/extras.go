@@ -57,8 +57,11 @@ func InstallPrompts(steerRoot string, names []string) int {
 }
 
 // InitMemory creates a memory bank in projectDir/.kiro/rules/memory-bank/.
-func InitMemory(steerRoot, projectDir string) error {
+func InitMemory(steerRoot, projectDir, fromProject string) error {
 	projectName := filepath.Base(projectDir)
+	if fromProject != "" {
+		projectName = fromProject
+	}
 	targetMB := filepath.Join(projectDir, ".kiro", config.RulesDir, "memory-bank")
 	os.MkdirAll(targetMB, 0755)
 
