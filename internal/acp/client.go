@@ -44,7 +44,7 @@ type Client struct {
 	stdin     *json.Encoder
 	mu        sync.Mutex
 	reqID     atomic.Uint64
-	pending   map[uint64]chan json.RawMessage
+	pending   map[string]chan json.RawMessage
 	pendingMu sync.Mutex
 	Events    chan Event
 	sessionID string
@@ -58,7 +58,7 @@ type jsonRPCRequest struct {
 }
 
 type jsonRPCResponse struct {
-	ID     *uint64          `json:"id,omitempty"`
+	ID     interface{}      `json:"id,omitempty"`
 	Result json.RawMessage  `json:"result,omitempty"`
 	Error  *struct {
 		Message string `json:"message"`
@@ -109,7 +109,7 @@ func Spawn(agent string) (*Client, error) {
 	c := &Client{
 		cmd:     cmd,
 		stdin:   json.NewEncoder(stdinPipe),
-		pending: make(map[uint64]chan json.RawMessage),
+		pending: make(map[string]chan json.RawMessage),
 		Events:  make(chan Event, 100),
 	}
 
@@ -126,11 +126,19 @@ func Spawn(agent string) (*Client, error) {
 				continue
 			}
 
-			// Response to a request
+			// Server request (has both id and method) — e.g., permission requests
+			if resp.ID != nil && resp.Method != "" {
+				dbg("<< server request: %s id=%v", resp.Method, resp.ID)
+				c.handleServerRequest(resp.Method, resp.ID, resp.Params)
+				continue
+			}
+
+			// Response to our request
 			if resp.ID != nil {
+				idStr := fmt.Sprintf("%v", resp.ID)
 				c.pendingMu.Lock()
-				if ch, ok := c.pending[*resp.ID]; ok {
-					delete(c.pending, *resp.ID)
+				if ch, ok := c.pending[idStr]; ok {
+					delete(c.pending, idStr)
 					if resp.Error != nil {
 						ch <- json.RawMessage(fmt.Sprintf(`{"error":%q}`, resp.Error.Message))
 					} else {
@@ -149,7 +157,7 @@ func Spawn(agent string) (*Client, error) {
 				continue
 			}
 
-			// Notification
+			// Notification (no id)
 			if resp.Method != "" {
 				c.handleNotification(resp.Method, resp.Params)
 			}
@@ -230,9 +238,10 @@ func (c *Client) Close() {
 func (c *Client) request(method string, params interface{}) (json.RawMessage, error) {
 	id := c.reqID.Add(1)
 	ch := make(chan json.RawMessage, 1)
+	idStr := fmt.Sprintf("%d", id)
 
 	c.pendingMu.Lock()
-	c.pending[id] = ch
+	c.pending[idStr] = ch
 	c.pendingMu.Unlock()
 
 	req := jsonRPCRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params}
@@ -284,6 +293,28 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 			c.Events <- Event{Type: "Metadata", Usage: usage}
 		}
 	}
+}
+
+func (c *Client) handleServerRequest(method string, id interface{}, params json.RawMessage) {
+	switch method {
+	case "session/request_permission":
+		dbg("   auto-approve permission id=%v", id)
+		c.respondPermission(id, "allow_always")
+	default:
+		dbg("   unhandled server request: %s", method)
+	}
+}
+
+func (c *Client) respondPermission(id interface{}, optionID string) {
+	resp := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"result":  map[string]string{"optionId": optionID},
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.stdin.Encode(resp)
+	dbg(">> permission response: %s", optionID)
 }
 
 func truncLog(s string, max int) string {
