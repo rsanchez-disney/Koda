@@ -51,6 +51,7 @@ type model struct {
 	agentFilter string
 	statusMsg   string
 	quitting      bool
+	launchChat    bool
 	doctorResults []ops.DoctorResult
 	rules         []ruleItem
 	mcpServers    []mcpItem
@@ -73,10 +74,17 @@ type mcpItem struct {
 	hasBundle bool
 }
 
-func Run(steerRoot, targetDir string) error {
-	p := tea.NewProgram(initialModel(steerRoot, targetDir), tea.WithAltScreen())
-	_, err := p.Run()
-	return err
+func Run(steerRoot, targetDir string) (bool, error) {
+	m := initialModel(steerRoot, targetDir)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	finalModel, err := p.Run()
+	if err != nil {
+		return false, err
+	}
+	if fm, ok := finalModel.(model); ok && fm.launchChat {
+		return true, nil
+	}
+	return false, nil
 }
 
 func initialModel(steerRoot, targetDir string) model {
@@ -152,6 +160,9 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		m.quitting = true
+		return m, tea.Quit
+	case "enter":
+		m.launchChat = true
 		return m, tea.Quit
 	case "p":
 		m.screen = screenProfiles
@@ -234,7 +245,8 @@ func (m model) viewDashboard() string {
 	b.WriteString(activeStyle.Render("  [m]") + " MCP         ")
 	b.WriteString(activeStyle.Render("[s]") + " Sync      ")
 	b.WriteString(activeStyle.Render("[c]") + " Clean\n")
-	b.WriteString(activeStyle.Render("  [q]") + " Quit\n")
+	b.WriteString(activeStyle.Render("  [enter]") + " Chat   ")
+	b.WriteString(activeStyle.Render("[q]") + " Quit\n")
 
 	if m.statusMsg != "" {
 		b.WriteString("\n  " + checkStyle.Render(m.statusMsg) + "\n")

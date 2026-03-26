@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,12 +12,14 @@ import (
 )
 
 var (
-	userStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#22D3EE")).Bold(true)
-	botStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA"))
-	toolStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")).Italic(true)
-	inputStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
-	headerStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7C3AED"))
+	userStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#22D3EE")).Bold(true)
+	botStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA"))
+	toolStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")).Italic(true)
+	inputStyle  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7C3AED"))
 )
+
+var delegateRe = regexp.MustCompile(`<delegate\s+agent="([^"]+)">((?s).*?)</delegate>`)
 
 type chatMsg struct {
 	role    string // user, assistant, tool, system
@@ -24,6 +27,11 @@ type chatMsg struct {
 }
 
 type acpEventMsg acp.Event
+
+type delegationResult struct {
+	agent  string
+	result string
+}
 
 type chatModel struct {
 	agent     string
@@ -98,12 +106,27 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toolName = msg.Name
 		case "Complete":
 			if m.streaming != "" {
-				m.messages = append(m.messages, chatMsg{role: "assistant", content: m.streaming})
+				completed := m.streaming
+				m.messages = append(m.messages, chatMsg{role: "assistant", content: completed})
 				m.streaming = ""
+				m.toolName = ""
+				m.scrollToBottom()
+				// Check for delegation tags
+				if matches := delegateRe.FindAllStringSubmatch(completed, -1); len(matches) > 0 {
+					return m, m.runDelegations(matches)
+				}
 			}
-			m.toolName = ""
-			m.scrollToBottom()
 		}
+		return m, listenForEvents(m.client)
+
+	case delegationResult:
+		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Delegation from %s complete", msg.agent)})
+		// Feed results back to orchestrator
+		if m.client != nil {
+			feedback := fmt.Sprintf("<delegation_results>\n[%s]: %s\n</delegation_results>\nContinue with these results.", msg.agent, msg.result)
+			m.client.SendMessage(feedback)
+		}
+		m.scrollToBottom()
 		return m, listenForEvents(m.client)
 
 	case chatMsg:
@@ -115,6 +138,47 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 	}
 	return m, nil
+}
+
+func (m chatModel) runDelegations(matches [][]string) tea.Cmd {
+	return func() tea.Msg {
+		var results []string
+		for _, match := range matches {
+			agentID := match[1]
+			task := strings.TrimSpace(match[2])
+
+			// Spawn a sub kiro-cli session
+			sub, err := acp.Spawn(agentID)
+			if err != nil {
+				results = append(results, fmt.Sprintf("[%s]: error: %v", agentID, err))
+				continue
+			}
+			if err := sub.CreateSession(agentID); err != nil {
+				sub.Close()
+				results = append(results, fmt.Sprintf("[%s]: session error: %v", agentID, err))
+				continue
+			}
+			sub.SendMessage(task)
+
+			// Collect response
+			var buf strings.Builder
+			for event := range sub.Events {
+				switch event.Type {
+				case "MessageChunk":
+					buf.WriteString(event.Chunk)
+				case "Complete":
+					goto done
+				}
+			}
+		done:
+			sub.Close()
+			results = append(results, fmt.Sprintf("[%s]: %s", agentID, buf.String()))
+		}
+		return delegationResult{
+			agent:  matches[0][1],
+			result: strings.Join(results, "\n\n---\n\n"),
+		}
+	}
 }
 
 func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -178,6 +242,18 @@ func (m chatModel) handleSlash(text string) (tea.Model, tea.Cmd) {
 	case "/clear":
 		m.messages = nil
 		m.streaming = ""
+	case "/agent":
+		if len(parts) > 1 {
+			m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Switching to %s...", parts[1])})
+			if m.client != nil {
+				m.client.Close()
+			}
+			m.agent = parts[1]
+			m.ready = false
+			m.streaming = ""
+			return m, m.Init()
+		}
+		m.messages = append(m.messages, chatMsg{role: "system", content: "Usage: /agent <name>"})
 	default:
 		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Unknown command: %s", parts[0])})
 	}
@@ -251,7 +327,7 @@ func (m chatModel) View() string {
 	inputLine := inputStyle.Width(w - 4).Render(prompt + m.input + "\u2588")
 
 	// Status bar
-	status := toolStyle.Render("/quit \u00b7 /clear \u00b7 pgup/pgdn")
+	status := toolStyle.Render("/quit \u00b7 /clear \u00b7 /agent <name> \u00b7 pgup/pgdn")
 
 	return fmt.Sprintf("%s\n%s\n%s\n%s", header, visible, inputLine, status)
 }

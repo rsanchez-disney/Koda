@@ -46,7 +46,14 @@ Run with no arguments to launch the interactive TUI.`,
 		if steerRoot == "" {
 			return fmt.Errorf("steer-runtime not found. Run from inside the repo or set --steer-root")
 		}
-		return tui.Run(steerRoot, config.TargetDir(projectDir))
+		launchChat, err := tui.Run(steerRoot, config.TargetDir(projectDir))
+		if err != nil {
+			return err
+		}
+		if launchChat {
+			return tui.RunChat("")
+		}
+		return nil
 	},
 }
 
