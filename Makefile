@@ -1,6 +1,6 @@
 APP      := koda
 MODULE   := github.disney.com/SANCR225/koda
-GH_REPO  := SANCR225/steer-runtime
+PUB_REPO := rsanchez-disney/Koda
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  := -s -w -X main.version=$(VERSION)
 BIN      := ./bin/$(APP)
@@ -43,20 +43,22 @@ cross: ## Cross-compile for macOS, Linux, Windows
 	GOOS=linux   GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-linux-amd64   ./cmd/koda/
 	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-windows-amd64.exe ./cmd/koda/
 
-release: ## Tag + cross-compile (make release TAG=v0.1.0)
+release: cross ## Tag + cross-compile (make release TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make release TAG=v0.1.0"; exit 1; }
-	git tag -a $(TAG) -m "Release $(TAG)"
-	git push origin $(TAG)
-	$(MAKE) cross VERSION=$(TAG)
 	@echo "\n✅ Release $(TAG) built in bin/"
 	@ls -lh bin/$(APP)-*
 
-publish: ## Tag + build + upload to GitHub releases (make publish TAG=v0.1.0)
+publish: ## Tag + build + publish to github.com (make publish TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make publish TAG=v0.1.0"; exit 1; }
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
-	$(MAKE) release TAG=$(TAG)
-	gh release create $(TAG) bin/$(APP)-* --repo github.disney.com/$(GH_REPO) --title "$(TAG)" --notes "Koda $(TAG)\n\nInstall: \`curl -fsSL https://github.disney.com/raw/SANCR225/steer-runtime/main/tools/install-koda.sh | bash\`"
-	@echo "\n✅ Published $(TAG) to GitHub releases"
+	git tag -a $(TAG) -m "Release $(TAG)"
+	git push origin $(TAG)
+	$(MAKE) cross VERSION=$(TAG)
+	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* \
+		--repo $(PUB_REPO) \
+		--title "Koda $(TAG)" \
+		--generate-notes
+	@echo "\n✅ Published $(TAG) to github.com/$(PUB_REPO)"
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'

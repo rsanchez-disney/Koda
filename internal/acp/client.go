@@ -72,7 +72,7 @@ func Spawn(agent string) (*Client, error) {
 	home, _ := os.UserHomeDir()
 	kiroPath := home + "/.local/bin/kiro-cli"
 
-	args := []string{"acp"}
+	args := []string{"acp", "-a"}
 	if agent != "" {
 		args = append(args, "--agent", agent)
 	}
@@ -121,8 +121,8 @@ func Spawn(agent string) (*Client, error) {
 			line := scanner.Text()
 			dbg("<< %s", truncLog(line, 500))
 			var resp jsonRPCResponse
-			if json.Unmarshal([]byte(line), &resp) != nil {
-				dbg("<< PARSE ERROR")
+			if err := json.Unmarshal([]byte(line), &resp); err != nil {
+				dbg("<< PARSE ERROR: %v line=%q", err, truncLog(line, 200))
 				continue
 			}
 
