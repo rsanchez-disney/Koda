@@ -2,12 +2,13 @@
 # One-liner: irm https://raw.githubusercontent.com/rsanchez-disney/Koda/main/install.ps1 | iex
 
 $ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $repo = 'rsanchez-disney/Koda'
 $installDir = if ($env:KODA_INSTALL_DIR) { $env:KODA_INSTALL_DIR } else { "$env:LOCALAPPDATA\koda" }
 
-# Detect architecture
-$arch = 'amd64'  # Windows ARM64 runs amd64 via emulation
+# Windows ARM64 runs amd64 via emulation
+$arch = 'amd64'
 $binary = "koda-windows-${arch}.exe"
 
 Write-Host ''
@@ -24,15 +25,21 @@ try {
     exit 1
 }
 
-$url = "https://github.com/$repo/releases/download/$tag/$binary"
+# Get direct download URL from release assets
+$asset = $release.assets | Where-Object { $_.name -eq $binary }
+if (-not $asset) {
+    Write-Host "   Binary $binary not found in release $tag"
+    exit 1
+}
+$url = $asset.browser_download_url
+
 Write-Host "   Version: $tag"
-Write-Host "   URL: $url"
 Write-Host ''
 
 # Download
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 $dest = Join-Path $installDir 'koda.exe'
-Invoke-WebRequest -Uri $url -OutFile $dest
+Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
 
 if (Test-Path $dest) {
     Write-Host "   Installed: $dest"
