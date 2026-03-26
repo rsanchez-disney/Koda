@@ -5,7 +5,7 @@ VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev
 LDFLAGS  := -s -w -X main.version=$(VERSION)
 BIN      := ./bin/$(APP)
 
-.PHONY: build run clean test lint fmt vet tidy install cross release publish help
+.PHONY: build run clean test lint fmt vet tidy install cross release release help
 
 build: ## Build binary
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/koda/
@@ -43,13 +43,9 @@ cross: ## Cross-compile for macOS, Linux, Windows
 	GOOS=linux   GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-linux-amd64   ./cmd/koda/
 	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-windows-amd64.exe ./cmd/koda/
 
-release: cross ## Tag + cross-compile (make release TAG=v0.1.0)
-	@test -n "$(TAG)" || { echo "Usage: make release TAG=v0.1.0"; exit 1; }
-	@echo "\n✅ Release $(TAG) built in bin/"
-	@ls -lh bin/$(APP)-*
 
-publish: ## Tag + build + publish to github.com (make publish TAG=v0.1.0)
-	@test -n "$(TAG)" || { echo "Usage: make publish TAG=v0.1.0"; exit 1; }
+release: ## Tag + build + release to github.com (make publish TAG=v0.1.0)
+	@test -n "$(TAG)" || { echo "Usage: make release TAG=v0.1.0"; exit 1; }
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
 	git tag -a $(TAG) -m "Release $(TAG)"
 	git push origin $(TAG)
@@ -57,7 +53,7 @@ publish: ## Tag + build + publish to github.com (make publish TAG=v0.1.0)
 	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* \
 		--repo $(PUB_REPO) \
 		--title "Koda $(TAG)" \
-		--generate-notes
+		--notes "Install: `curl -fsSL https://raw.githubusercontent.com/rsanchez-disney/Koda/main/install.sh | bash`"
 	@echo "\n✅ Published $(TAG) to github.com/$(PUB_REPO)"
 
 help: ## Show this help
