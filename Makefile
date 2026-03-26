@@ -55,7 +55,7 @@ publish: ## Tag + build + upload to GitHub releases (make publish TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make publish TAG=v0.1.0"; exit 1; }
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
 	$(MAKE) release TAG=$(TAG)
-	gh release create $(TAG) bin/$(APP)-* --repo $(GH_REPO) --title "$(TAG)" --notes "Koda $(TAG)\n\nInstall: \`curl -fsSL https://github.disney.com/raw/SANCR225/steer-runtime/main/tools/install-koda.sh | bash\`"
+	gh release create $(TAG) bin/$(APP)-* --repo github.disney.com/$(GH_REPO) --title "$(TAG)" --notes "Koda $(TAG)\n\nInstall: \`curl -fsSL https://github.disney.com/raw/SANCR225/steer-runtime/main/tools/install-koda.sh | bash\`"
 	@echo "\n✅ Published $(TAG) to GitHub releases"
 
 help: ## Show this help
