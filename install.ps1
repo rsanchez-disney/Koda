@@ -7,7 +7,7 @@ $repo = 'rsanchez-disney/Koda'
 $installDir = if ($env:KODA_INSTALL_DIR) { $env:KODA_INSTALL_DIR } else { "$env:LOCALAPPDATA\koda" }
 
 # Detect architecture
-$arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+$arch = 'amd64'  # Windows ARM64 runs amd64 via emulation
 $binary = "koda-windows-${arch}.exe"
 
 Write-Host ''
