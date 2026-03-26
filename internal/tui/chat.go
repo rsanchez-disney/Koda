@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ var (
 	completionStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Bold(true)
 )
 
-var slashCommands = []string{"/quit", "/clear", "/agent", "/save"}
+var slashCommands = []string{"/quit", "/clear", "/agent", "/profile", "/save"}
 
 var delegateRe = regexp.MustCompile(`<delegate\s+agent="([^"]+)">((?s).*?)</delegate>`)
 
@@ -54,6 +55,9 @@ type chatModel struct {
 	suggestions []string
 	suggestIdx  int
 	agentNames  []string
+	activeProfile string
+	allAgents     []ops.AgentInfo
+	profileNames  []string
 }
 
 // RunChat launches the chat TUI.
@@ -114,7 +118,13 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agent = msg.agent
 		m.ready = true
 		m.agentNames = loadAgentNames()
+		home, _ := os.UserHomeDir()
 		ops.UpdateLastAgent(m.agent)
+		s := ops.LoadSettings()
+		m.activeProfile = s.ActiveProfile
+		m.allAgents = ops.AllAgents("", filepath.Join(home, ".kiro"))
+		m.profileNames = loadProfileNames()
+		m.filterAgentsByProfile()
 		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Connected to %s", agentLabel(m.agent))})
 		return m, listenForEvents(m.client)
 
@@ -218,6 +228,45 @@ func loadAgentNames() []string {
 	return names
 }
 
+func (m *chatModel) filterAgentsByProfile() {
+	if m.activeProfile == "" {
+		// No filter — show all agents
+		m.agentNames = loadAgentNames()
+		return
+	}
+	m.agentNames = nil
+	for _, a := range m.allAgents {
+		if a.ProfileID == m.activeProfile {
+			m.agentNames = append(m.agentNames, a.Name)
+		}
+	}
+}
+
+func loadProfileNames() []string {
+	home, _ := os.UserHomeDir()
+	settingsPath := filepath.Join(home, ".kiro", "settings", "profiles.json")
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil
+	}
+	var manifest struct {
+		Profiles []struct {
+			ID        string `json:"id"`
+			Installed bool   `json:"installed"`
+		} `json:"profiles"`
+	}
+	if json.Unmarshal(data, &manifest) != nil {
+		return nil
+	}
+	var names []string
+	for _, p := range manifest.Profiles {
+		if p.Installed {
+			names = append(names, p.ID)
+		}
+	}
+	return names
+}
+
 func (m *chatModel) updateSuggestions() {
 	m.suggestions = nil
 	m.suggestIdx = 0
@@ -225,6 +274,26 @@ func (m *chatModel) updateSuggestions() {
 		return
 	}
 	if strings.HasPrefix(m.input, "/") {
+		// /profile <name> completion
+		if strings.HasPrefix(m.input, "/profile ") {
+			prefix := strings.ToLower(strings.TrimPrefix(m.input, "/profile "))
+			for _, name := range m.profileNames {
+				if strings.HasPrefix(strings.ToLower(name), prefix) {
+					m.suggestions = append(m.suggestions, name)
+				}
+			}
+			return
+		}
+		// /agent <name> completion
+		if strings.HasPrefix(m.input, "/agent ") {
+			prefix := strings.ToLower(strings.TrimPrefix(m.input, "/agent "))
+			for _, name := range m.agentNames {
+				if strings.HasPrefix(strings.ToLower(name), prefix) {
+					m.suggestions = append(m.suggestions, name)
+				}
+			}
+			return
+		}
 		for _, cmd := range slashCommands {
 			if strings.HasPrefix(cmd, m.input) && cmd != m.input {
 				m.suggestions = append(m.suggestions, cmd)
@@ -255,7 +324,15 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Accept suggestion
 		if len(m.suggestions) > 0 {
 			selected := m.suggestions[m.suggestIdx]
-			if strings.HasPrefix(m.input, "/") {
+			if strings.HasPrefix(m.input, "/profile ") {
+				m.input = "/profile " + selected
+				m.suggestions = nil
+				return m.handleSlash(m.input)
+			} else if strings.HasPrefix(m.input, "/agent ") {
+				m.input = "/agent " + selected
+				m.suggestions = nil
+				return m.handleSlash(m.input)
+			} else if strings.HasPrefix(m.input, "/") {
 				m.input = selected + " "
 			} else if atIdx := strings.LastIndex(m.input, "@"); atIdx >= 0 {
 				m.input = m.input[:atIdx+1] + selected + " "
@@ -333,6 +410,21 @@ func (m chatModel) handleSlash(text string) (tea.Model, tea.Cmd) {
 			return m, m.Init()
 		}
 		m.messages = append(m.messages, chatMsg{role: "system", content: "Usage: /agent <name>"})
+	case "/profile":
+		if len(parts) > 1 {
+			m.activeProfile = parts[1]
+			ops.UpdateActiveProfile(m.activeProfile)
+			m.filterAgentsByProfile()
+			count := len(m.agentNames)
+			m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Profile: %s (%d agents)", m.activeProfile, count)})
+		} else if m.activeProfile != "" {
+			m.activeProfile = ""
+			ops.UpdateActiveProfile("")
+			m.filterAgentsByProfile()
+			m.messages = append(m.messages, chatMsg{role: "system", content: "Profile filter cleared (all agents)"})
+		} else {
+			m.messages = append(m.messages, chatMsg{role: "system", content: "Usage: /profile <name> (or /profile to clear)"})
+		}
 	default:
 		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Unknown command: %s", parts[0])})
 	}
@@ -358,7 +450,11 @@ func (m chatModel) View() string {
 	}
 
 	// Header
-	header := headerStyle.Render(fmt.Sprintf(" \U0001f43e %s ", agentLabel(m.agent)))
+	profileTag := ""
+	if m.activeProfile != "" {
+		profileTag = toolStyle.Render(fmt.Sprintf(" [%s]", m.activeProfile))
+	}
+	header := headerStyle.Render(fmt.Sprintf(" \U0001f43e %s", agentLabel(m.agent))) + profileTag
 
 	// Messages area
 	var lines []string
@@ -424,7 +520,7 @@ func (m chatModel) View() string {
 	inputLine := inputStyle.Width(w - 4).Render(prompt + m.input + "\u2588")
 
 	// Status bar
-	status := toolStyle.Render("/quit \u00b7 /clear \u00b7 /agent <name> \u00b7 pgup/pgdn")
+	status := toolStyle.Render("/quit \u00b7 /clear \u00b7 /agent \u00b7 /profile \u00b7 pgup/pgdn")
 
 	return fmt.Sprintf("%s\n%s\n%s%s\n%s", header, visible, suggestLine, inputLine, status)
 }
