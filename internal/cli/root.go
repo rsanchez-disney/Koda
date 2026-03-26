@@ -34,7 +34,6 @@ Run with no arguments to launch the interactive TUI.`,
 		}
 		cwd, _ := os.Getwd()
 		steerRoot = config.SteerRoot(cwd)
-		PrintBanner(appVersion)
 		if steerRoot == "" {
 			parent := cwd + "/../steer-runtime"
 			if sr := config.SteerRoot(parent); sr != "" {
@@ -44,7 +43,6 @@ Run with no arguments to launch the interactive TUI.`,
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		PrintBanner(appVersion)
 		if steerRoot == "" {
 			return fmt.Errorf("steer-runtime not found. Run from inside the repo or set --steer-root")
 		}
@@ -63,7 +61,6 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print Koda version",
 	Run: func(cmd *cobra.Command, args []string) {
-		PrintBanner(appVersion)
 	},
 }
 
