@@ -126,3 +126,11 @@ var diffCmd = &cobra.Command{
 		return nil
 	},
 }
+
+var statusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show agent setup status (like git status)",
+	Run: func(cmd *cobra.Command, args []string) {
+		ops.PrintStatus(steerRoot, config.TargetDir(projectDir))
+	},
+}

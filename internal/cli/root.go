@@ -80,4 +80,5 @@ func init() {
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(upgradeCmd)
 	rootCmd.AddCommand(diffCmd)
+	rootCmd.AddCommand(statusCmd)
 }

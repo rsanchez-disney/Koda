@@ -158,6 +158,23 @@ var amazonqRemoveCmd = &cobra.Command{
 	},
 }
 
+var amazonqSyncCmd = &cobra.Command{
+	Use:   "sync [dir]",
+	Short: "Update Amazon Q rules to latest",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if steerRoot == "" {
+			return fmt.Errorf("steer-runtime not found")
+		}
+		count, err := ops.InstallAmazonQRules(steerRoot, args[0])
+		if err != nil {
+			return err
+		}
+		fmt.Printf("\u2705 Synced %d Amazon Q rules\n", count)
+		return nil
+	},
+}
+
 var mcpInstallCmd = &cobra.Command{
 	Use:   "mcp-install",
 	Short: "Install MCP server dependencies and generate config",
@@ -182,4 +199,5 @@ func init() {
 
 	amazonqCmd.AddCommand(amazonqInstallCmd)
 	amazonqCmd.AddCommand(amazonqRemoveCmd)
+	amazonqCmd.AddCommand(amazonqSyncCmd)
 }

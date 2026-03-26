@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,6 +34,7 @@ const (
 	screenCleanConfirm
 	screenDoctor
 	screenRules
+	screenMCP
 )
 
 type model struct {
@@ -50,6 +53,7 @@ type model struct {
 	quitting      bool
 	doctorResults []ops.DoctorResult
 	rules         []ruleItem
+	mcpServers    []mcpItem
 }
 
 type profileItem struct {
@@ -62,6 +66,11 @@ type profileItem struct {
 type ruleItem struct {
 	name     string
 	selected bool
+}
+
+type mcpItem struct {
+	name      string
+	hasBundle bool
 }
 
 func Run(steerRoot, targetDir string) error {
@@ -94,6 +103,18 @@ func (m *model) refresh() {
 	for _, r := range availRules {
 		m.rules = append(m.rules, ruleItem{name: r})
 	}
+	mcpDir := filepath.Join(m.targetDir, "tools", "mcp-servers")
+	m.mcpServers = nil
+	if entries, err := os.ReadDir(mcpDir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			bundle := filepath.Join(mcpDir, e.Name(), "dist", "index.cjs")
+			_, err := os.Stat(bundle)
+			m.mcpServers = append(m.mcpServers, mcpItem{name: e.Name(), hasBundle: err == nil})
+		}
+	}
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -118,6 +139,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateDoctor(msg)
 		case screenRules:
 			return m.updateRules(msg)
+		case screenMCP:
+			return m.updateMCP(msg)
 		}
 	}
 	return m, nil
@@ -159,6 +182,9 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenDoctor
 	case "r":
 		m.screen = screenRules
+		m.cursor = 0
+	case "m":
+		m.screen = screenMCP
 		m.cursor = 0
 	}
 	return m, nil
@@ -205,9 +231,10 @@ func (m model) viewDashboard() string {
 	b.WriteString(activeStyle.Render("  [a]") + " Agents      ")
 	b.WriteString(activeStyle.Render("[d]") + " Doctor    ")
 	b.WriteString(activeStyle.Render("[r]") + " Rules\n")
-	b.WriteString(activeStyle.Render("  [s]") + " Sync        ")
-	b.WriteString(activeStyle.Render("[c]") + " Clean     ")
-	b.WriteString(activeStyle.Render("[q]") + " Quit\n")
+	b.WriteString(activeStyle.Render("  [m]") + " MCP         ")
+	b.WriteString(activeStyle.Render("[s]") + " Sync      ")
+	b.WriteString(activeStyle.Render("[c]") + " Clean\n")
+	b.WriteString(activeStyle.Render("  [q]") + " Quit\n")
 
 	if m.statusMsg != "" {
 		b.WriteString("\n  " + checkStyle.Render(m.statusMsg) + "\n")
@@ -310,6 +337,42 @@ func (m model) viewRules() string {
 		}
 		b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, check, name))
 	}
+	return boxStyle.Render(b.String())
+}
+
+// --- MCP ---
+
+func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q", "m":
+		m.screen = screenDashboard
+		m.statusMsg = ""
+	}
+	return m, nil
+}
+
+func (m model) viewMCP() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("MCP Servers") + dimStyle.Render("  esc=back"))
+	b.WriteString("\n\n")
+	if len(m.mcpServers) == 0 {
+		b.WriteString(dimStyle.Render("  No MCP servers found"))
+		return boxStyle.Render(b.String())
+	}
+	for _, s := range m.mcpServers {
+		icon := checkStyle.Render("\u2713")
+		if !s.hasBundle {
+			icon = errStyle.Render("\u2717")
+		}
+		b.WriteString(fmt.Sprintf("  %s %s\n", icon, s.name))
+	}
+	ready := 0
+	for _, s := range m.mcpServers {
+		if s.hasBundle {
+			ready++
+		}
+	}
+	b.WriteString(fmt.Sprintf("\n  %s", dimStyle.Render(fmt.Sprintf("%d/%d ready", ready, len(m.mcpServers)))))
 	return boxStyle.Render(b.String())
 }
 
@@ -658,6 +721,8 @@ func (m model) View() string {
 		return m.viewDoctor()
 	case screenRules:
 		return m.viewRules()
+	case screenMCP:
+		return m.viewMCP()
 	default:
 		return m.viewDashboard()
 	}
