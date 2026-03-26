@@ -25,6 +25,7 @@ var (
 )
 
 var slashCommands = []string{"/quit", "/clear", "/agent", "/profile", "/save"}
+var devSubProfiles = []string{"dev-core", "dev-web", "dev-mobile"}
 
 var delegateRe = regexp.MustCompile(`<delegate\s+agent="([^"]+)">((?s).*?)</delegate>`)
 
@@ -230,13 +231,21 @@ func loadAgentNames() []string {
 
 func (m *chatModel) filterAgentsByProfile() {
 	if m.activeProfile == "" {
-		// No filter — show all agents
 		m.agentNames = loadAgentNames()
 		return
 	}
+	// "dev" is an alias for dev-core + dev-web + dev-mobile
+	matchProfiles := []string{m.activeProfile}
+	if m.activeProfile == "dev" {
+		matchProfiles = devSubProfiles
+	}
+	match := map[string]bool{}
+	for _, p := range matchProfiles {
+		match[p] = true
+	}
 	m.agentNames = nil
 	for _, a := range m.allAgents {
-		if a.ProfileID == m.activeProfile {
+		if match[a.ProfileID] {
 			m.agentNames = append(m.agentNames, a.Name)
 		}
 	}
@@ -259,10 +268,16 @@ func loadProfileNames() []string {
 		return nil
 	}
 	var names []string
+	hasSub := map[string]bool{}
 	for _, p := range manifest.Profiles {
 		if p.Installed {
 			names = append(names, p.ID)
+			hasSub[p.ID] = true
 		}
+	}
+	// Synthesize "dev" alias if all sub-profiles installed
+	if hasSub["dev-core"] && hasSub["dev-web"] && hasSub["dev-mobile"] {
+		names = append([]string{"dev"}, names...)
 	}
 	return names
 }
@@ -417,6 +432,20 @@ func (m chatModel) handleSlash(text string) (tea.Model, tea.Cmd) {
 			m.filterAgentsByProfile()
 			count := len(m.agentNames)
 			m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Profile: %s (%d agents)", m.activeProfile, count)})
+			// Auto-switch to profile's orchestrator
+			for _, name := range m.agentNames {
+				if strings.Contains(name, "orchestrator") {
+					m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Switching to %s...", name)})
+					if m.client != nil {
+						m.client.Close()
+					}
+					m.agent = name
+					ops.UpdateLastAgent(m.agent)
+					m.ready = false
+					m.streaming = ""
+					return m, m.Init()
+				}
+			}
 		} else if m.activeProfile != "" {
 			m.activeProfile = ""
 			ops.UpdateActiveProfile("")
