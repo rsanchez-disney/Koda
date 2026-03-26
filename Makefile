@@ -44,7 +44,7 @@ cross: ## Cross-compile for macOS, Linux, Windows
 	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-windows-amd64.exe ./cmd/koda/
 
 
-release: ## Tag + build + release to github.com (make publish TAG=v0.1.0)
+release: ## Tag + build + release to github.com (make release TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make release TAG=v0.1.0"; exit 1; }
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
 	git tag -a $(TAG) -m "Release $(TAG)"
