@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.disney.com/SANCR225/koda/internal/acp"
+	"github.disney.com/SANCR225/koda/internal/ops"
 )
 
 var (
@@ -68,19 +69,28 @@ func initialChatModel(agent string) chatModel {
 
 func (m chatModel) Init() tea.Cmd {
 	return func() tea.Msg {
-		client, err := acp.Spawn(m.agent)
+		agent := m.agent
+		if agent == "" {
+			if s := ops.LoadSettings(); s.LastAgent != "" {
+				agent = s.LastAgent
+			}
+		}
+		client, err := acp.Spawn(agent)
 		if err != nil {
 			return chatMsg{role: "system", content: fmt.Sprintf("Failed to start kiro-cli: %v", err)}
 		}
-		if err := client.CreateSession(m.agent); err != nil {
+		if err := client.CreateSession(agent); err != nil {
 			client.Close()
 			return chatMsg{role: "system", content: fmt.Sprintf("Session failed: %v", err)}
 		}
-		return acpConnected{client: client}
+		return acpConnected{client: client, agent: agent}
 	}
 }
 
-type acpConnected struct{ client *acp.Client }
+type acpConnected struct {
+	client *acp.Client
+	agent  string
+}
 
 func listenForEvents(client *acp.Client) tea.Cmd {
 	return func() tea.Msg {
@@ -101,8 +111,10 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case acpConnected:
 		m.client = msg.client
+		m.agent = msg.agent
 		m.ready = true
 		m.agentNames = loadAgentNames()
+		ops.UpdateLastAgent(m.agent)
 		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Connected to %s", agentLabel(m.agent))})
 		return m, listenForEvents(m.client)
 
@@ -315,6 +327,7 @@ func (m chatModel) handleSlash(text string) (tea.Model, tea.Cmd) {
 				m.client.Close()
 			}
 			m.agent = parts[1]
+			ops.UpdateLastAgent(m.agent)
 			m.ready = false
 			m.streaming = ""
 			return m, m.Init()
