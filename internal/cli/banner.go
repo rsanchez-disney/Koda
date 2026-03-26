@@ -1,0 +1,17 @@
+package cli
+
+import "fmt"
+
+const banner = `
+   ██╗  ██╗ ██████╗ ██████╗  █████╗ 
+   ██║ ██╔╝██╔═══██╗██╔══██╗██╔══██╗
+   █████╔╝ ██║   ██║██║  ██║███████║
+   ██╔═██╗ ██║   ██║██║  ██║██╔══██║
+   ██║  ██╗╚██████╔╝██████╔╝██║  ██║
+   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝
+`
+
+func PrintBanner(version string) {
+	fmt.Print(banner)
+	fmt.Printf("   Agent Runtime Manager  v%s\n\n", version)
+}
