@@ -4,11 +4,30 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"sync"
 	"sync/atomic"
 )
+
+var debugLog *log.Logger
+
+// EnableDebug writes ACP traffic to the given log file.
+func EnableDebug(path string) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return
+	}
+	debugLog = log.New(f, "", log.LstdFlags|log.Lmicroseconds)
+	debugLog.Println("=== Koda ACP debug log ===")
+}
+
+func dbg(format string, args ...interface{}) {
+	if debugLog != nil {
+		debugLog.Printf(format, args...)
+	}
+}
 
 // Event types emitted by the ACP read loop.
 type Event struct {
@@ -70,9 +89,11 @@ func Spawn(agent string) (*Client, error) {
 		return nil, err
 	}
 
+	dbg("spawn: %s %v", kiroPath, args)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start kiro-cli: %w", err)
 	}
+	dbg("spawn: pid=%d", cmd.Process.Pid)
 
 	c := &Client{
 		cmd:     cmd,
@@ -86,8 +107,11 @@ func Spawn(agent string) (*Client, error) {
 		scanner := bufio.NewScanner(stdoutPipe)
 		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 		for scanner.Scan() {
+			line := scanner.Text()
+			dbg("<< %s", truncLog(line, 500))
 			var resp jsonRPCResponse
-			if json.Unmarshal(scanner.Bytes(), &resp) != nil {
+			if json.Unmarshal([]byte(line), &resp) != nil {
+				dbg("<< PARSE ERROR")
 				continue
 			}
 
@@ -119,6 +143,7 @@ func Spawn(agent string) (*Client, error) {
 				c.handleNotification(resp.Method, resp.Params)
 			}
 		}
+		dbg("read loop ended")
 		close(c.Events)
 	}()
 
@@ -178,6 +203,7 @@ func (c *Client) SendMessage(content string) error {
 		},
 	}
 
+	dbg(">> [%d] session/prompt len=%d", id, len(content))
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.stdin.Encode(req)
@@ -199,14 +225,17 @@ func (c *Client) request(method string, params interface{}) (json.RawMessage, er
 	c.pendingMu.Unlock()
 
 	req := jsonRPCRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params}
+	dbg(">> [%d] %s", id, method)
 	c.mu.Lock()
 	err := c.stdin.Encode(req)
 	c.mu.Unlock()
 	if err != nil {
+		dbg(">> SEND ERROR: %v", err)
 		return nil, err
 	}
 
 	result := <-ch
+	dbg("<< [%d] result: %s", id, truncLog(string(result), 200))
 	return result, nil
 }
 
@@ -216,6 +245,7 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 		return
 	}
 
+	dbg("<< notify: %s", method)
 	switch method {
 	case "session/update":
 		update, _ := p["update"].(map[string]interface{})
@@ -226,13 +256,16 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 		case "agent_message_chunk":
 			content, _ := update["content"].(map[string]interface{})
 			if text, ok := content["text"].(string); ok {
+				dbg("   chunk: %s", truncLog(text, 100))
 				c.Events <- Event{Type: "MessageChunk", Chunk: text}
 			}
 		case "tool_call", "tool_call_update":
 			name, _ := update["title"].(string)
+			dbg("   tool: %s", name)
 			c.Events <- Event{Type: "ToolCall", Name: name}
 		case "tool_result":
 			name, _ := update["title"].(string)
+			dbg("   tool done: %s", name)
 			c.Events <- Event{Type: "ToolResult", Name: name}
 		}
 	case "_kiro.dev/metadata":
@@ -240,4 +273,11 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 			c.Events <- Event{Type: "Metadata", Usage: usage}
 		}
 	}
+}
+
+func truncLog(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
