@@ -136,6 +136,9 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toolName = ""
 		case "ToolCall":
 			m.toolName = msg.Name
+		case "ToolResult":
+			m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("✓ %s done", msg.Name)})
+			m.toolName = ""
 		case "Complete":
 			if m.streaming != "" {
 				completed := m.streaming

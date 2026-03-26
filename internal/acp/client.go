@@ -231,6 +231,9 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 		case "tool_call", "tool_call_update":
 			name, _ := update["title"].(string)
 			c.Events <- Event{Type: "ToolCall", Name: name}
+		case "tool_result":
+			name, _ := update["title"].(string)
+			c.Events <- Event{Type: "ToolResult", Name: name}
 		}
 	case "_kiro.dev/metadata":
 		if usage, ok := p["contextUsagePercentage"].(float64); ok {
