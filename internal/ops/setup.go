@@ -60,6 +60,11 @@ func hasApt() bool {
 	return err == nil
 }
 
+func hasChoco() bool {
+	_, err := exec.LookPath("choco")
+	return err == nil
+}
+
 func runVisible(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
@@ -92,6 +97,9 @@ func installNode() error {
 		if hasWinget() {
 			return runVisible("winget", "install", "OpenJS.NodeJS.LTS")
 		}
+		if hasChoco() {
+			return runVisible("choco", "install", "nodejs-lts", "-y")
+		}
 		fmt.Println("  Install via: https://nodejs.org/en/download")
 	}
 	return nil
@@ -115,6 +123,9 @@ func installGit() error {
 	case "windows":
 		if hasWinget() {
 			return runVisible("winget", "install", "Git.Git")
+		}
+		if hasChoco() {
+			return runVisible("choco", "install", "git", "-y")
 		}
 		fmt.Println("  Install via: https://git-scm.com/downloads")
 	}
@@ -151,6 +162,9 @@ func installGH() error {
 	case "windows":
 		if hasWinget() {
 			return runVisible("winget", "install", "GitHub.cli")
+		}
+		if hasChoco() {
+			return runVisible("choco", "install", "gh", "-y")
 		}
 		fmt.Println("  Install via: https://cli.github.com")
 	}
