@@ -35,6 +35,7 @@ var installCmd = &cobra.Command{
 			fmt.Printf("  \u2713 %s (%d agents)\n", p, count)
 		}
 		ops.InjectAgentTokens(target)
+		ops.WriteProfilesManifest(steerRoot, target)
 		fmt.Printf("\n\u2705 Installation complete (%d agents total)\n", countAgents(target))
 		return nil
 	},
@@ -88,6 +89,7 @@ var syncCmd = &cobra.Command{
 		}
 		ops.InjectAgentTokens(target)
 		fmt.Printf("\n\u2705 Sync complete (%d agents total)\n", countAgents(target))
+		ops.WriteProfilesManifest(steerRoot, target)
 		return nil
 	},
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.disney.com/SANCR225/koda/internal/config"
 	"github.disney.com/SANCR225/koda/internal/ops"
 )
 
@@ -47,7 +48,7 @@ var rulesInstallCmd = &cobra.Command{
 		if len(names) == 0 {
 			return fmt.Errorf("specify rule names or use --all")
 		}
-		target := ops.TargetDirFromProject(projectDir)
+		target := config.TargetDir(projectDir)
 		count := ops.InstallRules(steerRoot, target, names)
 		fmt.Printf("\u2705 Installed %d rules\n", count)
 		return nil
@@ -106,7 +107,7 @@ var initMemoryCmd = &cobra.Command{
 			return fmt.Errorf("steer-runtime not found")
 		}
 		dir := args[0]
-		if dir[:1] == "~" {
+		if len(dir) > 0 && dir[0] == '~' {
 			home, _ := os.UserHomeDir()
 			dir = filepath.Join(home, dir[1:])
 		}
@@ -118,39 +119,6 @@ var initMemoryCmd = &cobra.Command{
 			return err
 		}
 		fmt.Println("\u2705 Memory bank initialized")
-		return nil
-	},
-}
-
-var cursorCmd = &cobra.Command{
-	Use:   "cursor",
-	Short: "Manage Cursor IDE rules",
-}
-
-var cursorInstallCmd = &cobra.Command{
-	Use:   "install [dir]",
-	Short: "Install Cursor rules + MCP config",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if steerRoot == "" {
-			return fmt.Errorf("steer-runtime not found")
-		}
-		count, err := ops.InstallCursorRules(steerRoot, args[0])
-		if err != nil {
-			return err
-		}
-		fmt.Printf("\u2705 Installed %d Cursor rules to %s/.cursor/rules/\n", count, args[0])
-		return nil
-	},
-}
-
-var cursorRemoveCmd = &cobra.Command{
-	Use:   "remove [dir]",
-	Short: "Remove .cursor/ directory",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		ops.RemoveDir(filepath.Join(args[0], ".cursor"))
-		fmt.Println("\u2705 Removed .cursor/")
 		return nil
 	},
 }
@@ -188,19 +156,15 @@ var amazonqRemoveCmd = &cobra.Command{
 	},
 }
 
-var cursorInitMemoryCmd = &cobra.Command{
-	Use:   "init-memory [dir]",
-	Short: "Generate project context .mdc for Cursor",
-	Args:  cobra.ExactArgs(1),
+var mcpInstallCmd = &cobra.Command{
+	Use:   "mcp-install",
+	Short: "Install MCP server dependencies and generate config",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if steerRoot == "" {
 			return fmt.Errorf("steer-runtime not found")
 		}
-		if err := ops.InitCursorMemory(steerRoot, args[0]); err != nil {
-			return err
-		}
-		fmt.Printf("\u2705 Generated %s/.cursor/rules/60-project-context.mdc\n", args[0])
-		return nil
+		target := config.TargetDir(projectDir)
+		return ops.MCPInstall(steerRoot, target)
 	},
 }
 
@@ -212,10 +176,6 @@ func init() {
 	promptsInstallCmd.Flags().BoolVar(&promptsInstallAll, "all", false, "Install all prompts")
 	promptsCmd.AddCommand(promptsListCmd)
 	promptsCmd.AddCommand(promptsInstallCmd)
-
-	cursorCmd.AddCommand(cursorInstallCmd)
-	cursorCmd.AddCommand(cursorRemoveCmd)
-	cursorCmd.AddCommand(cursorInitMemoryCmd)
 
 	amazonqCmd.AddCommand(amazonqInstallCmd)
 	amazonqCmd.AddCommand(amazonqRemoveCmd)
