@@ -116,4 +116,5 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(chatCmd)
 	rootCmd.AddCommand(setupCmd)
+	rootCmd.AddCommand(slackCmd)
 }

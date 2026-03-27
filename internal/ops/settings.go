@@ -10,6 +10,8 @@ import (
 
 // Settings represents shared preferences between Kite and Koda.
 type Settings struct {
+	SlackBotToken string        `json:"slackBotToken,omitempty"`
+	SlackAppToken string        `json:"slackAppToken,omitempty"`
 	ActiveProfile string        `json:"activeProfile,omitempty"`
 	LastAgent     string        `json:"lastAgent,omitempty"`
 	SteerRuntime  *SteerConfig  `json:"steerRuntime,omitempty"`
