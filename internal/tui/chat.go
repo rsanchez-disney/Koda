@@ -59,6 +59,9 @@ type chatModel struct {
 	activeProfile string
 	allAgents     []ops.AgentInfo
 	profileNames  []string
+	history       []string
+	historyIdx    int
+	historyDraft  string
 }
 
 // RunChat launches the chat TUI.
@@ -365,8 +368,15 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Slash commands
 		if strings.HasPrefix(text, "/") {
+			m.history = append(m.history, text)
+			m.historyIdx = len(m.history)
+			m.historyDraft = ""
 			return m.handleSlash(text)
 		}
+		// Save to history
+		m.history = append(m.history, text)
+		m.historyIdx = len(m.history)
+		m.historyDraft = ""
 		// Send to ACP
 		m.messages = append(m.messages, chatMsg{role: "user", content: text})
 		m.scrollToBottom()
@@ -380,6 +390,25 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "ctrl+u":
 		m.input = ""
+	case "up":
+		if len(m.history) > 0 {
+			if m.historyIdx == len(m.history) {
+				m.historyDraft = m.input
+			}
+			if m.historyIdx > 0 {
+				m.historyIdx--
+				m.input = m.history[m.historyIdx]
+			}
+		}
+	case "down":
+		if m.historyIdx < len(m.history) {
+			m.historyIdx++
+			if m.historyIdx == len(m.history) {
+				m.input = m.historyDraft
+			} else {
+				m.input = m.history[m.historyIdx]
+			}
+		}
 	case "pgup":
 		if m.scroll > 0 {
 			m.scroll -= 5
@@ -552,7 +581,7 @@ func (m chatModel) View() string {
 	inputLine := inputStyle.Width(w - 4).Render(prompt + m.input + "\u2588")
 
 	// Status bar
-	status := toolStyle.Render("/quit \u00b7 /clear \u00b7 /agent \u00b7 /profile \u00b7 pgup/pgdn")
+	status := toolStyle.Render("/quit \u00b7 /clear \u00b7 /agent \u00b7 /profile \u00b7 \u2191\u2193=history \u00b7 pgup/pgdn")
 
 	return fmt.Sprintf("%s\n%s\n%s%s\n%s", header, visible, suggestLine, inputLine, status)
 }
