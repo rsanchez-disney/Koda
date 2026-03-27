@@ -33,8 +33,6 @@ func cloneSteerRuntime() error {
 				"To fix, authenticate GitHub CLI for Disney Enterprise:\n\n" +
 				"  gh auth login --hostname github.disney.com\n\n" +
 				"  Select: HTTPS, authenticate via browser.\n\n" +
-				"Or clone manually:\n\n" +
-				"  git clone https://github.disney.com/%s.git %s\n",
 				string(output), string(output2), settings.Repo, dir)
 		}
 	}
