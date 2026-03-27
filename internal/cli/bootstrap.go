@@ -27,7 +27,15 @@ func cloneSteerRuntime() error {
 			"--branch", settings.Branch, "--single-branch",
 			gitURL, dir)
 		if output2, err2 := cmd2.CombinedOutput(); err2 != nil {
-			return fmt.Errorf("gh clone failed: %s\ngit clone failed: %s", string(output), string(output2))
+			return fmt.Errorf("clone failed\n\n" +
+				"gh error: %s\n" +
+				"git error: %s\n\n" +
+				"To fix, authenticate GitHub CLI for Disney Enterprise:\n\n" +
+				"  gh auth login --hostname github.disney.com\n\n" +
+				"  Select: HTTPS, authenticate via browser.\n\n" +
+				"Or clone manually:\n\n" +
+				"  git clone https://github.disney.com/%s.git %s\n",
+				string(output), string(output2), settings.Repo, dir)
 		}
 	}
 
