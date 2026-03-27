@@ -130,6 +130,9 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.profileNames = loadProfileNames()
 		m.filterAgentsByProfile()
 		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Connected to %s", agentLabel(m.agent))})
+		if welcome := loadWelcomeMessage(m.agent); welcome != "" {
+			m.messages = append(m.messages, chatMsg{role: "assistant", content: welcome})
+		}
 		return m, listenForEvents(m.client)
 
 	case acpEventMsg:
@@ -217,6 +220,22 @@ func (m chatModel) runDelegations(matches [][]string) tea.Cmd {
 			result: strings.Join(results, "\n\n---\n\n"),
 		}
 	}
+}
+
+func loadWelcomeMessage(agent string) string {
+	if agent == "" {
+		return ""
+	}
+	home, _ := os.UserHomeDir()
+	data, err := os.ReadFile(filepath.Join(home, ".kiro", "agents", agent+".json"))
+	if err != nil {
+		return ""
+	}
+	var a struct {
+		WelcomeMessage string `json:"welcomeMessage"`
+	}
+	json.Unmarshal(data, &a)
+	return a.WelcomeMessage
 }
 
 func loadAgentNames() []string {
