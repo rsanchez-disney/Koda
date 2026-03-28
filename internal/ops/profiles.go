@@ -124,14 +124,14 @@ func DetectInstalled(steerRoot, targetDir string) []string {
 // InstallShared copies hooks, MCP bundles, and shared context to targetDir.
 func InstallShared(steerRoot, targetDir string) error {
 	// Hooks
-	copyDirContents(filepath.Join(steerRoot, ".kiro", config.HooksDir), filepath.Join(targetDir, config.HooksDir))
+	copyDirContents(filepath.Join(steerRoot, "shared", config.HooksDir), filepath.Join(targetDir, config.HooksDir))
 	chmodExec(filepath.Join(targetDir, config.HooksDir))
 
 	// Shared context
-	copyDirContents(filepath.Join(steerRoot, ".kiro", config.ContextDir), filepath.Join(targetDir, config.ContextDir))
+	copyDirContents(filepath.Join(steerRoot, "shared", config.ContextDir), filepath.Join(targetDir, config.ContextDir))
 
 	// MCP server bundles
-	mcpSrc := filepath.Join(steerRoot, ".kiro", config.ToolsDir, "mcp-servers")
+	mcpSrc := filepath.Join(steerRoot, "shared", config.ToolsDir, "mcp-servers")
 	if entries, err := os.ReadDir(mcpSrc); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() {
