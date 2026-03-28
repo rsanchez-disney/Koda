@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	ProfilePrefix = ".kiro-"
+	ProfilePrefix = "profiles/"
 	AgentsDir     = "agents"
 	PromptsDir    = "prompts"
 	ContextDir    = "context"
@@ -24,7 +24,7 @@ func KiroRoot() string {
 	return filepath.Join(home, ".kiro")
 }
 
-// SteerRoot finds the steer-runtime repo root by looking for .kiro-dev-core/
+// SteerRoot finds the steer-runtime repo root by looking for profiles/dev-core/
 // starting from dir and walking up. Returns empty string if not found.
 func SteerRoot(dir string) string {
 	for {
@@ -39,7 +39,7 @@ func SteerRoot(dir string) string {
 	}
 }
 
-// ProfileDirs returns all .kiro-* directories under steerRoot.
+// ProfileDirs returns all profiles/* directories under steerRoot.
 func ProfileDirs(steerRoot string) ([]string, error) {
 	matches, err := filepath.Glob(filepath.Join(steerRoot, ProfilePrefix+"*"))
 	if err != nil {

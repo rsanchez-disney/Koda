@@ -89,14 +89,14 @@ func TestReadWriteTokens(t *testing.T) {
 func TestListProfiles(t *testing.T) {
 	// Create a fake steer-runtime with two profiles
 	tmp := t.TempDir()
-	for _, p := range []string{".kiro-alpha", ".kiro-beta"} {
+	for _, p := range []string{"profiles/alpha", "profiles/beta"} {
 		agentsDir := filepath.Join(tmp, p, "agents")
 		os.MkdirAll(agentsDir, 0755)
 		os.WriteFile(filepath.Join(agentsDir, "test_agent.json"), []byte(`{"name":"test_agent","description":"test"}`), 0644)
 	}
-	// Also need .kiro-dev-core for SteerRoot detection
-	os.MkdirAll(filepath.Join(tmp, ".kiro-dev-core", "agents"), 0755)
-	os.WriteFile(filepath.Join(tmp, ".kiro-dev-core", "agents", "orch.json"), []byte(`{"name":"orch","description":"test"}`), 0644)
+	// Also need profiles/dev-core for SteerRoot detection
+	os.MkdirAll(filepath.Join(tmp, "profiles/dev-core", "agents"), 0755)
+	os.WriteFile(filepath.Join(tmp, "profiles/dev-core", "agents", "orch.json"), []byte(`{"name":"orch","description":"test"}`), 0644)
 
 	target := filepath.Join(tmp, "target")
 	os.MkdirAll(filepath.Join(target, "agents"), 0755)
@@ -118,7 +118,7 @@ func TestListProfiles(t *testing.T) {
 func TestInstallRemoveProfile(t *testing.T) {
 	tmp := t.TempDir()
 	// Create fake profile
-	agentsDir := filepath.Join(tmp, ".kiro-test", "agents")
+	agentsDir := filepath.Join(tmp, "profiles/test", "agents")
 	os.MkdirAll(agentsDir, 0755)
 	os.WriteFile(filepath.Join(agentsDir, "my_agent.json"), []byte(`{"name":"my_agent","description":"d"}`), 0644)
 
@@ -151,8 +151,8 @@ func TestInstallRemoveProfile(t *testing.T) {
 
 func TestCheckInstallation(t *testing.T) {
 	tmp := t.TempDir()
-	os.MkdirAll(filepath.Join(tmp, ".kiro-dev-core", "agents"), 0755)
-	os.WriteFile(filepath.Join(tmp, ".kiro-dev-core", "agents", "a.json"), []byte(`{"name":"a","description":"d"}`), 0644)
+	os.MkdirAll(filepath.Join(tmp, "profiles/dev-core", "agents"), 0755)
+	os.WriteFile(filepath.Join(tmp, "profiles/dev-core", "agents", "a.json"), []byte(`{"name":"a","description":"d"}`), 0644)
 
 	target := filepath.Join(tmp, "target")
 	os.MkdirAll(filepath.Join(target, "agents"), 0755)
@@ -173,8 +173,8 @@ func TestCheckInstallation(t *testing.T) {
 
 func TestWriteProfilesManifest(t *testing.T) {
 	tmp := t.TempDir()
-	os.MkdirAll(filepath.Join(tmp, ".kiro-test", "agents"), 0755)
-	os.WriteFile(filepath.Join(tmp, ".kiro-test", "agents", "a.json"), []byte(`{"name":"a","description":"d"}`), 0644)
+	os.MkdirAll(filepath.Join(tmp, "profiles/test", "agents"), 0755)
+	os.WriteFile(filepath.Join(tmp, "profiles/test", "agents", "a.json"), []byte(`{"name":"a","description":"d"}`), 0644)
 
 	target := filepath.Join(tmp, "target")
 	os.MkdirAll(filepath.Join(target, "agents"), 0755)
@@ -195,7 +195,7 @@ func TestWriteProfilesManifest(t *testing.T) {
 func TestDiffSync(t *testing.T) {
 	tmp := t.TempDir()
 	// Source profile
-	srcAgents := filepath.Join(tmp, ".kiro-p1", "agents")
+	srcAgents := filepath.Join(tmp, "profiles/p1", "agents")
 	os.MkdirAll(srcAgents, 0755)
 	os.WriteFile(filepath.Join(srcAgents, "a.json"), []byte(`{"name":"a","description":"v2"}`), 0644)
 	os.WriteFile(filepath.Join(srcAgents, "b.json"), []byte(`{"name":"b","description":"new"}`), 0644)
@@ -243,8 +243,8 @@ func TestListWorkspaces(t *testing.T) {
 func TestApplyWorkspace(t *testing.T) {
 	tmp := t.TempDir()
 	// Create a profile
-	os.MkdirAll(filepath.Join(tmp, ".kiro-dev-core", "agents"), 0755)
-	os.WriteFile(filepath.Join(tmp, ".kiro-dev-core", "agents", "orch.json"), []byte(`{"name":"orch","description":"d"}`), 0644)
+	os.MkdirAll(filepath.Join(tmp, "profiles/dev-core", "agents"), 0755)
+	os.WriteFile(filepath.Join(tmp, "profiles/dev-core", "agents", "orch.json"), []byte(`{"name":"orch","description":"d"}`), 0644)
 	// Create a rule
 	os.MkdirAll(filepath.Join(tmp, "common", "rules"), 0755)
 	os.WriteFile(filepath.Join(tmp, "common", "rules", "myrule.md"), []byte("# rule"), 0644)
