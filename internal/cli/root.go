@@ -117,5 +117,6 @@ func init() {
 	rootCmd.AddCommand(chatCmd)
 	rootCmd.AddCommand(setupCmd)
 	rootCmd.AddCommand(statsCmd)
+	rootCmd.AddCommand(autoUpdateCmd)
 	rootCmd.AddCommand(slackCmd)
 }
