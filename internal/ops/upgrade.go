@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const releaseURL = "https://github.disney.com/api/v3/repos/SANCR225/steer-runtime/releases/latest"
+const releaseURL = "https://api.github.com/repos/rsanchez-disney/Koda/releases/latest"
 
 type ghRelease struct {
 	TagName string    `json:"tag_name"`
