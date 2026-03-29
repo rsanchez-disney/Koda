@@ -64,10 +64,19 @@ var removeCmd = &cobra.Command{
 	},
 }
 
+var syncUpdate bool
+
 var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Update installed profiles to latest",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// If --update or no steer-runtime found, download latest release
+		if syncUpdate || steerRoot == "" {
+			if err := cloneSteerRuntime(); err != nil {
+				return err
+			}
+			steerRoot = config.DefaultSteerRoot()
+		}
 		if steerRoot == "" {
 			return fmt.Errorf("steer-runtime not found")
 		}
@@ -161,4 +170,8 @@ func countAgents(targetDir string) int {
 		}
 	}
 	return count
+}
+
+func init() {
+	syncCmd.Flags().BoolVar(&syncUpdate, "update", false, "Download latest release before syncing")
 }
