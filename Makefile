@@ -2,7 +2,7 @@ APP      := koda
 MODULE   := github.disney.com/SANCR225/koda
 PUB_REPO := rsanchez-disney/Koda
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-RELEASE_KEY ?= 34f2448e66c092674fe0b231d91eedeca8cd74acb48935bcd04eb0d8fc24313f
+RELEASE_KEY ?= $(STEER_RELEASE_KEY)
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X github.disney.com/SANCR225/koda/internal/cli.releaseKey=$(RELEASE_KEY)
 BIN      := ./bin/$(APP)
 
