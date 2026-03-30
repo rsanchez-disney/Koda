@@ -52,7 +52,7 @@ release: ## Tag + build + release to github.com (make release TAG=v0.1.0)
 	git tag -a $(TAG) -m "Release $(TAG)"
 	git push origin $(TAG)
 	$(MAKE) cross VERSION=$(TAG)
-	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* \
+	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* --latest \
 		--repo $(PUB_REPO) \
 		--title "Koda $(TAG)" \
 		--notes "Install: `curl -fsSL https://raw.githubusercontent.com/rsanchez-disney/Koda/main/install.sh | bash`"
