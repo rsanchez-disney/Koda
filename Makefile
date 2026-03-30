@@ -66,3 +66,10 @@ help: ## Show this help
 smoke: cross ## Run smoke tests in Docker
 	docker build -t koda-test -f test/Dockerfile .
 	docker run --rm koda-test
+
+publish: ## Tag + build + upload to GitHub releases (make publish TAG=v0.1.0)
+	@test -n "$(TAG)" || { echo "Usage: make publish TAG=v0.1.0"; exit 1; }
+	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
+	$(MAKE) release TAG=$(TAG)
+	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* --latest --repo rsanchez-disney/steer-runtime --title "$(TAG)" --notes "Koda $(TAG)"
+	@echo "\n✅ Published $(TAG) to GitHub releases"
