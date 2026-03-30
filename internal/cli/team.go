@@ -31,6 +31,10 @@ var teamRunCmd = &cobra.Command{
 		}
 
 		repoRoot, _ := os.Getwd()
+
+		if err := team.ValidateDeps(spec); err != nil {
+			return fmt.Errorf("invalid team spec: %w", err)
+		}
 		teamID := fmt.Sprintf("%s-%s", spec.Name, time.Now().Format("20060102-150405"))
 
 		PrintBanner(appVersion)
@@ -162,4 +166,82 @@ func init() {
 	teamCmd.AddCommand(teamStatusCmd)
 	teamCmd.AddCommand(teamListCmd)
 	teamCmd.AddCommand(teamInitCmd)
+}
+
+var teamPlanCmd = &cobra.Command{
+	Use:   "plan",
+	Short: "AI-generate a TeamSpec from a goal",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if teamGoal == "" {
+			return fmt.Errorf("--goal is required")
+		}
+		spec, err := team.GeneratePlan(teamGoal)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("\n📋 Generated plan: %s (%d workers)\n\n", spec.Name, len(spec.Workers))
+		for _, ws := range spec.Workers {
+			deps := "none"
+			if len(ws.DependsOn) > 0 {
+				deps = fmt.Sprintf("%v", ws.DependsOn)
+			}
+			fmt.Printf("  ▸ %-20s agent=%-20s deps=%s\n", ws.Role, ws.AgentConfig, deps)
+			fmt.Printf("    %s\n\n", ws.TaskTemplate)
+		}
+
+		dir := filepath.Join(".", ".koda", "teams")
+		if err := team.SaveTeamSpec(spec, dir); err != nil {
+			return err
+		}
+		fmt.Printf("✅ Saved to %s/%s.json\n", dir, spec.Name)
+		fmt.Printf("Review and run: koda team run %s/%s.json --goal %q\n", dir, spec.Name, teamGoal)
+		return nil
+	},
+}
+
+var teamMergeCmd = &cobra.Command{
+	Use:   "merge [spec-file]",
+	Short: "Merge completed workers' changes",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		spec, err := team.LoadTeamSpec(args[0])
+		if err != nil {
+			return err
+		}
+		repoRoot, _ := os.Getwd()
+
+		if err := team.ValidateDeps(spec); err != nil {
+			return fmt.Errorf("invalid team spec: %w", err)
+		}
+		// Find the most recent team run for this spec
+		t := team.NewTeam("merge", spec, "", repoRoot)
+		t.Worktrees = team.NewWorktreeManager(repoRoot)
+
+		// Check conflicts first
+		report := team.DetectConflicts(t)
+		if len(report.Overlaps) > 0 {
+			fmt.Printf("⚠ %d file conflicts detected:\n\n", len(report.Overlaps))
+			for _, o := range report.Overlaps {
+				fmt.Printf("  %s → %v\n", o.Path, o.Workers)
+			}
+			fmt.Println("\nResolve conflicts before merging.")
+			return nil
+		}
+
+		fmt.Printf("🔀 Merging with strategy: %s\n\n", spec.MergeStrategy)
+		if err := team.Merge(t); err != nil {
+			return err
+		}
+
+		team.CleanupAfterMerge(t)
+		fmt.Println("\n✅ Merge complete")
+		return nil
+	},
+}
+
+func init() {
+	teamPlanCmd.Flags().StringVar(&teamGoal, "goal", "", "Goal to decompose")
+	teamCmd.AddCommand(teamPlanCmd)
+	teamCmd.AddCommand(teamMergeCmd)
 }

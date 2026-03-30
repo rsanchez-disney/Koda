@@ -168,7 +168,7 @@ func (t *Team) handleEvent(event WorkerEvent, completed map[string]bool) {
 		completed[event.WorkerID] = true
 		w := t.Workers[event.WorkerID]
 		t.mu.Lock()
-		t.Results[event.WorkerID] = w.Result
+		t.Results[event.WorkerID] = ExtractResult(w.Result)
 		t.mu.Unlock()
 	}
 	if event.Type == "StateChange" && event.Data == string(StateFailed) {
