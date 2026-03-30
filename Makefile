@@ -73,3 +73,14 @@ publish: ## Tag + build + upload to GitHub releases (make publish TAG=v0.1.0)
 	$(MAKE) release TAG=$(TAG)
 	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* --latest --repo rsanchez-disney/steer-runtime --title "$(TAG)" --notes "Koda $(TAG)"
 	@echo "\n✅ Published $(TAG) to GitHub releases"
+
+smoke-install: ## Test install script in Docker (downloads from GitHub releases)
+	docker run --rm ubuntu:22.04 bash -c "\
+		apt-get update -qq && apt-get install -y -qq curl git > /dev/null 2>&1 && \
+		echo '🐾 Testing install script...' && \
+		curl -fsSL https://raw.githubusercontent.com/rsanchez-disney/steer-runtime/main/tools/install-koda.sh | bash && \
+		echo '' && \
+		export PATH=\$$HOME/.local/bin:\$$PATH && \
+		koda version && \
+		koda --help | head -5 && \
+		echo '' && echo '✅ Install test passed'"
