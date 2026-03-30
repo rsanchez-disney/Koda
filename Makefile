@@ -78,7 +78,7 @@ smoke-install: ## Test install script in Docker (downloads from GitHub releases)
 	docker run --rm ubuntu:22.04 bash -c "\
 		apt-get update -qq && apt-get install -y -qq curl git > /dev/null 2>&1 && \
 		echo '🐾 Testing install script...' && \
-		curl -fsSL https://raw.githubusercontent.com/rsanchez-disney/steer-runtime/main/tools/install-koda.sh | bash && \
+		curl -fsSL https://raw.githubusercontent.com/rsanchez-disney/Koda/main/install.sh | bash && \
 		echo '' && \
 		export PATH=\$$HOME/.local/bin:\$$PATH && \
 		koda version && \
