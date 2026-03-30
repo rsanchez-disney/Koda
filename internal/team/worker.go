@@ -192,3 +192,10 @@ func lastLine(s string) string {
 	}
 	return l
 }
+
+// Snapshot returns a thread-safe copy of volatile fields.
+func (w *Worker) Snapshot() (usage float64, lastLine string) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.ContextUsage, w.LastLine
+}

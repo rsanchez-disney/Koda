@@ -9,9 +9,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.disney.com/SANCR225/koda/internal/team"
+	"github.disney.com/SANCR225/koda/internal/tui"
 )
 
 var teamGoal string
+var teamTUI bool
 
 var teamCmd = &cobra.Command{
 	Use:   "team",
@@ -45,6 +47,11 @@ var teamRunCmd = &cobra.Command{
 			fmt.Printf("   \u25b8 %-20s agent=%-20s trust=%-12s deps=%s\n", ws.Role, ws.AgentConfig, ws.TrustLevel, deps)
 		}
 		fmt.Println()
+
+		// TUI mode
+		if teamTUI {
+			return tui.RunTeamDashboard(spec, teamGoal, repoRoot)
+		}
 
 		t := team.NewTeam(teamID, spec, teamGoal, repoRoot)
 
@@ -150,6 +157,7 @@ var teamInitCmd = &cobra.Command{
 
 func init() {
 	teamRunCmd.Flags().StringVar(&teamGoal, "goal", "", "High-level goal for the team")
+	teamRunCmd.Flags().BoolVar(&teamTUI, "tui", false, "Launch interactive TUI dashboard")
 	teamCmd.AddCommand(teamRunCmd)
 	teamCmd.AddCommand(teamStatusCmd)
 	teamCmd.AddCommand(teamListCmd)
