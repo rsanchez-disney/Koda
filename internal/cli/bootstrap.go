@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -166,34 +167,61 @@ func downloadAndExtract(url, destDir string) error {
 }
 
 func cloneSteerRuntime() error {
+	settings := config.ReadSteerSettings()
 	dir := config.DefaultSteerRoot()
 
-	fmt.Println("   Downloading latest steer-runtime release...")
+	// Try gh clone first (respects GHE auth)
+	fmt.Println("   Cloning steer-runtime...")
+	if tryGHClone(settings, dir) == nil {
+		return nil
+	}
 
+	// Fallback: download from release
+	fmt.Println("   gh clone failed, trying release download...")
 	rel, err := fetchLatestRelease()
 	if err != nil {
-		return fmt.Errorf("cannot fetch release info: %w", err)
+		return fmt.Errorf("cannot fetch release: %w\n\n" +
+			"To fix, authenticate GitHub CLI:\n\n" +
+			"  gh auth login --hostname github.disney.com\n")
 	}
 
 	url := findEncryptedTarball(rel)
 	if url == "" {
-		return fmt.Errorf("no tarball found in release %s", rel.TagName)
+		return fmt.Errorf("no tarball in release %s", rel.TagName)
 	}
 
 	fmt.Printf("   Version: %s\n", rel.TagName)
-
 	os.RemoveAll(dir)
 	os.MkdirAll(dir, 0755)
 
 	if err := downloadAndExtract(url, dir); err != nil {
-		return fmt.Errorf("extract failed: %w", err)
+		return fmt.Errorf("download failed: %w\n\n" +
+			"To fix, authenticate GitHub CLI:\n\n" +
+			"  gh auth login --hostname github.disney.com\n")
 	}
 
 	os.WriteFile(filepath.Join(dir, "VERSION"), []byte(rel.TagName), 0644)
-
 	fmt.Printf("   \u2705 Installed to %s\n\n", dir)
 
-	settings := config.ReadSteerSettings()
+	settings.LastSync = time.Now().UTC().Format(time.RFC3339)
+	config.SaveSteerSettings(settings)
+	return nil
+}
+
+func tryGHClone(settings config.SteerSettings, dir string) error {
+	cmd := exec.Command("gh", "repo", "clone",
+		settings.Repo, dir,
+		"--", "--branch", settings.Branch, "--single-branch")
+	cmd.Env = append(cmd.Environ(), "GH_HOST="+config.GHHost)
+	if err := cmd.Run(); err != nil {
+		// Try git clone as second attempt
+		gitURL := fmt.Sprintf("https://%s/%s.git", config.GHHost, settings.Repo)
+		cmd2 := exec.Command("git", "clone",
+			"--branch", settings.Branch, "--single-branch",
+			gitURL, dir)
+		return cmd2.Run()
+	}
+	fmt.Printf("   \u2705 Cloned to %s\n\n", dir)
 	settings.LastSync = time.Now().UTC().Format(time.RFC3339)
 	config.SaveSteerSettings(settings)
 	return nil
