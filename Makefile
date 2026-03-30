@@ -3,7 +3,7 @@ MODULE   := github.disney.com/SANCR225/koda
 PUB_REPO := rsanchez-disney/Koda
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 RELEASE_KEY ?= $(STEER_RELEASE_KEY)
-LDFLAGS  := -s -w -X main.version=$(VERSION) -X github.disney.com/SANCR225/koda/internal/cli.releaseKey=$(RELEASE_KEY)
+LDFLAGS  := -s -w -X main.version=$(VERSION)
 BIN      := ./bin/$(APP)
 
 .PHONY: build run clean test lint fmt vet tidy install cross release release help
