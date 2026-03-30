@@ -26,6 +26,11 @@ func CheckDeps() []Dep {
 		{Name: "kiro-cli", Binary: "kiro-cli", InstallFn: installKiroCLI},
 		{Name: "GitHub CLI", Binary: "gh", InstallFn: installGH},
 	}
+	// On Windows, check for WSL
+	if runtime.GOOS == "windows" {
+		deps = append(deps, Dep{Name: "WSL", Binary: "wsl", InstallFn: installWSL})
+	}
+
 	for i := range deps {
 		path, err := exec.LookPath(deps[i].Binary)
 		if err == nil {
@@ -169,4 +174,45 @@ func installGH() error {
 		fmt.Println("  Install via: https://cli.github.com")
 	}
 	return nil
+}
+
+func hasWSLDistro() bool {
+	out, err := exec.Command("wsl", "--list", "--quiet").Output()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) != ""
+}
+
+func installWSL() error {
+	// Check if wsl command exists but no distro installed
+	if _, err := exec.LookPath("wsl"); err != nil {
+		fmt.Println("  WSL is not available on this system.")
+		fmt.Println("  Install via: wsl --install")
+		fmt.Println("  Or enable it in Windows Features > Windows Subsystem for Linux")
+		fmt.Print("  Attempt wsl --install now? [y/N]: ")
+		var answer string
+		fmt.Scanln(&answer)
+		if strings.ToLower(answer) == "y" {
+			return runVisible("wsl", "--install")
+		}
+		return nil
+	}
+
+	if !hasWSLDistro() {
+		fmt.Println("  WSL is installed but no Linux distro found.")
+		fmt.Print("  Install Ubuntu? [y/N]: ")
+		var answer string
+		fmt.Scanln(&answer)
+		if strings.ToLower(answer) == "y" {
+			if err := runVisible("wsl", "--install", "-d", "Ubuntu"); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Install koda inside WSL
+	fmt.Println("  Installing koda inside WSL...")
+	return runVisible("wsl", "--", "bash", "-c",
+		"curl -fsSL https://github.disney.com/raw/SANCR225/steer-runtime/main/tools/install-koda.sh | bash")
 }
