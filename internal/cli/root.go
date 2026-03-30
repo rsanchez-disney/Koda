@@ -119,4 +119,5 @@ func init() {
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(autoUpdateCmd)
 	rootCmd.AddCommand(slackCmd)
+	rootCmd.AddCommand(teamCmd)
 }

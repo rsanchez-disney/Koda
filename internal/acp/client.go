@@ -67,8 +67,17 @@ type jsonRPCResponse struct {
 	Params json.RawMessage  `json:"params,omitempty"`
 }
 
+// SpawnWithCwd starts kiro-cli acp with a custom working directory.
+func SpawnWithCwd(agent, cwd string) (*Client, error) {
+	return spawnInternal(agent, cwd)
+}
+
 // Spawn starts kiro-cli acp and returns a connected client.
 func Spawn(agent string) (*Client, error) {
+	return spawnInternal(agent, "")
+}
+
+func spawnInternal(agent, cwd string) (*Client, error) {
 	home, _ := os.UserHomeDir()
 	kiroPath := home + "/.local/bin/kiro-cli"
 
@@ -78,6 +87,9 @@ func Spawn(agent string) (*Client, error) {
 	}
 
 	cmd := exec.Command(kiroPath, args...)
+	if cwd != "" {
+		cmd.Dir = cwd
+	}
 	if debugLog != nil {
 		stderrPipe, _ := cmd.StderrPipe()
 		go func() {
