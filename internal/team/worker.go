@@ -46,6 +46,8 @@ type Worker struct {
 	State        WorkerState
 	Client       *acp.Client
 	Output       []string
+	Messages     []string
+	PermissionCh chan PermissionRequest
 	LastLine     string
 	ContextUsage float64
 	Credits      float64
@@ -63,6 +65,13 @@ type WorkerEvent struct {
 	Data     string
 }
 
+// PermissionRequest is sent when a tool call needs user approval.
+type PermissionRequest struct {
+	ToolCallID string
+	Title      string
+	ResponseCh chan string // send "allow_once", "allow_always", or "reject_once"
+}
+
 // NewWorker creates a worker from a spec entry.
 func NewWorker(id, role, agent, model string, trust TrustLevel, task string, dependsOn []string) *Worker {
 	return &Worker{
@@ -72,9 +81,10 @@ func NewWorker(id, role, agent, model string, trust TrustLevel, task string, dep
 		Model:     model,
 		Trust:     trust,
 		Task:      task,
-		DependsOn: dependsOn,
-		State:     StateIdle,
-		Events:    make(chan WorkerEvent, 100),
+		DependsOn:    dependsOn,
+		State:        StateIdle,
+		Events:       make(chan WorkerEvent, 100),
+		PermissionCh: make(chan PermissionRequest, 5),
 	}
 }
 
@@ -139,6 +149,33 @@ func (w *Worker) Abort() {
 	w.FinishedAt = time.Now()
 }
 
+// SendPrompt injects a user message into the running session.
+func (w *Worker) SendPrompt(text string) error {
+	if w.Client == nil {
+		return fmt.Errorf("worker not connected")
+	}
+	w.mu.Lock()
+	w.Messages = append(w.Messages, "user: "+text)
+	w.mu.Unlock()
+	return w.Client.SendMessage(text)
+}
+
+// SetTrust updates the worker's trust level.
+func (w *Worker) SetTrust(level TrustLevel) {
+	w.mu.Lock()
+	w.Trust = level
+	w.mu.Unlock()
+}
+
+// GetMessages returns a copy of the message history.
+func (w *Worker) GetMessages() []string {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	cp := make([]string, len(w.Messages))
+	copy(cp, w.Messages)
+	return cp
+}
+
 func (w *Worker) streamEvents() {
 	var buf strings.Builder
 	for event := range w.Client.Events {
@@ -160,6 +197,7 @@ func (w *Worker) streamEvents() {
 			w.mu.Lock()
 			w.Result = buf.String()
 			w.Output = append(w.Output, w.Result)
+			w.Messages = append(w.Messages, "assistant: "+w.Result)
 			w.FinishedAt = time.Now()
 			w.mu.Unlock()
 			w.SetState(StateCompleted)

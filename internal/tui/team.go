@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -20,24 +19,34 @@ var (
 	idleStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"})
 )
 
+type teamView int
+
+const (
+	viewDashboard teamView = iota
+	viewWorkerChat
+)
+
 type teamEventMsg team.WorkerEvent
 type teamDoneMsg struct{}
 type teamTickMsg time.Time
 
 type teamModel struct {
-	team     *team.Team
-	spec     team.TeamSpec
-	goal     string
-	repoRoot string
-	cursor   int
-	width    int
-	height   int
-	started  bool
-	done     bool
-	err      error
+	team       *team.Team
+	spec       team.TeamSpec
+	goal       string
+	repoRoot   string
+	cursor     int
+	width      int
+	height     int
+	started    bool
+	done       bool
+	err        error
+	view       teamView
+	chatWorker string
+	chatInput  string
+	chatScroll int
 }
 
-// RunTeamDashboard launches the TUI team dashboard.
 func RunTeamDashboard(spec team.TeamSpec, goal, repoRoot string) error {
 	p := tea.NewProgram(initialTeamModel(spec, goal, repoRoot), tea.WithAltScreen())
 	_, err := p.Run()
@@ -52,12 +61,7 @@ func (m teamModel) Init() tea.Cmd {
 	return func() tea.Msg {
 		teamID := fmt.Sprintf("%s-%s", m.spec.Name, time.Now().Format("20060102-150405"))
 		t := team.NewTeam(teamID, m.spec, m.goal, m.repoRoot)
-
-		// Run team in background
-		go func() {
-			t.Run()
-		}()
-
+		go t.Run()
 		return teamStarted{team: t}
 	}
 }
@@ -94,7 +98,6 @@ func (m teamModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case teamEventMsg:
 		if msg.Type == "Complete" || msg.Type == "StateChange" {
-			// Check if all workers done
 			allDone := true
 			for _, id := range m.team.WorkerOrder {
 				s := m.team.Workers[id].GetState()
@@ -119,69 +122,195 @@ func (m teamModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
-			if m.team != nil && !m.done {
-				m.team.Abort()
-			}
-			return m, tea.Quit
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.team != nil && m.cursor < len(m.team.WorkerOrder)-1 {
-				m.cursor++
-			}
-		case "a":
-			// Abort selected worker
-			if m.team != nil && m.cursor < len(m.team.WorkerOrder) {
-				id := m.team.WorkerOrder[m.cursor]
-				w := m.team.Workers[id]
-				if w.GetState() == team.StateRunning {
-					w.Abort()
-				}
+		if m.view == viewWorkerChat {
+			return m.updateWorkerChat(msg)
+		}
+		return m.updateDashboardKeys(msg)
+	}
+	return m, nil
+}
+
+// --- Dashboard keys ---
+
+func (m teamModel) updateDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "ctrl+c":
+		if m.team != nil && !m.done {
+			m.team.Abort()
+		}
+		return m, tea.Quit
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.team != nil && m.cursor < len(m.team.WorkerOrder)-1 {
+			m.cursor++
+		}
+	case "enter":
+		if m.team != nil && m.cursor < len(m.team.WorkerOrder) {
+			m.chatWorker = m.team.WorkerOrder[m.cursor]
+			m.chatInput = ""
+			m.view = viewWorkerChat
+		}
+	case "a":
+		if m.team != nil && m.cursor < len(m.team.WorkerOrder) {
+			id := m.team.WorkerOrder[m.cursor]
+			w := m.team.Workers[id]
+			if w.GetState() == team.StateRunning {
+				w.Abort()
 			}
 		}
 	}
 	return m, nil
 }
 
+// --- Worker Chat ---
+
+func (m teamModel) updateWorkerChat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.view = viewDashboard
+		m.chatInput = ""
+	case "ctrl+c":
+		if m.team != nil && !m.done {
+			m.team.Abort()
+		}
+		return m, tea.Quit
+	case "enter":
+		text := strings.TrimSpace(m.chatInput)
+		m.chatInput = ""
+		if text == "" {
+			return m, nil
+		}
+		// Trust commands
+		if strings.HasPrefix(text, "/trust ") {
+			level := strings.TrimPrefix(text, "/trust ")
+			if w, ok := m.team.Workers[m.chatWorker]; ok {
+				switch level {
+				case "autonomous", "supervised", "strict":
+					w.SetTrust(team.TrustLevel(level))
+				}
+			}
+			return m, nil
+		}
+		// Mid-task prompt injection
+		if w, ok := m.team.Workers[m.chatWorker]; ok {
+			w.SendPrompt(text)
+		}
+	case "backspace":
+		if len(m.chatInput) > 0 {
+			m.chatInput = m.chatInput[:len(m.chatInput)-1]
+		}
+	case "ctrl+u":
+		m.chatInput = ""
+	case "pgup":
+		m.chatScroll -= 5
+		if m.chatScroll < 0 {
+			m.chatScroll = 0
+		}
+	case "pgdown":
+		m.chatScroll += 5
+	default:
+		key := msg.String()
+		if len(key) == 1 && key[0] >= 32 {
+			m.chatInput += key
+		}
+	}
+	return m, nil
+}
+
+// --- View ---
+
 func (m teamModel) View() string {
 	if !m.started {
 		return "  Starting team...\n"
+	}
+	if m.view == viewWorkerChat {
+		return m.viewWorkerChat()
+	}
+	return m.viewDashboardCards()
+}
+
+func (m teamModel) viewWorkerChat() string {
+	w, ok := m.team.Workers[m.chatWorker]
+	if !ok {
+		return "Worker not found"
 	}
 
 	var b strings.Builder
 
 	// Header
+	state := w.GetState()
+	stateStr := stateLabel(state)
+	b.WriteString(headerStyle.Render(fmt.Sprintf(" %s ", w.Role)) + "  " + stateStr + "  " + idleStyle.Render("trust:"+string(w.Trust)))
+	b.WriteString("\n\n")
+
+	// Messages
+	msgs := w.GetMessages()
+	var lines []string
+	for _, msg := range msgs {
+		if strings.HasPrefix(msg, "user: ") {
+			lines = append(lines, userStyle.Render("You: ")+strings.TrimPrefix(msg, "user: "))
+		} else if strings.HasPrefix(msg, "assistant: ") {
+			content := strings.TrimPrefix(msg, "assistant: ")
+			if len(content) > 200 {
+				content = content[:200] + "\u2026"
+			}
+			lines = append(lines, botStyle.Render("\U0001f916 ")+content)
+		}
+		lines = append(lines, "")
+	}
+
+	// Live streaming
+	_, lastLine := w.Snapshot()
+	if state == team.StateRunning && lastLine != "" {
+		lines = append(lines, botStyle.Render("\U0001f916 ")+lastLine+"\u2588")
+	}
+
+	// Scroll
+	h := m.height
+	if h == 0 {
+		h = 24
+	}
+	available := h - 6
+	if available < 3 {
+		available = 3
+	}
+	start := 0
+	if len(lines) > available {
+		start = len(lines) - available
+	}
+	for _, line := range lines[start:] {
+		b.WriteString(line + "\n")
+	}
+
+	// Input
+	w2 := m.width
+	if w2 == 0 {
+		w2 = 80
+	}
+	inputLine := inputStyle.Width(w2 - 4).Render("> " + m.chatInput + "\u2588")
+	b.WriteString("\n" + inputLine + "\n")
+	b.WriteString(idleStyle.Render("  esc=back  /trust autonomous|supervised|strict  pgup/pgdn"))
+
+	return b.String()
+}
+
+func (m teamModel) viewDashboardCards() string {
+	var b strings.Builder
+
 	b.WriteString(headerStyle.Render(fmt.Sprintf(" \U0001f43e Team: %s ", m.spec.Name)))
 	if m.goal != "" {
 		b.WriteString("  " + toolStyle.Render(m.goal))
 	}
 	b.WriteString("\n\n")
 
-	// Worker cards
 	for i, id := range m.team.WorkerOrder {
 		w := m.team.Workers[id]
 		state := w.GetState()
+		stateStr := stateLabel(state)
 
-		// Status styling
-		var stateStr string
-		switch state {
-		case team.StateRunning:
-			stateStr = runningStyle.Render("\u25b6 RUNNING")
-		case team.StateCompleted:
-			stateStr = doneStyle.Render("\u2713 DONE")
-		case team.StateFailed:
-			stateStr = failStyle.Render("\u2717 FAILED")
-		case team.StateProvisioning, team.StateInitializing:
-			stateStr = runningStyle.Render("\u25d4 STARTING")
-		default:
-			stateStr = idleStyle.Render("\u25cb IDLE")
-		}
-
-		// Card content
 		var card strings.Builder
 		card.WriteString(fmt.Sprintf("%s  %s\n", w.Role, stateStr))
 		card.WriteString(idleStyle.Render(fmt.Sprintf("agent: %s", w.Agent)) + "\n")
@@ -190,9 +319,7 @@ func (m teamModel) View() string {
 			card.WriteString(idleStyle.Render(fmt.Sprintf("branch: %s", w.Branch)) + "\n")
 		}
 
-		// Context bar
 		usage, lastLine := w.Snapshot()
-
 		if usage > 0 {
 			bar := contextBar(usage, 20)
 			card.WriteString(fmt.Sprintf("ctx: %s %.0f%%\n", bar, usage*100))
@@ -210,7 +337,6 @@ func (m teamModel) View() string {
 			card.WriteString(failStyle.Render(w.Error) + "\n")
 		}
 
-		// Duration
 		if !w.StartedAt.IsZero() {
 			end := w.FinishedAt
 			if end.IsZero() {
@@ -219,7 +345,6 @@ func (m teamModel) View() string {
 			card.WriteString(idleStyle.Render(fmt.Sprintf("%s", end.Sub(w.StartedAt).Round(time.Second))))
 		}
 
-		// Render card with cursor
 		style := cardStyle
 		if i == m.cursor {
 			style = style.BorderForeground(lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#A78BFA"})
@@ -228,7 +353,6 @@ func (m teamModel) View() string {
 		b.WriteString("\n")
 	}
 
-	// Summary bar
 	doneCount := 0
 	for _, id := range m.team.WorkerOrder {
 		if m.team.Workers[id].GetState() == team.StateCompleted {
@@ -240,11 +364,24 @@ func (m teamModel) View() string {
 		b.WriteString(doneStyle.Render("  \u2714 Team finished"))
 	}
 	b.WriteString("\n")
-
-	// Controls
-	b.WriteString("\n" + idleStyle.Render("  \u2191\u2193=select  a=abort worker  q=quit"))
+	b.WriteString("\n" + idleStyle.Render("  \u2191\u2193=select  enter=chat  a=abort  q=quit"))
 
 	return b.String()
+}
+
+func stateLabel(s team.WorkerState) string {
+	switch s {
+	case team.StateRunning:
+		return runningStyle.Render("\u25b6 RUNNING")
+	case team.StateCompleted:
+		return doneStyle.Render("\u2713 DONE")
+	case team.StateFailed:
+		return failStyle.Render("\u2717 FAILED")
+	case team.StateProvisioning, team.StateInitializing:
+		return runningStyle.Render("\u25d4 STARTING")
+	default:
+		return idleStyle.Render("\u25cb IDLE")
+	}
 }
 
 func contextBar(usage float64, width int) string {
@@ -258,6 +395,3 @@ func contextBar(usage float64, width int) string {
 	}
 	return runningStyle.Render(bar)
 }
-
-// Ensure we have access to the Worker's mu field — it's exported in worker.go
-var _ = func() { _ = os.Getenv("") } // keep os import for future use
