@@ -47,6 +47,7 @@ const (
 	screenRules
 	screenMCP
 	screenFork
+	screenCreateWorkspace
 )
 
 type model struct {
@@ -70,6 +71,7 @@ type model struct {
 	forkRepo      string
 	forkBranch    string
 	forkField     int // 0=repo, 1=branch
+	cw            cwState
 }
 
 type profileItem struct {
@@ -166,6 +168,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateMCP(msg)
 		case screenFork:
 			return m.updateFork(msg)
+		case screenCreateWorkspace:
+			return m.updateCreateWorkspace(msg)
 		}
 	}
 	return m, nil
@@ -607,6 +611,17 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc", "q":
 		m.screen = screenDashboard
 		m.statusMsg = ""
+	case "n":
+		settings := config.ReadSteerSettings()
+		if settings.Source != "git" {
+			m.statusMsg = "Switch to a git fork [f] from the dashboard to create team workspaces."
+		} else if !ops.CanWriteRepo(settings.Repo) {
+			m.statusMsg = "You need write access to " + settings.Repo + " to create workspaces."
+		} else {
+			m.cw = newCWState(m.steerRoot, m.targetDir)
+			m.screen = screenCreateWorkspace
+			m.statusMsg = ""
+		}
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
@@ -630,7 +645,7 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) viewWorkspaces() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("Workspaces") + dimStyle.Render("  enter=apply  esc=back"))
+	b.WriteString(titleStyle.Render("Workspaces") + dimStyle.Render("  enter=apply  n=new  esc=back"))
 	b.WriteString("\n\n")
 
 	if len(m.workspaces) == 0 {
@@ -876,6 +891,8 @@ func (m model) View() string {
 		return m.viewMCP()
 	case screenFork:
 		return m.viewFork()
+	case screenCreateWorkspace:
+		return m.viewCreateWorkspace()
 	default:
 		return m.viewDashboard()
 	}

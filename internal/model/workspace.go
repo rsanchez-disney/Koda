@@ -2,21 +2,23 @@ package model
 
 // Workspace represents a team workspace configuration.
 type Workspace struct {
-	Name         string             `json:"name"`
-	Description  string             `json:"description"`
-	Team         string             `json:"team"`
-	Profiles     []string           `json:"profiles"`
-	DefaultAgent string             `json:"default_agent"`
-	Projects     []WorkspaceProject `json:"projects"`
-	Rules        []string           `json:"rules"`
-	EnableTools  bool               `json:"enable_tools"`
-	JiraPrefix   string             `json:"jira_prefix"`
+	Name          string             `json:"name"`
+	Description   string             `json:"description"`
+	Team          string             `json:"team"`
+	Profiles      []string           `json:"profiles"`
+	DefaultAgent  string             `json:"default_agent"`
+	Projects      []WorkspaceProject `json:"projects"`
+	Rules         []string           `json:"rules"`
+	EnableTools   bool               `json:"enable_tools"`
+	JiraPrefix    string             `json:"jira_prefix"`
+	WorkspacePath string             `json:"workspace_path,omitempty"`
 }
 
 // WorkspaceProject is a repo entry inside a workspace.
 type WorkspaceProject struct {
 	Name       string `json:"name"`
 	Path       string `json:"path"`
+	Repo       string `json:"repo,omitempty"`
 	MemoryBank string `json:"memory_bank,omitempty"`
 }
 
