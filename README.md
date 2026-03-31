@@ -21,7 +21,7 @@ Stream responses from any Kiro agent in your terminal. Autocomplete for `/comman
 Orchestrate multiple Kiro agents working in parallel on a single goal. Each worker gets its own git worktree, ACP session, and trust level. AI-assisted plan generation decomposes goals into worker tasks. Dependency chains, result handoff between workers, conflict detection, and three merge strategies (rebase-chain, parallel-merge, PR-per-worker).
 
 ### 📊 Interactive TUI Dashboard
-10-screen dashboard: profiles, tokens, workspaces, agents (fuzzy search), doctor, rules, MCP servers, sync, clean, and chat. Navigate with single keystrokes.
+11-screen dashboard: profiles, tokens, workspaces, agents (fuzzy search), doctor, rules, MCP servers, fork, create workspace, sync, clean, and chat. Navigate with single keystrokes.
 
 ### 🔧 Setup & Configuration
 One-command dependency installer (`koda setup`). Cross-platform: detects brew/apt/winget/choco. MCP server verification and `mcp.json` generation. Masked token input. Profile manifest for kiro-cli.
@@ -29,8 +29,27 @@ One-command dependency installer (`koda setup`). Cross-platform: detects brew/ap
 ### 🚀 Profile Management
 Install, remove, sync, and list agent profiles. `dev` alias expands to dev-core + dev-web + dev-mobile. Profiles manifest written after every install/sync.
 
+### 🔀 Fork / Unfork steer-runtime
+Teams with forked steer-runtime repos can switch from the default tarball source to their own git fork directly from the dashboard. Sync fetches latest in both modes — tarball re-download or `git pull`.
+
+- **Fork** — press `[f]`, enter fork repo + branch → replaces tarball with `git clone`
+- **Unfork** — press `[f]` again → re-downloads canonical tarball
+- **Sync** — press `[s]` → fetches latest from tarball or git, then re-installs profiles
+- Dashboard shows source: `v0.2.1 (tarball)` or `TEAM/steer-runtime@main (git)`
+
 ### 🏢 Team Workspaces
-List, show, apply, create, and sync team workspaces. One command to configure profiles, rules, and memory banks for your team.
+List, apply, and create team workspaces. One command to configure profiles, rules, repos, and memory banks for your team.
+
+**Create workspace** (`[n]` from workspaces screen):
+- Full interactive form: name, description, team, jira prefix, profiles, default agent, rules, enable tools
+- **Repo discovery** — set a workspace path and koda auto-scans for existing git repos
+- **Manual repo add** — add repos not yet cloned (cloned automatically on apply)
+- **Auto-PR** — on save, creates a branch, commits, pushes, and opens a PR on the fork
+- **Permission guard** — requires git fork mode + write access (checked via GitHub API)
+
+**Apply workspace** (`enter` from workspaces screen):
+- Installs profiles, rules, and context
+- Clones any workspace repos not yet on disk
 
 ### 🩺 Health & Diagnostics
 Quick check, deep doctor (8-point: kiro-cli, node, git, steer-runtime, agents, MCP, tokens, git status), dry-run diff, and one-liner status.
@@ -40,7 +59,6 @@ Run a Slack support bot powered by a read-only agent. Responds to @mentions in t
 
 ### 🧪 Agent Evals
 Score agent output quality with fixtures and rubrics. Structural checks (regex, fast, free) catch broken outputs. LLM-as-judge (`--deep`) scores quality dimensions. Results saved as JSON for trend tracking.
-
 
 ### 📦 Distribution
 One-liner install via curl/PowerShell. Self-update via `koda upgrade`. Auto-update enabled by default — daily upgrade + sync at 9 AM (LaunchAgent/cron/Task Scheduler). Cross-compile for macOS (arm64/amd64), Linux, Windows. Publish to GitHub releases.
@@ -75,6 +93,83 @@ koda mcp-install                  # Setup MCP servers + tokens
 koda                              # Launch TUI dashboard
 koda chat --agent orchestrator    # Start chatting
 ```
+
+---
+
+## Fork / Unfork
+
+Teams that maintain a fork of steer-runtime can switch koda from the default tarball to their fork:
+
+```
+Dashboard → [f] Fork → enter repo (e.g. TEAM/steer-runtime) + branch → done
+```
+
+Once forked:
+- `[s] Sync` runs `git pull --ff-only` instead of re-downloading the tarball
+- `[f] Unfork` switches back to the canonical tarball
+- Team workspaces can be created and shared via PR
+
+```
+Tarball mode:  Runtime: v0.2.1 (tarball)     [f] Fork
+Git mode:      Runtime: TEAM/repo@main (git)  [f] Unfork
+```
+
+---
+
+## Team Workspaces
+
+### Create a workspace
+
+Requires git fork mode + write access to the fork repo.
+
+```
+Dashboard → [w] Workspaces → [n] New
+```
+
+Interactive form:
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Create Workspace         tab=next  ctrl+s=save  esc=back    │
+│                                                              │
+│  ▸ Name:        payments-core                                │
+│    Description: Payments backend team                        │
+│    Team:        payments                                     │
+│    Jira Prefix: DPAY                                         │
+│    Profiles:    [✓] dev-core  [✓] dev-web  [ ] qa            │
+│    Agent:       orchestrator                                 │
+│    Rules:       [✓] conventional_commit                      │
+│    Tools:       enabled                                      │
+│                                                              │
+│    Repos Path:  ~/Workspace/Payments                         │
+│    Repositories:                                             │
+│      [✓] TEAM/payment-service  (local)                       │
+│      [✓] TEAM/payment-web      (local)                       │
+│      [✓] TEAM/payment-mobile   (clone on apply)              │
+│      [+] org/repo-name...                                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+On save (`ctrl+s`):
+1. Scaffolds `workspaces/<name>/` with `workspace.json`
+2. Creates branch `workspace/<name>`, commits, pushes
+3. Opens a PR on the fork targeting main
+4. Returns to main branch
+
+### Apply a workspace
+
+```
+Dashboard → [w] Workspaces → select → enter
+```
+
+Installs profiles, rules, context, and clones any repos not yet on disk.
+
+### Share with your team
+
+Workspaces are shared via the fork repo:
+1. Creator saves → PR is auto-created on the fork
+2. Team lead reviews and merges the PR
+3. Teammates run `[s] Sync` → workspace appears in their list
+4. Teammates apply the workspace → repos are cloned, profiles installed
 
 ---
 
@@ -122,12 +217,13 @@ koda                              # Launch
 |-----|--------|
 | `p` | Profiles — toggle on/off, enter to apply |
 | `t` | Tokens — masked input, auto-advance |
-| `w` | Workspaces — browse and apply |
-| `a` | Agents — fuzzy search across 41 agents |
+| `w` | Workspaces — browse, apply, `n` to create new |
+| `a` | Agents — fuzzy search across all agents |
 | `d` | Doctor — 8-point health check |
 | `r` | Rules — toggle and install |
 | `m` | MCP — server bundle status |
-| `s` | Sync — one-key update |
+| `f` | Fork/Unfork — switch steer-runtime source |
+| `s` | Sync — fetch latest + re-install profiles |
 | `c` | Clean — y/n confirmation |
 | `enter` | Chat |
 | `q` | Quit |
@@ -147,7 +243,8 @@ koda enable-tools                   # Enable thinking/todo/knowledge
 koda install dev-core dev-web       # Install profiles
 koda install dev                    # Alias: core + web + mobile
 koda remove qa                      # Remove
-koda sync                           # Update
+koda sync                           # Update (tarball re-download or git pull)
+koda sync --update                  # Force download latest steer-runtime
 koda list [--json]                  # List
 koda clean                          # Remove all
 koda status                         # One-liner summary
@@ -171,8 +268,8 @@ koda team status                    # Running team status
 # Workspaces
 koda workspace list [--json]        # List
 koda workspace show NAME [--json]   # Details
-koda workspace apply NAME           # Apply config
-koda workspace create NAME          # Scaffold
+koda workspace apply NAME           # Apply config + clone repos
+koda workspace create NAME          # Scaffold (TUI recommended)
 koda workspace sync NAME [--push]   # Git pull/push
 
 # Rules & Prompts
@@ -200,7 +297,6 @@ koda auto-update status             # Check if enabled
 
 # Other
 koda upgrade                        # Self-update binary
-koda sync --update                  # Download latest steer-runtime + sync
 koda version                        # Banner + version
 ```
 
@@ -221,14 +317,20 @@ internal/
     planner.go                 # AI plan generation
     merge.go                   # Conflict detection + merge strategies
   config/paths.go              # Path resolution
+  config/settings.go           # SteerSettings (repo, branch, source)
   model/                       # Domain types
   ops/                         # Business logic (zero UI deps)
+    steer.go                   # Sync, fork, unfork, tarball download
+    ghauth.go                  # GitHub user identity + repo permissions
+    workspace_create.go        # Create workspace, scan repos, clone, publish PR
+    workspaces.go              # List, get, apply workspaces
   slack/bot.go                 # Steery Slack bot (Socket Mode)
   cli/                         # Cobra commands
   tui/
-    app.go                     # Dashboard (10 screens)
+    app.go                     # Dashboard (11 screens)
     chat.go                    # Chat (streaming, autocomplete, delegation)
     team.go                    # Team dashboard + worker chat
+    create_workspace.go        # Workspace creation form
 install.sh / install.ps1       # One-liner installers
 Makefile                       # build, test, cross, publish
 ```
@@ -245,8 +347,8 @@ make build                    # Build
 make test                     # 10 unit tests
 make lint                     # golangci-lint
 make cross                    # macOS/Linux/Windows
-make publish-steer TAG=v0.2.0 STEER_ROOT=../steer-runtime  # Publish steer-runtime
-make release TAG=v0.2.0       # Tag + cross-compile + publish Koda
+make publish-steer TAG=v0.2.1 STEER_ROOT=../steer-runtime  # Publish steer-runtime
+make release TAG=v0.2.1       # Tag + cross-compile + publish Koda
 ```
 
 ## Requirements
@@ -254,6 +356,7 @@ make release TAG=v0.2.0       # Tag + cross-compile + publish Koda
 - Go 1.23+ (building from source only)
 - [steer-runtime](https://github.disney.com/SANCR225/steer-runtime) (sibling dir or `--steer-root`)
 - [kiro-cli](https://kiro.dev) (for chat and teams)
+- [gh](https://cli.github.com/) (for fork, workspace PR creation)
 
 ## License
 
