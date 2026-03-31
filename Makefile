@@ -102,6 +102,7 @@ pack-steer: ## Create steer-runtime tarball for release (requires STEER_ROOT and
 
 publish-steer: pack-steer ## Upload steer-runtime tarball to public repo (make publish-steer TAG=v0.1.4 STEER_ROOT=../steer-runtime)
 	@test -n "$(TAG)" || { echo "Usage: make publish-steer TAG=v0.1.4 STEER_ROOT=../steer-runtime"; exit 1; }
+	GH_HOST=github.com gh release create $(TAG) --repo rsanchez-disney/steer-runtime --title "$(TAG)" --notes "steer-runtime $(TAG)" 2>/dev/null || true
 	@if [ -f bin/steer-runtime.tar.gz.enc ]; then \
 		GH_HOST=github.com gh release upload $(TAG) bin/steer-runtime.tar.gz.enc --repo rsanchez-disney/steer-runtime --clobber; \
 	else \
