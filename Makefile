@@ -71,7 +71,7 @@ publish: ## Tag + build + upload to GitHub releases (make publish TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make publish TAG=v0.1.0"; exit 1; }
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
 	$(MAKE) release TAG=$(TAG)
-	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* --latest --repo rsanchez-disney/steer-runtime --title "$(TAG)" --notes "Koda $(TAG)"
+	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* --latest --repo rsanchez-disney/koda --title "$(TAG)" --notes "Koda $(TAG)"
 	@echo "\n✅ Published $(TAG) to GitHub releases"
 
 smoke-install: ## Test install script in Docker (downloads from GitHub releases)
@@ -84,3 +84,27 @@ smoke-install: ## Test install script in Docker (downloads from GitHub releases)
 		koda version && \
 		koda --help | head -5 && \
 		echo '' && echo '✅ Install test passed'"
+
+pack-steer: ## Create steer-runtime tarball for release (requires STEER_ROOT and optionally STEER_RELEASE_KEY)
+	@test -n "$(STEER_ROOT)" || { echo "Usage: make pack-steer STEER_ROOT=../steer-runtime"; exit 1; }
+	@echo "📦 Packing steer-runtime from $(STEER_ROOT)..."
+	tar czf bin/steer-runtime.tar.gz -C "$(STEER_ROOT)" \
+		--exclude='.git' --exclude='node_modules' --exclude='.DS_Store' --exclude='tests/runs' .
+	@ls -lh bin/steer-runtime.tar.gz
+	@if [ -n "$(STEER_RELEASE_KEY)" ]; then \
+		echo "🔒 Encrypting..."; \
+		openssl enc -aes-256-cbc -pbkdf2 -salt -in bin/steer-runtime.tar.gz -out bin/steer-runtime.tar.gz.enc -pass pass:$(STEER_RELEASE_KEY); \
+		ls -lh bin/steer-runtime.tar.gz.enc; \
+		echo "✅ Encrypted tarball ready"; \
+	else \
+		echo "⚠ No STEER_RELEASE_KEY — tarball is unencrypted"; \
+	fi
+
+publish-steer: pack-steer ## Upload steer-runtime tarball to public repo (make publish-steer TAG=v0.1.4 STEER_ROOT=../steer-runtime)
+	@test -n "$(TAG)" || { echo "Usage: make publish-steer TAG=v0.1.4 STEER_ROOT=../steer-runtime"; exit 1; }
+	@if [ -f bin/steer-runtime.tar.gz.enc ]; then \
+		GH_HOST=github.com gh release upload $(TAG) bin/steer-runtime.tar.gz.enc --repo rsanchez-disney/steer-runtime --clobber; \
+	else \
+		GH_HOST=github.com gh release upload $(TAG) bin/steer-runtime.tar.gz --repo rsanchez-disney/steer-runtime --clobber; \
+	fi
+	@echo "✅ Uploaded steer-runtime tarball to rsanchez-disney/steer-runtime $(TAG)"
