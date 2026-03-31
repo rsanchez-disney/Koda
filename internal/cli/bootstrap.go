@@ -11,12 +11,12 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.disney.com/SANCR225/koda/internal/config"
+	"github.disney.com/SANCR225/koda/internal/ops"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -39,25 +39,16 @@ func cloneSteerRuntime() error {
 
 	fmt.Printf("   Target: %s\n\n", dir)
 
-	// Step 1: Download from public release (primary method)
-	fmt.Println("   [1/2] Downloading from public release...")
 	if err := downloadFromRelease(dir); err != nil {
-		fmt.Printf("   ✗ Download failed: %v\n\n", err)
-	} else {
-		saveCloneSuccess(settings)
-		return nil
-	}
-
-	// Step 2: Fallback to gh/git clone (for developers with repo access)
-	fmt.Println("   [2/2] Trying gh/git clone (requires repo access)...")
-	if err := tryClone(settings, dir); err != nil {
-		fmt.Printf("   ✗ Clone failed: %v\n", err)
-		return fmt.Errorf("all methods failed\n\n" +
-			"If you have repo access:\n" +
-			"  gh auth login --hostname " + config.GHHost + "\n\n" +
-			"Otherwise, ensure STEER_RELEASE_KEY is set when building Koda.\n")
+		return fmt.Errorf("download failed: %w", err)
 	}
 	saveCloneSuccess(settings)
+
+	// Enable auto-update on first install
+	if err := ops.EnableAutoUpdate(); err == nil {
+		fmt.Println("   ✅ Auto-update enabled (daily at 9:00 AM)")
+	}
+
 	return nil
 }
 
@@ -236,31 +227,6 @@ func extractTarGz(data []byte, destDir string) error {
 	}
 	fmt.Printf("   Extracted: %d files\n", count)
 	return nil
-}
-
-func tryClone(settings config.SteerSettings, dir string) error {
-	// gh clone
-	cmd := exec.Command("gh", "repo", "clone", settings.Repo, dir,
-		"--", "--branch", settings.Branch, "--single-branch")
-	cmd.Env = append(cmd.Environ(), "GH_HOST="+config.GHHost)
-	if out, err := cmd.CombinedOutput(); err == nil {
-		fmt.Printf("   ✅ Cloned via gh\n\n")
-		return nil
-	} else {
-		fmt.Printf("   gh: %s\n", strings.TrimSpace(string(out)))
-	}
-
-	// git HTTPS
-	gitURL := fmt.Sprintf("https://%s/%s.git", config.GHHost, settings.Repo)
-	cmd2 := exec.Command("git", "clone", "--branch", settings.Branch, "--single-branch", gitURL, dir)
-	if out, err := cmd2.CombinedOutput(); err == nil {
-		fmt.Printf("   ✅ Cloned via git\n\n")
-		return nil
-	} else {
-		fmt.Printf("   git: %s\n", strings.TrimSpace(string(out)))
-	}
-
-	return fmt.Errorf("gh and git clone both failed")
 }
 
 func saveCloneSuccess(settings config.SteerSettings) {

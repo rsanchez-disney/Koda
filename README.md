@@ -43,7 +43,7 @@ Score agent output quality with fixtures and rubrics. Structural checks (regex, 
 
 
 ### 📦 Distribution
-One-liner install via curl/PowerShell. Self-update via `koda upgrade`. Cross-compile for macOS (arm64/amd64), Linux, Windows. Publish to GitHub releases.
+One-liner install via curl/PowerShell. Self-update via `koda upgrade`. Auto-update enabled by default — daily upgrade + sync at 9 AM (LaunchAgent/cron/Task Scheduler). Cross-compile for macOS (arm64/amd64), Linux, Windows. Publish to GitHub releases.
 
 ---
 
@@ -51,12 +51,12 @@ One-liner install via curl/PowerShell. Self-update via `koda upgrade`. Cross-com
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://github.disney.com/raw/SANCR225/steer-runtime/main/tools/install-koda.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rsanchez-disney/Koda/main/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://github.disney.com/raw/SANCR225/steer-runtime/main/tools/install-koda.ps1 | iex
+irm https://raw.githubusercontent.com/rsanchez-disney/Koda/main/install.ps1 | iex
 ```
 
 **From source:**
@@ -193,8 +193,14 @@ koda eval --list                    # List fixtures
 # IDE
 koda amazonq install|sync|remove DIR
 
+# Auto-update
+koda auto-update enable             # Daily upgrade + sync (enabled by default)
+koda auto-update disable            # Remove scheduled job
+koda auto-update status             # Check if enabled
+
 # Other
-koda upgrade                        # Self-update
+koda upgrade                        # Self-update binary
+koda sync --update                  # Download latest steer-runtime + sync
 koda version                        # Banner + version
 ```
 
@@ -239,7 +245,8 @@ make build                    # Build
 make test                     # 10 unit tests
 make lint                     # golangci-lint
 make cross                    # macOS/Linux/Windows
-make publish TAG=v0.2.0       # Tag + upload to steer-runtime releases
+make publish-steer TAG=v0.2.0 STEER_ROOT=../steer-runtime  # Publish steer-runtime
+make release TAG=v0.2.0       # Tag + cross-compile + publish Koda
 ```
 
 ## Requirements

@@ -259,6 +259,10 @@ func (m model) viewDashboard() string {
 	b.WriteString(fmt.Sprintf("  Tokens:    %d/%d configured\n", tokSet, tokTotal))
 	b.WriteString(fmt.Sprintf("  Target:    %s\n", dimStyle.Render(m.targetDir)))
 
+	if ver, err := os.ReadFile(filepath.Join(m.steerRoot, "VERSION")); err == nil {
+		b.WriteString(fmt.Sprintf("  Runtime:   %s\n", dimStyle.Render(strings.TrimSpace(string(ver)))))
+	}
+
 	b.WriteString("\n")
 	b.WriteString(activeStyle.Render("  [p]") + " Profiles    ")
 	b.WriteString(activeStyle.Render("[t]") + " Tokens    ")
