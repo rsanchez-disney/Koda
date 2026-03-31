@@ -75,6 +75,12 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	copyDirContents(filepath.Join(wsPath, config.ContextDir), filepath.Join(targetDir, config.ContextDir))
 
 	InjectAgentTokens(targetDir)
+
+	// Save active workspace
+	s := config.ReadSteerSettings()
+	s.ActiveWorkspace = ws.Name
+	config.SaveSteerSettings(s)
+
 	return nil
 }
 

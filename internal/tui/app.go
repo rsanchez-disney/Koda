@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.disney.com/SANCR225/koda/internal/config"
 	mdl "github.disney.com/SANCR225/koda/internal/model"
 	"github.disney.com/SANCR225/koda/internal/ops"
 )
@@ -261,6 +262,9 @@ func (m model) viewDashboard() string {
 
 	if ver, err := os.ReadFile(filepath.Join(m.steerRoot, "VERSION")); err == nil {
 		b.WriteString(fmt.Sprintf("  Runtime:   %s\n", dimStyle.Render(strings.TrimSpace(string(ver)))))
+	}
+	if ws := config.ReadSteerSettings().ActiveWorkspace; ws != "" {
+		b.WriteString(fmt.Sprintf("  Workspace: %s\n", checkStyle.Render(ws)))
 	}
 
 	b.WriteString("\n")
