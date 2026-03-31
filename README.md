@@ -38,6 +38,10 @@ Quick check, deep doctor (8-point: kiro-cli, node, git, steer-runtime, agents, M
 ### 🤖 Slack Bot (Steery)
 Run a Slack support bot powered by a read-only agent. Responds to @mentions in threads. Socket Mode — no public URL needed.
 
+### 🧪 Agent Evals
+Score agent output quality with fixtures and rubrics. Structural checks (regex, fast, free) catch broken outputs. LLM-as-judge (`--deep`) scores quality dimensions. Results saved as JSON for trend tracking.
+
+
 ### 📦 Distribution
 One-liner install via curl/PowerShell. Self-update via `koda upgrade`. Cross-compile for macOS (arm64/amd64), Linux, Windows. Publish to GitHub releases.
 
@@ -178,6 +182,13 @@ koda init-memory DIR [--from NAME]
 
 # Slack
 koda slack [--agent steery_agent]   # Run Steery bot
+
+# Evals
+koda eval AGENT                     # Structural checks
+koda eval AGENT --deep              # + LLM quality scoring
+koda eval --all --save              # Run all, save results
+koda eval --profile critical --json # CI mode
+koda eval --list                    # List fixtures
 
 # IDE
 koda amazonq install|sync|remove DIR
