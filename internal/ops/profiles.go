@@ -204,7 +204,7 @@ func copyDirContents(src, dst string) {
 	}
 	os.MkdirAll(dst, 0755)
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() || strings.HasPrefix(e.Name(), "._") {
 			continue
 		}
 		copyFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name()))
