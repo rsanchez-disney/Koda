@@ -76,6 +76,11 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 
 	InjectAgentTokens(targetDir)
 
+	// Clone missing repos
+	if ws.WorkspacePath != "" {
+		CloneWorkspaceRepos(ws)
+	}
+
 	// Save active workspace
 	s := config.ReadSteerSettings()
 	s.ActiveWorkspace = ws.Name
