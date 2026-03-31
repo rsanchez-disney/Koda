@@ -27,6 +27,7 @@ func SharedSettingsPath() string {
 type SteerSettings struct {
 	Repo            string `json:"repo"`
 	Branch          string `json:"branch"`
+	Source          string `json:"source"` // "tarball" (default) or "git"
 	LastSync        string `json:"lastSync"`
 	AutoSync        bool   `json:"autoSync"`
 	ActiveWorkspace string `json:"activeWorkspace"`

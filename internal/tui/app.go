@@ -46,6 +46,7 @@ const (
 	screenDoctor
 	screenRules
 	screenMCP
+	screenFork
 )
 
 type model struct {
@@ -66,6 +67,9 @@ type model struct {
 	doctorResults []ops.DoctorResult
 	rules         []ruleItem
 	mcpServers    []mcpItem
+	forkRepo      string
+	forkBranch    string
+	forkField     int // 0=repo, 1=branch
 }
 
 type profileItem struct {
@@ -160,6 +164,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateRules(msg)
 		case screenMCP:
 			return m.updateMCP(msg)
+		case screenFork:
+			return m.updateFork(msg)
 		}
 	}
 	return m, nil
@@ -190,14 +196,29 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenWorkspaces
 		m.cursor = 0
 	case "s":
-		installed := ops.DetectInstalled(m.steerRoot, m.targetDir)
-		ops.InstallShared(m.steerRoot, m.targetDir)
-		for _, p := range installed {
-			ops.InstallProfile(m.steerRoot, p, m.targetDir)
+		if err := ops.SyncSteerRuntime(m.steerRoot, m.targetDir); err != nil {
+			m.statusMsg = "Sync failed: " + err.Error()
+		} else {
+			m.refresh()
+			m.statusMsg = "Synced!"
 		}
-		ops.InjectAgentTokens(m.targetDir)
-		m.refresh()
-		m.statusMsg = "Synced!"
+	case "f":
+		settings := config.ReadSteerSettings()
+		if settings.Source == "git" {
+			// Unfork: switch back to tarball
+			if err := ops.UnforkSteerRuntime(m.steerRoot); err != nil {
+				m.statusMsg = "Unfork failed: " + err.Error()
+			} else {
+				m.refresh()
+				m.statusMsg = "Unforked! Back to official tarball."
+			}
+		} else {
+			// Fork: show fork screen
+			m.screen = screenFork
+			m.forkRepo = ""
+			m.forkBranch = "main"
+			m.forkField = 0
+		}
 	case "c":
 		m.screen = screenCleanConfirm
 	case "d":
@@ -260,8 +281,11 @@ func (m model) viewDashboard() string {
 	b.WriteString(fmt.Sprintf("  Tokens:    %d/%d configured\n", tokSet, tokTotal))
 	b.WriteString(fmt.Sprintf("  Target:    %s\n", dimStyle.Render(m.targetDir)))
 
-	if ver, err := os.ReadFile(filepath.Join(m.steerRoot, "VERSION")); err == nil {
-		b.WriteString(fmt.Sprintf("  Runtime:   %s\n", dimStyle.Render(strings.TrimSpace(string(ver)))))
+	settings := config.ReadSteerSettings()
+	if settings.Source == "git" {
+		b.WriteString(fmt.Sprintf("  Runtime:   %s\n", dimStyle.Render(settings.Repo+"@"+settings.Branch+" (git)")))
+	} else if ver, err := os.ReadFile(filepath.Join(m.steerRoot, "VERSION")); err == nil {
+		b.WriteString(fmt.Sprintf("  Runtime:   %s\n", dimStyle.Render(strings.TrimSpace(string(ver))+" (tarball)")))
 	}
 	if ws := config.ReadSteerSettings().ActiveWorkspace; ws != "" {
 		b.WriteString(fmt.Sprintf("  Workspace: %s\n", checkStyle.Render(ws)))
@@ -277,7 +301,12 @@ func (m model) viewDashboard() string {
 	b.WriteString(activeStyle.Render("  [m]") + " MCP         ")
 	b.WriteString(activeStyle.Render("[s]") + " Sync      ")
 	b.WriteString(activeStyle.Render("[c]") + " Clean\n")
-	b.WriteString(activeStyle.Render("  [enter]") + " Chat   ")
+	if settings.Source == "git" {
+		b.WriteString(activeStyle.Render("  [f]") + " Unfork      ")
+	} else {
+		b.WriteString(activeStyle.Render("  [f]") + " Fork        ")
+	}
+	b.WriteString(activeStyle.Render("[enter]") + " Chat   ")
 	b.WriteString(activeStyle.Render("[q]") + " Quit\n")
 
 	if m.statusMsg != "" {
@@ -744,6 +773,84 @@ func truncate(s string, max int) string {
 	return s[:max-1] + "\u2026"
 }
 
+
+// --- Fork ---
+
+func (m model) updateFork(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch key {
+	case "esc":
+		m.screen = screenDashboard
+		m.statusMsg = ""
+	case "tab", "down", "up":
+		m.forkField = 1 - m.forkField // toggle between 0 and 1
+	case "enter":
+		if m.forkRepo == "" {
+			return m, nil
+		}
+		if err := ops.ForkSteerRuntime(m.steerRoot, m.forkRepo, m.forkBranch); err != nil {
+			m.statusMsg = "Fork failed: " + err.Error()
+		} else {
+			m.refresh()
+			m.statusMsg = fmt.Sprintf("Forked to %s@%s!", m.forkRepo, m.forkBranch)
+		}
+		m.screen = screenDashboard
+	case "backspace":
+		if m.forkField == 0 && len(m.forkRepo) > 0 {
+			m.forkRepo = m.forkRepo[:len(m.forkRepo)-1]
+		} else if m.forkField == 1 && len(m.forkBranch) > 0 {
+			m.forkBranch = m.forkBranch[:len(m.forkBranch)-1]
+		}
+	case "ctrl+u":
+		if m.forkField == 0 {
+			m.forkRepo = ""
+		} else {
+			m.forkBranch = ""
+		}
+	default:
+		if len(key) == 1 && key[0] >= 32 {
+			if m.forkField == 0 {
+				m.forkRepo += key
+			} else {
+				m.forkBranch += key
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m model) viewFork() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Fork steer-runtime") + dimStyle.Render("  tab=switch field  enter=fork  esc=back"))
+	b.WriteString("\n\n")
+
+	repoLabel := "  Repo:   "
+	branchLabel := "  Branch: "
+	if m.forkField == 0 {
+		repoLabel = activeStyle.Render("▸ Repo:   ")
+	} else {
+		branchLabel = activeStyle.Render("▸ Branch: ")
+	}
+
+	repoVal := m.forkRepo
+	if repoVal == "" {
+		repoVal = dimStyle.Render("org/steer-runtime")
+	}
+	if m.forkField == 0 {
+		repoVal = activeStyle.Render(m.forkRepo + "█")
+	}
+
+	branchVal := m.forkBranch
+	if m.forkField == 1 {
+		branchVal = activeStyle.Render(m.forkBranch + "█")
+	}
+
+	b.WriteString(repoLabel + repoVal + "\n")
+	b.WriteString(branchLabel + branchVal + "\n")
+	b.WriteString("\n" + dimStyle.Render("  Clone URL: https://"+config.GHHost+"/"+m.forkRepo+".git"))
+	return boxStyle.Render(b.String())
+}
+
 // --- View router ---
 
 func (m model) View() string {
@@ -767,6 +874,8 @@ func (m model) View() string {
 		return m.viewRules()
 	case screenMCP:
 		return m.viewMCP()
+	case screenFork:
+		return m.viewFork()
 	default:
 		return m.viewDashboard()
 	}
