@@ -123,6 +123,14 @@ func DetectInstalled(steerRoot, targetDir string) []string {
 
 // InstallShared copies hooks, MCP bundles, and shared context to targetDir.
 func InstallShared(steerRoot, targetDir string) error {
+	// Clean macOS resource fork files from previous installs
+	filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+		if err == nil && strings.HasPrefix(info.Name(), "._") {
+			os.Remove(path)
+		}
+		return nil
+	})
+
 	// Hooks
 	copyDirContents(filepath.Join(steerRoot, "shared", config.HooksDir), filepath.Join(targetDir, config.HooksDir))
 	chmodExec(filepath.Join(targetDir, config.HooksDir))
