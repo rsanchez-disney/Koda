@@ -68,9 +68,10 @@ type model struct {
 	doctorResults []ops.DoctorResult
 	rules         []ruleItem
 	mcpServers    []mcpItem
-	forkRepo      string
+	forkForks     []string
+	forkCursor    int
 	forkBranch    string
-	forkField     int // 0=repo, 1=branch
+	forkField     int // 0=list, 1=branch
 	cw            cwState
 }
 
@@ -217,11 +218,15 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "Unforked! Back to official tarball."
 			}
 		} else {
-			// Fork: show fork screen
-			m.screen = screenFork
-			m.forkRepo = ""
+			// Fork: load forks and show screen
+			m.forkForks = ops.ListForks()
+			m.forkCursor = 0
 			m.forkBranch = "main"
 			m.forkField = 0
+			m.screen = screenFork
+			if len(m.forkForks) == 0 {
+				m.statusMsg = "No forks found. Create a fork on GitHub first."
+			}
 		}
 	case "c":
 		m.screen = screenCleanConfirm
@@ -797,38 +802,39 @@ func (m model) updateFork(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.screen = screenDashboard
 		m.statusMsg = ""
-	case "tab", "down", "up":
-		m.forkField = 1 - m.forkField // toggle between 0 and 1
+	case "tab":
+		m.forkField = 1 - m.forkField
+	case "up", "k":
+		if m.forkField == 0 && m.forkCursor > 0 {
+			m.forkCursor--
+		}
+	case "down", "j":
+		if m.forkField == 0 && m.forkCursor < len(m.forkForks)-1 {
+			m.forkCursor++
+		}
 	case "enter":
-		if m.forkRepo == "" {
+		if len(m.forkForks) == 0 {
 			return m, nil
 		}
-		if err := ops.ForkSteerRuntime(m.steerRoot, m.forkRepo, m.forkBranch); err != nil {
+		repo := m.forkForks[m.forkCursor]
+		if err := ops.ForkSteerRuntime(m.steerRoot, repo, m.forkBranch); err != nil {
 			m.statusMsg = "Fork failed: " + err.Error()
 		} else {
 			m.refresh()
-			m.statusMsg = fmt.Sprintf("Forked to %s@%s!", m.forkRepo, m.forkBranch)
+			m.statusMsg = fmt.Sprintf("Forked to %s@%s!", repo, m.forkBranch)
 		}
 		m.screen = screenDashboard
 	case "backspace":
-		if m.forkField == 0 && len(m.forkRepo) > 0 {
-			m.forkRepo = m.forkRepo[:len(m.forkRepo)-1]
-		} else if m.forkField == 1 && len(m.forkBranch) > 0 {
+		if m.forkField == 1 && len(m.forkBranch) > 0 {
 			m.forkBranch = m.forkBranch[:len(m.forkBranch)-1]
 		}
 	case "ctrl+u":
-		if m.forkField == 0 {
-			m.forkRepo = ""
-		} else {
+		if m.forkField == 1 {
 			m.forkBranch = ""
 		}
 	default:
-		if len(key) == 1 && key[0] >= 32 {
-			if m.forkField == 0 {
-				m.forkRepo += key
-			} else {
-				m.forkBranch += key
-			}
+		if m.forkField == 1 && len(key) == 1 && key[0] >= 32 {
+			m.forkBranch += key
 		}
 	}
 	return m, nil
@@ -836,33 +842,56 @@ func (m model) updateFork(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) viewFork() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Fork steer-runtime") + dimStyle.Render("  tab=switch field  enter=fork  esc=back"))
+	b.WriteString(titleStyle.Render("Fork steer-runtime") + dimStyle.Render("  ↑↓=select  tab=branch  enter=fork  esc=back"))
 	b.WriteString("\n\n")
 
-	repoLabel := "  Repo:   "
-	branchLabel := "  Branch: "
 	if m.forkField == 0 {
-		repoLabel = activeStyle.Render("▸ Repo:   ")
+		b.WriteString(activeStyle.Render("▸ Select fork:") + "\n")
 	} else {
+		b.WriteString("  Select fork:\n")
+	}
+
+	if len(m.forkForks) == 0 {
+		b.WriteString("    " + dimStyle.Render("No forks found") + "\n")
+	} else {
+		start := 0
+		if m.forkCursor > 8 {
+			start = m.forkCursor - 8
+		}
+		end := start + 12
+		if end > len(m.forkForks) {
+			end = len(m.forkForks)
+		}
+		for i := start; i < end; i++ {
+			cursor := "    "
+			name := m.forkForks[i]
+			if i == m.forkCursor {
+				if m.forkField == 0 {
+					cursor = "  " + activeStyle.Render("▸ ")
+					name = activeStyle.Render(name)
+				} else {
+					cursor = "  " + checkStyle.Render("✓ ")
+				}
+			}
+			b.WriteString(cursor + name + "\n")
+		}
+		b.WriteString(fmt.Sprintf("\n    %s\n", dimStyle.Render(fmt.Sprintf("%d/%d forks", m.forkCursor+1, len(m.forkForks)))))
+	}
+
+	b.WriteString("\n")
+	branchLabel := "  Branch: "
+	if m.forkField == 1 {
 		branchLabel = activeStyle.Render("▸ Branch: ")
 	}
-
-	repoVal := m.forkRepo
-	if repoVal == "" {
-		repoVal = dimStyle.Render("org/steer-runtime")
-	}
-	if m.forkField == 0 {
-		repoVal = activeStyle.Render(m.forkRepo + "█")
-	}
-
 	branchVal := m.forkBranch
 	if m.forkField == 1 {
 		branchVal = activeStyle.Render(m.forkBranch + "█")
 	}
-
-	b.WriteString(repoLabel + repoVal + "\n")
 	b.WriteString(branchLabel + branchVal + "\n")
-	b.WriteString("\n" + dimStyle.Render("  Clone URL: https://"+config.GHHost+"/"+m.forkRepo+".git"))
+
+	if len(m.forkForks) > 0 {
+		b.WriteString("\n" + dimStyle.Render("  Clone URL: https://"+config.GHHost+"/"+m.forkForks[m.forkCursor]+".git"))
+	}
 	return boxStyle.Render(b.String())
 }
 

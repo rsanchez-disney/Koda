@@ -41,3 +41,20 @@ func CanWriteRepo(repo string) bool {
 	perm := GHRepoPermission(repo, login)
 	return perm == "admin" || perm == "write"
 }
+
+// ListForks returns the full_name of all forks of the upstream steer-runtime repo.
+func ListForks() []string {
+	cmd := exec.Command("gh", "api", "repos/"+config.DefaultSteerRepo+"/forks", "--jq", ".[].full_name")
+	cmd.Env = append(cmd.Environ(), "GH_HOST="+config.GHHost)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var forks []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			forks = append(forks, line)
+		}
+	}
+	return forks
+}
