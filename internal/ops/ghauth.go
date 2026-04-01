@@ -18,6 +18,28 @@ func GHUser() string {
 	return strings.TrimSpace(string(out))
 }
 
+// GHIdentity holds the authenticated user's GitHub profile.
+type GHIdentity struct {
+	Login string
+	Name  string
+}
+
+// GetGHIdentity returns the authenticated user's login and display name.
+func GetGHIdentity() GHIdentity {
+	cmd := exec.Command("gh", "api", "user", "--jq", "[.login, .name] | @tsv")
+	cmd.Env = append(cmd.Environ(), "GH_HOST="+config.GHHost)
+	out, err := cmd.Output()
+	if err != nil {
+		return GHIdentity{}
+	}
+	parts := strings.SplitN(strings.TrimSpace(string(out)), "\t", 2)
+	id := GHIdentity{Login: parts[0]}
+	if len(parts) > 1 {
+		id.Name = parts[1]
+	}
+	return id
+}
+
 // GHRepoPermission returns the user's permission level on a repo ("admin", "write", "read", "none").
 func GHRepoPermission(repo, login string) string {
 	if repo == "" || login == "" {
@@ -43,12 +65,16 @@ func CanWriteRepo(repo string) bool {
 }
 
 // ListForks returns the full_name of all forks of the upstream steer-runtime repo.
-func ListForks() []string {
+func ListForks() ([]string, string) {
 	cmd := exec.Command("gh", "api", "repos/"+config.DefaultSteerRepo+"/forks", "--jq", ".[].full_name")
 	cmd.Env = append(cmd.Environ(), "GH_HOST="+config.GHHost)
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil
+		detail := strings.TrimSpace(string(out))
+		if detail == "" {
+			detail = err.Error()
+		}
+		return nil, "gh api failed: " + detail
 	}
 	var forks []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -56,5 +82,8 @@ func ListForks() []string {
 			forks = append(forks, line)
 		}
 	}
-	return forks
+	if len(forks) == 0 {
+		return nil, "no forks found for " + config.DefaultSteerRepo
+	}
+	return forks, ""
 }
