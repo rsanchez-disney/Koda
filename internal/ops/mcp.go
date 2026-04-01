@@ -49,6 +49,7 @@ func MCPInstall(steerRoot, targetDir string) error {
 	// 3. Generate ~/.kiro/settings/mcp.json
 	fmt.Println("\n\U0001f527 Generating mcp.json...")
 	tokens := ReadTokens()
+	envVars := ReadEnvVars()
 	home, _ := os.UserHomeDir()
 
 	type mcpServer struct {
@@ -66,12 +67,12 @@ func MCPInstall(steerRoot, targetDir string) error {
 		"confluence": {
 			Command: "node",
 			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "confluence-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"CONFLUENCE_URL": "https://confluence.disney.com", "CONFLUENCE_PAT": tokens["CONFLUENCE_PAT"]},
+			Env:     map[string]string{"CONFLUENCE_URL": envVars["CONFLUENCE_URL"], "CONFLUENCE_PAT": tokens["CONFLUENCE_PAT"]},
 		},
 		"github": {
 			Command: "node",
 			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "github-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"GITHUB_URL": "https://github.disney.com", "GITHUB_TOKEN": tokens["GITHUB_TOKEN"]},
+			Env:     map[string]string{"GITHUB_URL": envVars["GITHUB_URL"], "GITHUB_TOKEN": tokens["GITHUB_TOKEN"]},
 		},
 		"mermaid": {
 			Command: "node",
@@ -84,7 +85,7 @@ func MCPInstall(steerRoot, targetDir string) error {
 		"mywiki": {
 			Command: "node",
 			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "mywiki-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"CONFLUENCE_URL": "https://mywiki.disney.com", "CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
+			Env:     map[string]string{"CONFLUENCE_URL": envVars["MYWIKI_URL"], "CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
 		},
 		"context7": {
 			Command: "npx",

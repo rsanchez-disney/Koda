@@ -16,6 +16,7 @@ const (
 	RulesDir      = "rules"
 	WorkspacesDir = "workspaces"
 	TokensFile    = "tokens.env"
+	EnvVarsFile   = "env.vars"
 )
 
 // KiroRoot returns ~/.kiro

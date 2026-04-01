@@ -111,6 +111,7 @@ func init() {
 	rootCmd.AddCommand(configureCmd)
 	rootCmd.AddCommand(enableToolsCmd)
 	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(envCmd)
 	rootCmd.AddCommand(upgradeCmd)
 	rootCmd.AddCommand(diffCmd)
 	rootCmd.AddCommand(statusCmd)

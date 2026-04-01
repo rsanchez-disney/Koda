@@ -39,3 +39,19 @@ var KnownTokens = []Token{
 	{Key: "MYWIKI_PAT", Label: "MyWiki PAT", Hint: "https://mywiki.disney.com/plugins/personalaccesstokens/usertokens.action"},
 	{Key: "HARNESS_API_KEY", Label: "Harness API Key", Hint: "https://disney.harness.io/ → My Profile → API Key"},
 }
+
+// EnvVar represents a managed environment variable.
+type EnvVar struct {
+	Key         string
+	Default     string
+	Description string
+}
+
+// KnownEnvVars defines the env vars Koda manages with their defaults.
+var KnownEnvVars = []EnvVar{
+	{Key: "GITHUB_URL", Default: "https://github.disney.com", Description: "GitHub Enterprise URL"},
+	{Key: "CONFLUENCE_URL", Default: "https://confluence.disney.com", Description: "Confluence URL"},
+	{Key: "MYWIKI_URL", Default: "https://mywiki.disney.com", Description: "MyWiki Confluence URL"},
+	{Key: "JIRA_URL", Default: "https://jira.disney.com", Description: "Jira URL"},
+	{Key: "GITHUB_API_PATH", Default: "/api/v3", Description: "GitHub API path"},
+}

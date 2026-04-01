@@ -49,6 +49,7 @@ const (
 	screenMCP
 	screenFork
 	screenCreateWorkspace
+	screenEnvVars
 )
 
 type model struct {
@@ -69,6 +70,10 @@ type model struct {
 	doctorResults []ops.DoctorResult
 	rules         []ruleItem
 	mcpServers    []mcpItem
+	envVars       map[string]string
+	envVarKeys    []string
+	envInput      string
+	envNewKey     string
 	ruleInput     string
 	ruleEditing   string // rule name being edited
 	forkForks     []string
@@ -133,6 +138,7 @@ func (m *model) refresh() {
 	m.tokens = ops.ReadTokens()
 	m.workspaces, _ = ops.ListWorkspaces(m.steerRoot)
 	m.agents = ops.AllAgents(m.steerRoot, m.targetDir)
+	m.envVars = ops.ReadEnvVars()
 	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
 	availRules := ops.ListRules(m.steerRoot)
 	m.rules = nil
@@ -180,7 +186,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case doctorFixDoneMsg:
-		m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
+		m.envVars = ops.ReadEnvVars()
+	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
 		if msg.err != nil {
 			m.statusMsg = "Fix failed: " + msg.err.Error()
 		} else {
@@ -219,6 +226,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateMCP(msg)
 		case screenFork:
 			return m.updateFork(msg)
+		case screenEnvVars:
+			return m.updateEnvVars(msg)
 		case screenCreateWorkspace:
 			return m.updateCreateWorkspace(msg)
 		}
@@ -288,6 +297,11 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.screen = screenRules
 		m.cursor = 0
+	case "e":
+		m.refreshEnvVarKeys()
+		m.screen = screenEnvVars
+		m.cursor = 0
+		m.envInput = ""
 	case "m":
 		m.screen = screenMCP
 		m.cursor = 0
@@ -372,7 +386,8 @@ func (m model) viewDashboard() string {
 	b.WriteString(activeStyle.Render("[d]") + " Doctor    ")
 	b.WriteString(activeStyle.Render("[r]") + " Rules\n")
 	b.WriteString(activeStyle.Render("  [m]") + " MCP         ")
-	b.WriteString(activeStyle.Render("[s]") + " Sync      ")
+	b.WriteString(activeStyle.Render("[e]") + " Env Vars\n")
+	b.WriteString(activeStyle.Render("  [s]") + " Sync        ")
 	b.WriteString(activeStyle.Render("[c]") + " Clean\n")
 	if settings.Source == "git" {
 		b.WriteString(activeStyle.Render("  [f]") + " Unfork      ")
@@ -589,6 +604,186 @@ func (m model) viewMCP() string {
 	b.WriteString(fmt.Sprintf("\n  %s", dimStyle.Render(fmt.Sprintf("%d/%d ready", ready, len(m.mcpServers)))))
 	return boxStyle.Render(b.String())
 }
+
+
+// --- Env Vars ---
+
+func (m *model) refreshEnvVarKeys() {
+	m.envVarKeys = nil
+	known := map[string]bool{}
+	for _, e := range mdl.KnownEnvVars {
+		m.envVarKeys = append(m.envVarKeys, e.Key)
+		known[e.Key] = true
+	}
+	for k := range m.envVars {
+		if !known[k] {
+			m.envVarKeys = append(m.envVarKeys, k)
+		}
+	}
+}
+
+func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	// Adding new custom key
+	if m.envNewKey != "" {
+		switch key {
+		case "esc":
+			m.envNewKey = ""
+		case "enter":
+			k := strings.TrimSpace(m.envNewKey)
+			m.envNewKey = ""
+			if k != "" {
+				m.envVars[k] = ""
+				m.refreshEnvVarKeys()
+				// Move cursor to new key
+				for i, ek := range m.envVarKeys {
+					if ek == k {
+						m.cursor = i
+						break
+					}
+				}
+				m.envInput = ""
+			}
+		case "backspace":
+			if len(m.envNewKey) > 1 {
+				m.envNewKey = m.envNewKey[:len(m.envNewKey)-1]
+			}
+		default:
+			if len(key) == 1 && key[0] >= 32 {
+				m.envNewKey = strings.TrimSpace(m.envNewKey) + key
+			}
+		}
+		return m, nil
+	}
+
+	switch key {
+	case "esc":
+		if m.envInput != "" {
+			m.envInput = ""
+		} else {
+			m.screen = screenDashboard
+			m.statusMsg = ""
+		}
+	case "up", "k", "shift+tab":
+		if m.cursor > 0 {
+			m.cursor--
+			m.envInput = ""
+		}
+	case "down", "j", "tab":
+		if m.cursor < len(m.envVarKeys)-1 {
+			m.cursor++
+			m.envInput = ""
+		}
+	case "enter":
+		if m.envInput != "" {
+			// Save current edit
+			m.envVars[m.envVarKeys[m.cursor]] = m.envInput
+			m.envInput = ""
+			if m.cursor < len(m.envVarKeys)-1 {
+				m.cursor++
+			}
+		} else {
+			// Save all and return
+			ops.WriteEnvVars(m.envVars)
+			m.refresh()
+			m.screen = screenDashboard
+			m.statusMsg = "Env vars saved!"
+		}
+	case "n":
+		if m.envInput == "" {
+			m.envNewKey = " "
+		} else {
+			m.envInput += key
+		}
+	case "d":
+		if m.envInput == "" && m.cursor < len(m.envVarKeys) {
+			k := m.envVarKeys[m.cursor]
+			// Only allow deleting custom keys
+			isKnown := false
+			for _, e := range mdl.KnownEnvVars {
+				if e.Key == k {
+					isKnown = true
+					break
+				}
+			}
+			if !isKnown {
+				delete(m.envVars, k)
+				m.refreshEnvVarKeys()
+				if m.cursor >= len(m.envVarKeys) {
+					m.cursor = len(m.envVarKeys) - 1
+				}
+			}
+		} else {
+			m.envInput += key
+		}
+	case "backspace":
+		if len(m.envInput) > 0 {
+			m.envInput = m.envInput[:len(m.envInput)-1]
+		}
+	case "ctrl+u":
+		m.envInput = ""
+	default:
+		if len(key) >= 1 && key[0] >= 32 {
+			m.envInput += key
+		}
+	}
+	return m, nil
+}
+
+func (m model) viewEnvVars() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Env Vars") + dimStyle.Render("  type=edit  enter=save  n=new  d=delete  esc=back"))
+	b.WriteString("\n\n")
+
+	if strings.TrimSpace(m.envNewKey) != "" || m.envNewKey == " " {
+		name := strings.TrimSpace(m.envNewKey)
+		b.WriteString("  " + activeStyle.Render("New key: "+name+"█") + "\n\n")
+	}
+
+	for i, k := range m.envVarKeys {
+		cursor := "  "
+		if i == m.cursor {
+			cursor = activeStyle.Render("▸ ")
+		}
+		val := m.envVars[k]
+		label := fmt.Sprintf("%-20s", k)
+		if i == m.cursor {
+			label = activeStyle.Render(label)
+		}
+
+		// Show description for known vars
+		desc := ""
+		for _, e := range mdl.KnownEnvVars {
+			if e.Key == k {
+				desc = e.Description
+				break
+			}
+		}
+
+		if val == "" {
+			b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, label, dimStyle.Render("—")))
+		} else {
+			b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, label, val))
+		}
+
+		if i == m.cursor && m.envInput != "" {
+			b.WriteString(fmt.Sprintf("    %s\n", activeStyle.Render(m.envInput+"█")))
+		} else if i == m.cursor {
+			b.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render("type to edit...█")))
+		}
+		if i == m.cursor && desc != "" {
+			b.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render(desc)))
+		}
+	}
+
+	b.WriteString("\n" + dimStyle.Render("  enter with empty input = save all & return"))
+	if m.statusMsg != "" {
+		b.WriteString("\n  " + checkStyle.Render(m.statusMsg))
+	}
+	return boxStyle.Render(b.String())
+}
+
 
 // --- Profiles ---
 
@@ -1112,6 +1307,8 @@ func (m model) View() string {
 		return m.viewMCP()
 	case screenFork:
 		return m.viewFork()
+	case screenEnvVars:
+		return m.viewEnvVars()
 	case screenCreateWorkspace:
 		return m.viewCreateWorkspace()
 	default:
