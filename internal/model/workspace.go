@@ -32,10 +32,10 @@ type Token struct {
 
 // KnownTokens defines the tokens Koda manages.
 var KnownTokens = []Token{
-	{Key: "JIRA_PAT", Label: "Jira PAT"},
-	{Key: "CONFLUENCE_PAT", Label: "Confluence PAT"},
-	{Key: "GITHUB_TOKEN_disney", Label: "GitHub Token"},
-	{Key: "SONARQUBE_TOKEN", Label: "SonarQube Token"},
+	{Key: "JIRA_PAT", Label: "Jira PAT", Hint: "https://jira.disney.com/secure/ViewProfile.jspa → Personal Access Tokens"},
+	{Key: "CONFLUENCE_PAT", Label: "Confluence PAT", Hint: "https://confluence.disney.com/plugins/personalaccesstokens/usertokens.action"},
+	{Key: "GITHUB_TOKEN_disney", Label: "GitHub Token", Hint: "https://github.disney.com/settings/tokens → Generate new token"},
+	{Key: "SONARQUBE_TOKEN", Label: "SonarQube Token", Hint: "SonarQube → My Account → Security → Generate Token"},
 	{Key: "MYWIKI_PAT", Label: "MyWiki PAT", Hint: "https://mywiki.disney.com/plugins/personalaccesstokens/usertokens.action"},
-	{Key: "HARNESS_API_KEY", Label: "Harness API Key"},
+	{Key: "HARNESS_API_KEY", Label: "Harness API Key", Hint: "Harness → My Profile → API Key"},
 }
