@@ -68,6 +68,8 @@ type model struct {
 	doctorResults []ops.DoctorResult
 	rules         []ruleItem
 	mcpServers    []mcpItem
+	ruleInput     string
+	ruleEditing   string // rule name being edited
 	forkForks     []string
 	forkCursor    int
 	forkBranch    string
@@ -91,6 +93,8 @@ type mcpItem struct {
 	name      string
 	hasBundle bool
 }
+
+type editorFinishedMsg struct{ err error }
 
 func Run(steerRoot, targetDir string) (bool, error) {
 	m := initialModel(steerRoot, targetDir)
@@ -147,6 +151,28 @@ func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case editorFinishedMsg:
+		// Editor closed — publish the rule
+		if m.ruleEditing != "" {
+			settings := config.ReadSteerSettings()
+			var prURL string
+			var err error
+			if settings.Source == "git" {
+				prURL, err = ops.PublishRule(m.steerRoot, m.ruleEditing)
+			} else if ops.CanWriteRepo(config.DefaultSteerRepo) {
+				prURL, err = ops.PublishRuleToUpstream(m.steerRoot, m.ruleEditing)
+			}
+			m.refresh()
+			if prURL != "" {
+				m.statusMsg = fmt.Sprintf("Rule '%s' — PR: %s", m.ruleEditing, prURL)
+			} else if err != nil {
+				m.statusMsg = fmt.Sprintf("Rule '%s' saved (PR failed: %s)", m.ruleEditing, err)
+			} else {
+				m.statusMsg = fmt.Sprintf("Rule '%s' created!", m.ruleEditing)
+			}
+			m.ruleEditing = ""
+		}
+		return m, nil
 	case tea.KeyMsg:
 		switch m.screen {
 		case screenDashboard:
@@ -364,7 +390,51 @@ func (m model) viewDoctor() string {
 // --- Rules ---
 
 func (m model) updateRules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+
+	// Name input mode
+	if m.ruleInput != "" || key == "n" {
+		switch key {
+		case "n":
+			if m.ruleInput == "" {
+				m.ruleInput = " " // activate input mode (trimmed on use)
+				return m, nil
+			}
+			m.ruleInput += key
+		case "esc":
+			m.ruleInput = ""
+		case "enter":
+			name := strings.TrimSpace(m.ruleInput)
+			m.ruleInput = ""
+			if name == "" {
+				return m, nil
+			}
+			path, err := ops.CreateRule(m.steerRoot, name)
+			if err != nil {
+				m.statusMsg = err.Error()
+				return m, nil
+			}
+			m.ruleEditing = name
+			c := ops.EditorCmd(path)
+			return m, tea.ExecProcess(c, func(err error) tea.Msg {
+				return editorFinishedMsg{err}
+			})
+		case "backspace":
+			s := strings.TrimSpace(m.ruleInput)
+			if len(s) > 0 {
+				m.ruleInput = s[:len(s)-1]
+			}
+		case "ctrl+u":
+			m.ruleInput = ""
+		default:
+			if len(key) == 1 && key[0] >= 32 {
+				m.ruleInput = strings.TrimSpace(m.ruleInput) + key
+			}
+		}
+		return m, nil
+	}
+
+	switch key {
 	case "esc", "q":
 		m.screen = screenDashboard
 		m.statusMsg = ""
@@ -398,8 +468,12 @@ func (m model) updateRules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) viewRules() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Rules") + dimStyle.Render("  space=toggle  enter=install  esc=back"))
+	b.WriteString(titleStyle.Render("Rules") + dimStyle.Render("  space=toggle  enter=install  n=new  esc=back"))
 	b.WriteString("\n\n")
+	if strings.TrimSpace(m.ruleInput) != "" || m.ruleInput == " " {
+		name := strings.TrimSpace(m.ruleInput)
+		b.WriteString("  " + activeStyle.Render("New rule: "+name+"█") + "\n\n")
+	}
 	if len(m.rules) == 0 {
 		b.WriteString(dimStyle.Render("  No rules found"))
 		return boxStyle.Render(b.String())
