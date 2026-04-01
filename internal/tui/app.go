@@ -701,7 +701,7 @@ func (m model) updateTokens(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		delete(m.tokens, tk.Key)
 		m.tokenInput = ""
 	default:
-		if len(key) == 1 && key[0] >= 32 {
+		if len(key) >= 1 && key[0] >= 32 {
 			m.tokenInput += key
 		}
 	}
