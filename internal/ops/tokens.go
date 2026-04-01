@@ -62,6 +62,7 @@ func InjectAgentTokens(targetDir string) error {
 		"jira":       {"JIRA_PAT": tokens["JIRA_PAT"]},
 		"confluence": {"CONFLUENCE_PAT": tokens["CONFLUENCE_PAT"]},
 		"github":     {"GITHUB_TOKEN_disney": tokens["GITHUB_TOKEN_disney"]},
+		"mywiki":     {"CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
 	}
 
 	agentsDir := filepath.Join(targetDir, config.AgentsDir)
