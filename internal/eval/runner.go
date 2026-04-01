@@ -83,7 +83,7 @@ func LoadFixtures(evalsDir, agent string) ([]Fixture, error) {
 	}
 	var fixtures []Fixture
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || strings.HasPrefix(e.Name(), "._") {
 			continue
 		}
 		f, err := parseFixture(filepath.Join(dir, e.Name()))

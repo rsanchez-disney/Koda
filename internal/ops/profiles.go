@@ -70,7 +70,7 @@ func InstallProfile(steerRoot, profileID, targetDir string) (int, error) {
 	count := 0
 	entries, _ := os.ReadDir(agentsSrc)
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), "._") {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(agentsSrc, e.Name()))
@@ -166,7 +166,7 @@ func discoverAgents(profileDir string) ([]model.Agent, error) {
 	}
 	var agents []model.Agent
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), "._") {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(agentsDir, e.Name()))
@@ -189,7 +189,7 @@ func agentNames(profileDir string) ([]string, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") && !strings.HasPrefix(e.Name(), "._") {
 			names = append(names, strings.TrimSuffix(e.Name(), ".json"))
 		}
 	}

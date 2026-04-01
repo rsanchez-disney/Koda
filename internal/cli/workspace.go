@@ -189,6 +189,27 @@ var wsSyncCmd = &cobra.Command{
 	},
 }
 
+
+var wsEditCmd = &cobra.Command{
+	Use:   "edit [name]",
+	Short: "Edit a workspace in ",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if steerRoot == "" {
+			return fmt.Errorf("steer-runtime not found")
+		}
+		wsFile := filepath.Join(steerRoot, config.WorkspacesDir, args[0], "workspace.json")
+		if _, err := os.Stat(wsFile); err != nil {
+			return fmt.Errorf("workspace not found: %s", args[0])
+		}
+		c := ops.EditorCmd(wsFile)
+		c.Stdin = os.Stdin
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		return c.Run()
+	},
+}
+
 func init() {
 	wsCreateCmd.Flags().BoolVar(&wsCreateLocal, "local", false, "Scaffold only, skip git commit/push")
 	wsSyncCmd.Flags().BoolVar(&wsSyncPush, "push", false, "Push instead of pull")
@@ -197,4 +218,5 @@ func init() {
 	workspaceCmd.AddCommand(wsApplyCmd)
 	workspaceCmd.AddCommand(wsCreateCmd)
 	workspaceCmd.AddCommand(wsSyncCmd)
+	workspaceCmd.AddCommand(wsEditCmd)
 }

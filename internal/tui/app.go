@@ -178,6 +178,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ruleEditing = ""
 		}
 		return m, nil
+	case wsEditorFinishedMsg:
+		// Editor closed — reload workspace from disk into form
+		if msg.err == nil && msg.name != "" {
+			if ws, err := ops.GetWorkspace(m.steerRoot, msg.name); err == nil {
+				m.cw = newCWStateFromWorkspace(m.steerRoot, m.targetDir, ws)
+				m.screen = screenCreateWorkspace
+				m.statusMsg = "Loaded from editor"
+			}
+		}
+		return m, nil
 	case tea.KeyMsg:
 		switch m.screen {
 		case screenDashboard:
@@ -738,6 +748,13 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenDashboard
 			m.statusMsg = fmt.Sprintf("Workspace '%s' applied!", ws.Name)
 		}
+	case "e":
+		if m.cursor < len(m.workspaces) {
+			ws := m.workspaces[m.cursor]
+			m.cw = newCWStateFromWorkspace(m.steerRoot, m.targetDir, ws)
+			m.screen = screenCreateWorkspace
+			m.statusMsg = ""
+		}
 	}
 	return m, nil
 }
@@ -745,7 +762,7 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) viewWorkspaces() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("Workspaces") + dimStyle.Render("  enter=apply  n=new  esc=back"))
+	b.WriteString(titleStyle.Render("Workspaces") + dimStyle.Render("  enter=apply  e=edit  n=new  esc=back"))
 	b.WriteString("\n\n")
 
 	if len(m.workspaces) == 0 {

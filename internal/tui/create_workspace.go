@@ -52,6 +52,7 @@ type cwState struct {
 	repos     []cwRepoItem
 	repoInput string
 	repoCursor int
+	editing   bool
 }
 
 type cwToggle struct {
@@ -78,6 +79,45 @@ func newCWState(steerRoot, targetDir string) cwState {
 	return s
 }
 
+func newCWStateFromWorkspace(steerRoot, targetDir string, ws mdl.Workspace) cwState {
+	s := newCWState(steerRoot, targetDir)
+	s.editing = true
+	s.name = ws.Name
+	s.desc = ws.Description
+	s.team = ws.Team
+	s.jira = ws.JiraPrefix
+	s.agent = ws.DefaultAgent
+	s.tools = ws.EnableTools
+	s.reposPath = ws.WorkspacePath
+
+	// Match profile toggles
+	wsProfiles := map[string]bool{}
+	for _, p := range ws.Profiles {
+		wsProfiles[p] = true
+	}
+	for i := range s.profiles {
+		s.profiles[i].selected = wsProfiles[s.profiles[i].id]
+	}
+
+	// Match rule toggles
+	wsRules := map[string]bool{}
+	for _, r := range ws.Rules {
+		wsRules[r] = true
+	}
+	for i := range s.rules {
+		s.rules[i].selected = wsRules[s.rules[i].id]
+	}
+
+	// Load repos
+	for _, p := range ws.Projects {
+		s.repos = append(s.repos, cwRepoItem{
+			repo: p.Repo, name: p.Name, selected: true,
+		})
+	}
+
+	return s
+}
+
 func (m model) updateCreateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	cw := &m.cw
 	key := msg.String()
@@ -90,6 +130,8 @@ func (m model) updateCreateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+s":
 		return m.saveWorkspace()
+	case "ctrl+e":
+		return m.openWorkspaceInEditor()
 	}
 
 	// Field-specific handling
@@ -262,13 +304,35 @@ func (m *model) cwScanRepos() {
 	}
 }
 
-func (m model) saveWorkspace() (tea.Model, tea.Cmd) {
+
+func (m model) openWorkspaceInEditor() (tea.Model, tea.Cmd) {
 	cw := &m.cw
 	if cw.name == "" {
-		m.statusMsg = "Name is required"
+		m.statusMsg = "Name is required before opening editor"
 		return m, nil
 	}
+	// Build workspace from current form state and write to disk
+	ws := m.cwBuildWorkspace()
+	if err := ops.CreateWorkspace(m.steerRoot, ws); err != nil {
+		m.statusMsg = "Save failed: " + err.Error()
+		return m, nil
+	}
+	path := filepath.Join(m.steerRoot, config.WorkspacesDir, ws.Name, "workspace.json")
+	m.cw.editing = true
+	c := ops.EditorCmd(path)
+	return m, tea.ExecProcess(c, func(err error) tea.Msg {
+		return wsEditorFinishedMsg{name: ws.Name, err: err}
+	})
+}
 
+type wsEditorFinishedMsg struct {
+	name string
+	err  error
+}
+
+// cwBuildWorkspace constructs a Workspace from the current form state.
+func (m model) cwBuildWorkspace() mdl.Workspace {
+	cw := &m.cw
 	ws := mdl.Workspace{
 		Name:          cw.name,
 		Description:   cw.desc,
@@ -300,38 +364,54 @@ func (m model) saveWorkspace() (tea.Model, tea.Cmd) {
 			Name: r.name, Path: path, Repo: r.repo,
 		})
 	}
+	return ws
+}
 
-	if err := ops.CreateWorkspace(m.steerRoot, ws); err != nil {
-		m.statusMsg = "Create failed: " + err.Error()
+
+func (m model) saveWorkspace() (tea.Model, tea.Cmd) {
+	cw := &m.cw
+	if cw.name == "" {
+		m.statusMsg = "Name is required"
 		return m, nil
 	}
 
+	ws := m.cwBuildWorkspace()
+	if err := ops.CreateWorkspace(m.steerRoot, ws); err != nil {
+		m.statusMsg = "Save failed: " + err.Error()
+		return m, nil
+	}
+
+
+	verb := "Created"
+	if cw.editing {
+		verb = "Updated"
+	}
 	// Publish via PR
 	settings := config.ReadSteerSettings()
 	if settings.Source == "git" {
 		// Git fork: publish directly
-		prURL, err := ops.PublishWorkspace(m.steerRoot, ws.Name)
+		prURL, err := ops.PublishWorkspace(m.steerRoot, ws.Name, cw.editing)
 		m.refresh()
 		m.screen = screenWorkspaces
 		if err != nil {
-			m.statusMsg = fmt.Sprintf("Created '%s' (PR failed: %s)", ws.Name, err)
+			m.statusMsg = fmt.Sprintf(verb+" '%s' (PR failed: %s)", ws.Name, err)
 		} else {
-			m.statusMsg = fmt.Sprintf("Created '%s' — PR: %s", ws.Name, prURL)
+			m.statusMsg = fmt.Sprintf(verb+" '%s' — PR: %s", ws.Name, prURL)
 		}
 	} else if ops.CanWriteRepo(config.DefaultSteerRepo) {
 		// Tarball + write access to upstream: init git temporarily, publish, clean up
-		prURL, err := ops.PublishWorkspaceToUpstream(m.steerRoot, ws.Name)
+		prURL, err := ops.PublishWorkspaceToUpstream(m.steerRoot, ws.Name, cw.editing)
 		m.refresh()
 		m.screen = screenWorkspaces
 		if err != nil {
-			m.statusMsg = fmt.Sprintf("Created '%s' (PR failed: %s)", ws.Name, err)
+			m.statusMsg = fmt.Sprintf(verb+" '%s' (PR failed: %s)", ws.Name, err)
 		} else {
-			m.statusMsg = fmt.Sprintf("Created '%s' — PR: %s", ws.Name, prURL)
+			m.statusMsg = fmt.Sprintf(verb+" '%s' — PR: %s", ws.Name, prURL)
 		}
 	} else {
 		m.refresh()
 		m.screen = screenWorkspaces
-		m.statusMsg = fmt.Sprintf("Workspace '%s' created locally.", ws.Name)
+		m.statusMsg = fmt.Sprintf("Workspace '%s' saved locally.", ws.Name)
 	}
 	return m, nil
 }
@@ -358,7 +438,11 @@ func (m model) viewCreateWorkspace() string {
 	cw := &m.cw
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("Create Workspace") + dimStyle.Render("  tab=next  ctrl+s=save  esc=back"))
+	title := "Create Workspace"
+	if cw.editing {
+		title = "Edit Workspace"
+	}
+	b.WriteString(titleStyle.Render(title) + dimStyle.Render("  tab=next  ctrl+s=save  ctrl+e=editor  esc=back"))
 	b.WriteString("\n\n")
 
 	// Text fields

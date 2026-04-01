@@ -71,7 +71,7 @@ func InjectAgentTokens(targetDir string) error {
 	}
 
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), "._") {
 			continue
 		}
 		path := filepath.Join(agentsDir, e.Name())

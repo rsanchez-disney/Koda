@@ -32,7 +32,7 @@ func DiffSync(steerRoot, targetDir string) []DiffEntry {
 			continue
 		}
 		for _, e := range srcEntries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), "._") {
 				continue
 			}
 			dstPath := filepath.Join(targetDir, config.AgentsDir, e.Name())
@@ -52,7 +52,7 @@ func DiffSync(steerRoot, targetDir string) []DiffEntry {
 	// Check for agents in target that don't exist in any source
 	dstEntries, _ := os.ReadDir(filepath.Join(targetDir, config.AgentsDir))
 	for _, e := range dstEntries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), "._") {
 			continue
 		}
 		found := false

@@ -33,7 +33,7 @@ func CheckInstallation(steerRoot, targetDir string) HealthReport {
 	// Count agents and validate JSON
 	entries, _ := os.ReadDir(agentsDir)
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), "._") {
 			continue
 		}
 		r.TotalAgents++

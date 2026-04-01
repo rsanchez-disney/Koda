@@ -78,7 +78,7 @@ func InitMemory(steerRoot, projectDir, fromProject string) error {
 		return fmt.Errorf("no templates found at %s", tmplDir)
 	}
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".template") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".template") || strings.HasPrefix(e.Name(), "._") {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(tmplDir, e.Name()))
@@ -104,7 +104,7 @@ func InstallAmazonQRules(steerRoot, dir string) (int, error) {
 	}
 	count := 0
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || e.Name() == "README.md" {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || strings.HasPrefix(e.Name(), "._") || e.Name() == "README.md" {
 			continue
 		}
 		copyFile(filepath.Join(srcDir, e.Name()), filepath.Join(dstDir, e.Name()))
@@ -156,7 +156,7 @@ func listMDFiles(dir string) []string {
 	}
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") && e.Name() != "README.md" {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") && !strings.HasPrefix(e.Name(), "._") && e.Name() != "README.md" {
 			names = append(names, strings.TrimSuffix(e.Name(), ".md"))
 		}
 	}

@@ -57,7 +57,7 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		entries, _ := os.ReadDir(agentsDir)
 		count := 0
 		for _, e := range entries {
-			if strings.HasSuffix(e.Name(), ".json") {
+			if strings.HasSuffix(e.Name(), ".json") && !strings.HasPrefix(e.Name(), "._") {
 				count++
 			}
 		}

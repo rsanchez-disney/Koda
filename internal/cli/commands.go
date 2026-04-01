@@ -165,7 +165,7 @@ func countAgents(targetDir string) int {
 	entries, _ := os.ReadDir(filepath.Join(targetDir, config.AgentsDir))
 	count := 0
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") && !strings.HasPrefix(e.Name(), "._") {
 			count++
 		}
 	}

@@ -100,7 +100,7 @@ func ListTeamSpecs(dir string) []string {
 	}
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") && !strings.HasPrefix(e.Name(), "._") {
 			names = append(names, strings.TrimSuffix(e.Name(), ".json"))
 		}
 	}

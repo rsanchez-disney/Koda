@@ -107,7 +107,7 @@ func parseRepoFromURL(url string) string {
 
 // PublishWorkspaceToUpstream publishes a workspace from a tarball install by
 // temporarily initializing git, creating a branch + PR against upstream, then cleaning up.
-func PublishWorkspaceToUpstream(steerRoot, wsName string) (string, error) {
+func PublishWorkspaceToUpstream(steerRoot, wsName string, isEdit bool) (string, error) {
 	gitDir := filepath.Join(steerRoot, ".git")
 	hadGit := false
 	if _, err := os.Stat(gitDir); err == nil {
@@ -123,7 +123,7 @@ func PublishWorkspaceToUpstream(steerRoot, wsName string) (string, error) {
 		exec.Command("git", "-C", steerRoot, "commit", "-m", "tarball baseline").Run()
 	}
 
-	prURL, err := PublishWorkspace(steerRoot, wsName)
+	prURL, err := PublishWorkspace(steerRoot, wsName, isEdit)
 
 	// Clean up .git if we created it
 	if !hadGit {
@@ -143,9 +143,13 @@ func expandHome(path string) string {
 
 // PublishWorkspace creates a branch, commits workspace files, pushes, and opens a PR.
 // Returns the PR URL on success.
-func PublishWorkspace(steerRoot, wsName string) (string, error) {
+func PublishWorkspace(steerRoot, wsName string, isEdit bool) (string, error) {
 	branch := "workspace/" + wsName
-	msg := "feat: add " + wsName + " workspace"
+	verb := "add"
+	if isEdit {
+		verb = "update"
+	}
+	msg := "feat: " + verb + " " + wsName + " workspace"
 	wsPath := "workspaces/" + wsName + "/"
 
 	// Create branch from current HEAD
@@ -169,7 +173,7 @@ func PublishWorkspace(steerRoot, wsName string) (string, error) {
 	// Create PR
 	cmd := exec.Command("gh", "pr", "create",
 		"--title", msg,
-		"--body", fmt.Sprintf("Adds team workspace `%s` with profiles, rules, and repo configuration.", wsName),
+		"--body", fmt.Sprintf("Updates team workspace `%s` with profiles, rules, and repo configuration.", wsName),
 		"--base", "main",
 	)
 	cmd.Dir = steerRoot

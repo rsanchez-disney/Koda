@@ -1,5 +1,6 @@
 bin/
 *.exe
 .DS_Store
+._*
 koda
 koda-debug.log
