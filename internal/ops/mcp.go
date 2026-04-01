@@ -86,6 +86,10 @@ func MCPInstall(steerRoot, targetDir string) error {
 			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "mywiki-mcp", "dist", "index.cjs")},
 			Env:     map[string]string{"CONFLUENCE_URL": "https://mywiki.disney.com", "CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
 		},
+		"context7": {
+			Command: "npx",
+			Args:    []string{"-y", "@upstash/context7-mcp"},
+		},
 	}
 
 	mcpConfig := map[string]any{"mcpServers": servers}

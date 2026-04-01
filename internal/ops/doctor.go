@@ -67,7 +67,7 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		results = append(results, DoctorResult{Name: "agents", OK: false, Detail: "no agents directory"})
 	}
 
-	// 6. MCP server bundles
+	// 6. MCP server bundles + diagnostics
 	mcpDir := filepath.Join(targetDir, config.ToolsDir, "mcp-servers")
 	if entries, err := os.ReadDir(mcpDir); err == nil {
 		var ready, missing []string
@@ -75,18 +75,54 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 			if !e.IsDir() {
 				continue
 			}
-			bundle := filepath.Join(mcpDir, e.Name(), "dist", "index.cjs")
+			name := e.Name()
+			bundle := filepath.Join(mcpDir, name, "dist", "index.cjs")
+			npmBin := filepath.Join(mcpDir, name, "node_modules", ".bin")
 			if _, err := os.Stat(bundle); err == nil {
-				ready = append(ready, e.Name())
+				ready = append(ready, name)
+			} else if _, err := os.Stat(npmBin); err == nil {
+				ready = append(ready, name)
 			} else {
-				missing = append(missing, e.Name())
+				missing = append(missing, name)
 			}
 		}
 		detail := fmt.Sprintf("%d ready", len(ready))
 		if len(missing) > 0 {
-			detail += fmt.Sprintf(", %d missing bundle: %s", len(missing), strings.Join(missing, ", "))
+			detail += fmt.Sprintf(", %d missing: %s", len(missing), strings.Join(missing, ", "))
 		}
 		results = append(results, DoctorResult{Name: "mcp-servers", OK: len(missing) == 0, Detail: detail})
+
+		// Per-server diagnostics: try to start each and capture errors
+		for _, name := range ready {
+			var cmd *exec.Cmd
+			bundle := filepath.Join(mcpDir, name, "dist", "index.cjs")
+			npmBin := filepath.Join(mcpDir, name, "node_modules", ".bin", name)
+			if _, err := os.Stat(bundle); err == nil {
+				cmd = exec.Command("node", bundle, "--help")
+			} else if _, err := os.Stat(npmBin); err == nil {
+				cmd = exec.Command(npmBin, "--help")
+			}
+			if cmd == nil {
+				continue
+			}
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				errDetail := strings.TrimSpace(string(out))
+				if len(errDetail) > 120 {
+					errDetail = errDetail[:120] + "…"
+				}
+				if errDetail == "" {
+					errDetail = err.Error()
+				}
+				results = append(results, DoctorResult{Name: "  " + name, OK: false, Detail: errDetail})
+			} else {
+				results = append(results, DoctorResult{Name: "  " + name, OK: true, Detail: "ok"})
+			}
+		}
+		for _, name := range missing {
+			fix := "cd " + filepath.Join(mcpDir, name) + " && npm install"
+			results = append(results, DoctorResult{Name: "  " + name, OK: false, Detail: "no bundle or node_modules", Fix: fix})
+		}
 	} else {
 		results = append(results, DoctorResult{Name: "mcp-servers", OK: false, Detail: "directory not found"})
 	}
