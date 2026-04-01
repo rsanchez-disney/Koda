@@ -88,6 +88,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print Koda version",
 	Run: func(cmd *cobra.Command, args []string) {
+		PrintBanner(appVersion)
 	},
 }
 

@@ -3,7 +3,7 @@
 Interactive terminal companion for [steer-runtime](https://github.disney.com/SANCR225/steer-runtime) — manage agent profiles, chat with AI agents, orchestrate agent teams, and configure your environment. All from the terminal.
 
 Part of the Kiro ecosystem:
-- **Kiro** — CLI agent runtime (the engine)
+- **Kiro CLI** (`kiro-cli`) — Agent runtime engine
 - **Kite** — Desktop GUI (Tauri + React)
 - **Koda** — Terminal companion (Go + Bubbletea)
 - **Steery** — Slack support bot
@@ -21,38 +21,25 @@ Stream responses from any Kiro agent in your terminal. Autocomplete for `/comman
 Orchestrate multiple Kiro agents working in parallel on a single goal. Each worker gets its own git worktree, ACP session, and trust level. AI-assisted plan generation decomposes goals into worker tasks. Dependency chains, result handoff between workers, conflict detection, and three merge strategies (rebase-chain, parallel-merge, PR-per-worker).
 
 ### 📊 Interactive TUI Dashboard
-11-screen dashboard: profiles, tokens, workspaces, agents (fuzzy search), doctor, rules, MCP servers, fork, create workspace, sync, clean, and chat. Navigate with single keystrokes.
+12-screen dashboard: main dashboard, profiles, tokens, env vars, workspaces, agents (fuzzy search), doctor, rules, MCP servers, fork, create/edit workspace, and clean confirmation. Sync runs inline from the dashboard. Chat launches a separate session. Navigate with single keystrokes.
 
 ### 🔧 Setup & Configuration
-One-command dependency installer (`koda setup`). Cross-platform: detects brew/apt/winget/choco. MCP server verification and `mcp.json` generation. Masked token input. Profile manifest for kiro-cli.
+One-command dependency installer (`koda setup`). Cross-platform: detects brew/apt/winget/choco. MCP server verification and `mcp.json` generation. Masked token input with paste support and PAT URL hints. Profile manifest for kiro-cli.
 
 ### 🚀 Profile Management
 Install, remove, sync, and list agent profiles. `dev` alias expands to dev-core + dev-web + dev-mobile. Profiles manifest written after every install/sync.
 
 ### 🔀 Fork / Unfork steer-runtime
-Teams with forked steer-runtime repos can switch from the default tarball source to their own git fork directly from the dashboard. Sync fetches latest in both modes — tarball re-download or `git pull`.
-
-- **Fork** — press `[f]`, enter fork repo + branch → replaces tarball with `git clone`
-- **Unfork** — press `[f]` again → re-downloads canonical tarball
-- **Sync** — press `[s]` → fetches latest from tarball or git, then re-installs profiles
-- Dashboard shows source: `v0.2.1 (tarball)` or `TEAM/steer-runtime@main (git)`
+Teams with forked steer-runtime repos can switch from the default tarball source to their own git fork directly from the dashboard. See [Fork / Unfork](#fork--unfork) for details.
 
 ### 🏢 Team Workspaces
-List, apply, and create team workspaces. One command to configure profiles, rules, repos, and memory banks for your team.
-
-**Create workspace** (`[n]` from workspaces screen):
-- Full interactive form: name, description, team, jira prefix, profiles, default agent, rules, enable tools
-- **Repo discovery** — set a workspace path and koda auto-scans for existing git repos
-- **Manual repo add** — add repos not yet cloned (cloned automatically on apply)
-- **Auto-PR** — on save, creates a branch, commits, pushes, and opens a PR on the fork
-- **Permission guard** — requires git fork mode + write access (checked via GitHub API)
-
-**Apply workspace** (`enter` from workspaces screen):
-- Installs profiles, rules, and context
-- Clones any workspace repos not yet on disk
+List, apply, create, and edit team workspaces. One command to configure profiles, rules, repos, and memory banks for your team. See [Team Workspaces](#team-workspaces) for details.
 
 ### 🩺 Health & Diagnostics
-Quick check, deep doctor (8-point: kiro-cli, node, git, steer-runtime, agents, MCP, tokens, git status), dry-run diff, and one-liner status.
+Quick check (`koda check`), deep doctor (`koda doctor`) with 9-point diagnostics: kiro-cli, node, git, steer-runtime, agents, MCP servers (with per-server diagnostics), tokens, git status, gh-auth. Dry-run diff (`koda diff`) previews what sync would change. One-liner status (`koda status`). In the TUI, navigate checks with `j/k`, press `f` to auto-fix failing checks (e.g., `gh auth login`).
+
+### 📈 Usage Stats
+Track prompt scoring and token usage over time with `koda stats`. Defaults to the last 7 days.
 
 ### 🤖 Slack Bot (Steery)
 Run a Slack support bot powered by a read-only agent. Responds to @mentions in threads. Socket Mode — no public URL needed.
@@ -82,6 +69,8 @@ irm https://raw.githubusercontent.com/rsanchez-disney/Koda/main/install.ps1 | ie
 git clone git@github.disney.com:SANCR225/Koda.git && cd Koda && make install
 ```
 
+> If steer-runtime isn't found locally, Koda auto-clones it to `~/.kiro/steer-runtime` on first run.
+
 ---
 
 ## Quick Start
@@ -93,6 +82,16 @@ koda mcp-install                  # Setup MCP servers + tokens
 koda                              # Launch TUI dashboard
 koda chat --agent orchestrator    # Start chatting
 ```
+
+---
+
+## Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--steer-root PATH` | Path to steer-runtime (auto-detected from CWD, parent, or `~/.kiro/steer-runtime`) |
+| `--project PATH` | Target project directory (default: `~/.kiro`) |
+| `--json` | JSON output (where supported) |
 
 ---
 
@@ -163,6 +162,15 @@ Dashboard → [w] Workspaces → select → enter
 
 Installs profiles, rules, context, and clones any repos not yet on disk.
 
+### Edit a workspace
+
+**TUI** — press `[e]` on a workspace to open the edit form pre-populated with existing values. Press `ctrl+e` to open the raw JSON in `$EDITOR`.
+
+**CLI:**
+```bash
+koda workspace edit payments-core   # Open in $EDITOR
+```
+
 ### Share with your team
 
 Workspaces are shared via the fork repo:
@@ -170,6 +178,36 @@ Workspaces are shared via the fork repo:
 2. Team lead reviews and merges the PR
 3. Teammates run `[s] Sync` → workspace appears in their list
 4. Teammates apply the workspace → repos are cloned, profiles installed
+
+---
+
+## Env Vars
+
+Manage non-secret environment variables (URLs, paths) separately from tokens.
+
+**TUI** — press `[e]` from dashboard:
+```
+▸ GITHUB_URL          https://github.disney.com
+    type to edit...█
+    GitHub Enterprise URL
+  CONFLUENCE_URL      https://confluence.disney.com
+  MYWIKI_URL          https://mywiki.disney.com
+  JIRA_URL            https://jira.disney.com
+  GITHUB_API_PATH     /api/v3
+```
+
+- `j/k` navigate, type to edit, `enter` saves all
+- `n` to add custom env vars, `d` to delete custom ones
+- Known vars have sensible defaults — override only when needed
+
+**CLI:**
+```bash
+koda env list                              # Show all env vars
+koda env get GITHUB_URL                    # Get a single value
+koda env set CUSTOM_VAR=my-value           # Set any env var
+```
+
+Stored in `~/.kiro/env.vars`. MCP server config reads URLs from here instead of hardcoding.
 
 ---
 
@@ -216,16 +254,17 @@ koda                              # Launch
 | Key | Screen |
 |-----|--------|
 | `p` | Profiles — toggle on/off, enter to apply |
-| `t` | Tokens — masked input, auto-advance |
-| `w` | Workspaces — browse, apply, `n` to create new |
+| `t` | Tokens — masked input, paste support, PAT URL hints |
 | `a` | Agents — fuzzy search across all agents |
-| `d` | Doctor — 8-point health check |
+| `e` | Env Vars — manage URLs and config |
+| `d` | Doctor — 9-point health check, per-server MCP diagnostics, `f` to fix |
 | `r` | Rules — toggle and install |
+| `w` | Workspaces — browse, apply, `e` to edit, `n` to create |
 | `m` | MCP — server bundle status |
 | `f` | Fork/Unfork — switch steer-runtime source |
-| `s` | Sync — fetch latest + re-install profiles |
+| `s` | Sync — fetch latest + re-install profiles (inline action) |
 | `c` | Clean — y/n confirmation |
-| `enter` | Chat |
+| `enter` | Chat (launches separate session) |
 | `q` | Quit |
 
 ---
@@ -252,7 +291,7 @@ koda status                         # One-liner summary
 # Health
 koda check [--json]                 # Quick check
 koda doctor                         # Deep diagnostics
-koda diff                           # Dry-run sync
+koda diff                           # Dry-run sync (preview changes)
 
 # Chat
 koda chat [--agent NAME] [--debug]  # Interactive chat
@@ -270,12 +309,21 @@ koda workspace list [--json]        # List
 koda workspace show NAME [--json]   # Details
 koda workspace apply NAME           # Apply config + clone repos
 koda workspace create NAME          # Scaffold (TUI recommended)
-koda workspace sync NAME [--push]   # Git pull/push
+koda workspace edit NAME            # Edit in $EDITOR
+koda workspace sync NAME [--push]   # Git pull/push across workspace repos
+
+# Env Vars
+koda env list                       # Show all env vars
+koda env get KEY                    # Get value
+koda env set KEY=VALUE              # Set value
 
 # Rules & Prompts
 koda rules list | install [--all]
 koda prompts list | install [--all]
 koda init-memory DIR [--from NAME]
+
+# Stats
+koda stats [--days N]               # Prompt scoring & token usage (default: 7 days)
 
 # Slack
 koda slack [--agent steery_agent]   # Run Steery bot
@@ -287,8 +335,8 @@ koda eval --all --save              # Run all, save results
 koda eval --profile critical --json # CI mode
 koda eval --list                    # List fixtures
 
-# IDE
-koda amazonq install|sync|remove DIR
+# IDE Integration
+koda amazonq install|sync|remove DIR  # Manage Amazon Q agent config in a project
 
 # Auto-update
 koda auto-update enable             # Daily upgrade + sync (enabled by default)
@@ -318,16 +366,26 @@ internal/
     merge.go                   # Conflict detection + merge strategies
   config/paths.go              # Path resolution
   config/settings.go           # SteerSettings (repo, branch, source)
+  eval/                        # Agent evaluation framework
+    runner.go                  # Fixture loading + structural eval
+    scorer.go                  # LLM-as-judge quality scoring
+    reporter.go                # Results output + JSON export
+    types.go                   # Eval domain types
   model/                       # Domain types
   ops/                         # Business logic (zero UI deps)
     steer.go                   # Sync, fork, unfork, tarball download
     ghauth.go                  # GitHub user identity + repo permissions
     workspace_create.go        # Create workspace, scan repos, clone, publish PR
     workspaces.go              # List, get, apply workspaces
+    envvars.go                 # Env vars store (read/write/get)
+    doctor.go                  # 9-point health diagnostics
+    autoupdate.go              # LaunchAgent/cron/Task Scheduler management
+    scorer.go                  # Prompt scoring + token usage tracking
+    upgrade.go                 # Self-update from GitHub releases
   slack/bot.go                 # Steery Slack bot (Socket Mode)
   cli/                         # Cobra commands
   tui/
-    app.go                     # Dashboard (11 screens)
+    app.go                     # Dashboard (12 screens)
     chat.go                    # Chat (streaming, autocomplete, delegation)
     team.go                    # Team dashboard + worker chat
     create_workspace.go        # Workspace creation form
@@ -335,7 +393,7 @@ install.sh / install.ps1       # One-liner installers
 Makefile                       # build, test, cross, publish
 ```
 
-Key design: `ops/` and `team/` have zero UI dependencies. `cli/` and `tui/` are thin wrappers.
+Key design: `ops/`, `team/`, and `eval/` have zero UI dependencies. `cli/` and `tui/` are thin wrappers.
 
 ---
 
@@ -344,19 +402,21 @@ Key design: `ops/` and `team/` have zero UI dependencies. `cli/` and `tui/` are 
 ```bash
 make help                     # All targets
 make build                    # Build
-make test                     # 10 unit tests
+make test                     # Run tests
 make lint                     # golangci-lint
 make cross                    # macOS/Linux/Windows
-make publish-steer TAG=v0.2.1 STEER_ROOT=../steer-runtime  # Publish steer-runtime
-make release TAG=v0.2.1       # Tag + cross-compile + publish Koda
+make publish-steer TAG=v0.x.x STEER_ROOT=../steer-runtime  # Publish steer-runtime tarball
+make release TAG=v0.x.x       # Tag + cross-compile + publish Koda
 ```
 
 ## Requirements
 
-- Go 1.23+ (building from source only)
-- [steer-runtime](https://github.disney.com/SANCR225/steer-runtime) (sibling dir or `--steer-root`)
+- Go 1.25+ (building from source only)
+- [steer-runtime](https://github.disney.com/SANCR225/steer-runtime) (auto-cloned, or sibling dir, or `--steer-root`)
 - [kiro-cli](https://kiro.dev) (for chat and teams)
 - [gh](https://cli.github.com/) (for fork, workspace PR creation)
+
+---
 
 ## License
 
