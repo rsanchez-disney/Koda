@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -176,6 +177,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMsg = fmt.Sprintf("Rule '%s' created!", m.ruleEditing)
 			}
 			m.ruleEditing = ""
+		}
+		return m, nil
+	case doctorFixDoneMsg:
+		m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
+		if msg.err != nil {
+			m.statusMsg = "Fix failed: " + msg.err.Error()
+		} else {
+			m.statusMsg = "Fix applied!"
 		}
 		return m, nil
 	case wsEditorFinishedMsg:
@@ -398,9 +407,29 @@ func (m model) updateDoctor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc", "q", "d":
 		m.screen = screenDashboard
 		m.statusMsg = ""
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.doctorResults)-1 {
+			m.cursor++
+		}
+	case "f":
+		if m.cursor < len(m.doctorResults) {
+			r := m.doctorResults[m.cursor]
+			if r.Fix != "" && !r.OK {
+				c := exec.Command("sh", "-c", r.Fix)
+				return m, tea.ExecProcess(c, func(err error) tea.Msg {
+					return doctorFixDoneMsg{err: err}
+				})
+			}
+		}
 	}
 	return m, nil
 }
+
+type doctorFixDoneMsg struct{ err error }
 
 func (m model) viewDoctor() string {
 	var b strings.Builder
