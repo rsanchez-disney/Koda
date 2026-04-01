@@ -735,6 +735,9 @@ func (m model) viewTokens() string {
 		} else if i == m.cursor {
 			b.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render("type to set...\u2588")))
 		}
+		if i == m.cursor && tk.Hint != "" {
+			b.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render(tk.Hint)))
+		}
 	}
 
 	b.WriteString("\n" + dimStyle.Render("  enter with empty input = save all & return"))

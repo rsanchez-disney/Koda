@@ -27,6 +27,7 @@ type Token struct {
 	Key   string
 	Label string
 	Value string
+	Hint  string
 }
 
 // KnownTokens defines the tokens Koda manages.
@@ -35,6 +36,6 @@ var KnownTokens = []Token{
 	{Key: "CONFLUENCE_PAT", Label: "Confluence PAT"},
 	{Key: "GITHUB_TOKEN_disney", Label: "GitHub Token"},
 	{Key: "SONARQUBE_TOKEN", Label: "SonarQube Token"},
-	{Key: "MYWIKI_PAT", Label: "MyWiki PAT"},
+	{Key: "MYWIKI_PAT", Label: "MyWiki PAT", Hint: "https://mywiki.disney.com/plugins/personalaccesstokens/usertokens.action"},
 	{Key: "HARNESS_API_KEY", Label: "Harness API Key"},
 }
