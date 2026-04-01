@@ -105,6 +105,34 @@ func parseRepoFromURL(url string) string {
 	return url
 }
 
+// PublishWorkspaceToUpstream publishes a workspace from a tarball install by
+// temporarily initializing git, creating a branch + PR against upstream, then cleaning up.
+func PublishWorkspaceToUpstream(steerRoot, wsName string) (string, error) {
+	gitDir := filepath.Join(steerRoot, ".git")
+	hadGit := false
+	if _, err := os.Stat(gitDir); err == nil {
+		hadGit = true
+	}
+
+	// Init git + add upstream remote
+	if !hadGit {
+		upstreamURL := fmt.Sprintf("https://%s/%s.git", config.GHHost, config.DefaultSteerRepo)
+		exec.Command("git", "-C", steerRoot, "init").Run()
+		exec.Command("git", "-C", steerRoot, "remote", "add", "origin", upstreamURL).Run()
+		exec.Command("git", "-C", steerRoot, "add", ".").Run()
+		exec.Command("git", "-C", steerRoot, "commit", "-m", "tarball baseline").Run()
+	}
+
+	prURL, err := PublishWorkspace(steerRoot, wsName)
+
+	// Clean up .git if we created it
+	if !hadGit {
+		os.RemoveAll(gitDir)
+	}
+
+	return prURL, err
+}
+
 func expandHome(path string) string {
 	if strings.HasPrefix(path, "~/") {
 		home, _ := os.UserHomeDir()
