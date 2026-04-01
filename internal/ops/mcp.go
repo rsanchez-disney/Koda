@@ -71,7 +71,7 @@ func MCPInstall(steerRoot, targetDir string) error {
 		"github": {
 			Command: "node",
 			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "github-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"GITHUB_TOKEN_disney": tokens["GITHUB_TOKEN_disney"], "GITHUB_HOST_disney": "github.disney.com", "GITHUB_DEFAULT_REMOTE": "disney"},
+			Env:     map[string]string{"GITHUB_URL": "https://github.disney.com", "GITHUB_TOKEN": tokens["GITHUB_TOKEN"]},
 		},
 		"mermaid": {
 			Command: "node",

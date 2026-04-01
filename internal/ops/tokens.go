@@ -61,7 +61,7 @@ func InjectAgentTokens(targetDir string) error {
 	injections := map[string]map[string]string{
 		"jira":       {"JIRA_PAT": tokens["JIRA_PAT"]},
 		"confluence": {"CONFLUENCE_PAT": tokens["CONFLUENCE_PAT"]},
-		"github":     {"GITHUB_TOKEN_disney": tokens["GITHUB_TOKEN_disney"]},
+		"github":     {"GITHUB_TOKEN": tokens["GITHUB_TOKEN"]},
 		"mywiki":     {"CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
 	}
 
