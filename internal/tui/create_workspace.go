@@ -306,25 +306,33 @@ func (m model) saveWorkspace() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Publish via PR if steer-runtime is a git fork
+	// Publish via PR
 	settings := config.ReadSteerSettings()
 	if settings.Source == "git" {
-		if prURL, err := ops.PublishWorkspace(m.steerRoot, ws.Name); err != nil {
-			m.refresh()
-			m.screen = screenWorkspaces
+		// Git fork: publish directly
+		prURL, err := ops.PublishWorkspace(m.steerRoot, ws.Name)
+		m.refresh()
+		m.screen = screenWorkspaces
+		if err != nil {
 			m.statusMsg = fmt.Sprintf("Created '%s' (PR failed: %s)", ws.Name, err)
-			return m, nil
 		} else {
-			m.refresh()
-			m.screen = screenWorkspaces
 			m.statusMsg = fmt.Sprintf("Created '%s' — PR: %s", ws.Name, prURL)
-			return m, nil
 		}
+	} else if ops.CanWriteRepo(config.DefaultSteerRepo) {
+		// Tarball + write access to upstream: init git temporarily, publish, clean up
+		prURL, err := ops.PublishWorkspaceToUpstream(m.steerRoot, ws.Name)
+		m.refresh()
+		m.screen = screenWorkspaces
+		if err != nil {
+			m.statusMsg = fmt.Sprintf("Created '%s' (PR failed: %s)", ws.Name, err)
+		} else {
+			m.statusMsg = fmt.Sprintf("Created '%s' — PR: %s", ws.Name, prURL)
+		}
+	} else {
+		m.refresh()
+		m.screen = screenWorkspaces
+		m.statusMsg = fmt.Sprintf("Workspace '%s' created locally.", ws.Name)
 	}
-
-	m.refresh()
-	m.screen = screenWorkspaces
-	m.statusMsg = fmt.Sprintf("Workspace '%s' created! To share, switch to a git fork [f].", ws.Name)
 	return m, nil
 }
 

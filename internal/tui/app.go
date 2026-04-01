@@ -618,10 +618,12 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.statusMsg = ""
 	case "n":
 		settings := config.ReadSteerSettings()
+		repo := settings.Repo
 		if settings.Source != "git" {
-			m.statusMsg = "Switch to a git fork [f] from the dashboard to create team workspaces."
-		} else if !ops.CanWriteRepo(settings.Repo) {
-			m.statusMsg = "You need write access to " + settings.Repo + " to create workspaces."
+			repo = config.DefaultSteerRepo
+		}
+		if !ops.CanWriteRepo(repo) {
+			m.statusMsg = "You need write access to " + repo + " to create workspaces."
 		} else {
 			m.cw = newCWState(m.steerRoot, m.targetDir)
 			m.screen = screenCreateWorkspace
