@@ -78,6 +78,7 @@ type model struct {
 	forkError     string
 	cw            cwState
 	ghIdentity    ops.GHIdentity
+	kodaVersion   string
 }
 
 type profileItem struct {
@@ -99,8 +100,8 @@ type mcpItem struct {
 
 type editorFinishedMsg struct{ err error }
 
-func Run(steerRoot, targetDir string) (bool, error) {
-	m := initialModel(steerRoot, targetDir)
+func Run(steerRoot, targetDir, version string) (bool, error) {
+	m := initialModel(steerRoot, targetDir, version)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
@@ -112,8 +113,8 @@ func Run(steerRoot, targetDir string) (bool, error) {
 	return false, nil
 }
 
-func initialModel(steerRoot, targetDir string) model {
-	m := model{steerRoot: steerRoot, targetDir: targetDir}
+func initialModel(steerRoot, targetDir, version string) model {
+	m := model{steerRoot: steerRoot, targetDir: targetDir, kodaVersion: version}
 	m.ghIdentity = ops.GetGHIdentity()
 	m.refresh()
 	return m
@@ -333,6 +334,9 @@ func (m model) viewDashboard() string {
 		b.WriteString(fmt.Sprintf("  Workspace: %s\n", checkStyle.Render(ws)))
 	}
 
+	if m.kodaVersion != "" {
+		b.WriteString(fmt.Sprintf("  Koda:      %s\n", dimStyle.Render(m.kodaVersion)))
+	}
 	if m.ghIdentity.Login != "" {
 		userStr := m.ghIdentity.Login
 		if m.ghIdentity.Name != "" {

@@ -73,7 +73,7 @@ Run with no arguments to launch the interactive TUI.`,
 		if steerRoot == "" {
 			return fmt.Errorf("steer-runtime not found")
 		}
-		launchChat, err := tui.Run(steerRoot, config.TargetDir(projectDir))
+		launchChat, err := tui.Run(steerRoot, config.TargetDir(projectDir), appVersion)
 		if err != nil {
 			return err
 		}
