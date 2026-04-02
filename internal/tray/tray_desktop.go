@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"runtime"
 	"path/filepath"
 	"strings"
 
@@ -16,7 +17,10 @@ import (
 )
 
 //go:embed icon.png
-var iconData []byte
+var iconPNG []byte
+
+//go:embed icon.ico
+var iconICO []byte
 
 var (
 	steerRoot    string
@@ -33,7 +37,11 @@ func Run(sr, version string) {
 func onReady() {
 	systray.SetTitle("🐾")
 	systray.SetTooltip("Koda — Agent Runtime Manager")
-	systray.SetIcon(iconData)
+	if runtime.GOOS == "windows" {
+		systray.SetIcon(iconICO)
+	} else {
+		systray.SetIcon(iconPNG)
+	}
 
 	// Status section
 	mStatus := systray.AddMenuItem("Loading...", "")
