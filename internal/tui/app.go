@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.disney.com/SANCR225/koda/internal/config"
+	"github.disney.com/SANCR225/koda/internal/tray"
 	mdl "github.disney.com/SANCR225/koda/internal/model"
 	"github.disney.com/SANCR225/koda/internal/ops"
 )
@@ -280,6 +281,17 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return syncDoneMsg{err: err}
 			}
 		}
+	case "y":
+		if tray.AutoStartEnabled() {
+			tray.DisableAutoStart()
+			m.statusMsg = "Tray auto-start disabled"
+		} else {
+			if err := tray.EnableAutoStart(); err == nil {
+				m.statusMsg = "Tray auto-start enabled — launches on login"
+			} else {
+				m.statusMsg = "Tray: " + err.Error()
+			}
+		}
 	case "f":
 		settings := config.ReadSteerSettings()
 		if settings.Source == "git" {
@@ -408,7 +420,12 @@ func (m model) viewDashboard() string {
 	} else {
 		b.WriteString(activeStyle.Render("  [f]") + " Fork        ")
 	}
-	b.WriteString(activeStyle.Render("[enter]") + " Chat   ")
+	if tray.AutoStartEnabled() {
+		b.WriteString(activeStyle.Render("[y]") + " Tray \u2713\n")
+	} else {
+		b.WriteString(activeStyle.Render("[y]") + " Tray\n")
+	}
+	b.WriteString(activeStyle.Render("  [enter]") + " Chat       ")
 	b.WriteString(activeStyle.Render("[q]") + " Quit\n")
 
 	if m.statusMsg != "" {
