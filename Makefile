@@ -88,7 +88,11 @@ pack-steer: ## Create steer-runtime tarball for release (requires STEER_ROOT and
 	@test -n "$(STEER_ROOT)" || { echo "Usage: make pack-steer STEER_ROOT=../steer-runtime"; exit 1; }
 	@echo "📦 Packing steer-runtime from $(STEER_ROOT)..."
 	tar czf bin/steer-runtime.tar.gz -C "$(STEER_ROOT)" \
-		--exclude='.git' --exclude='node_modules' --exclude='.DS_Store' --exclude='tests/runs' .
+		--exclude='.git' --exclude='node_modules' --exclude='.DS_Store' --exclude='tests/runs' \
+		--exclude='shared/tools/mcp-servers/*/src' \
+		--exclude='shared/tools/mcp-servers/*/package.json' \
+		--exclude='shared/tools/mcp-servers/*/package-lock.json' \
+		--exclude='shared/tools/mcp-servers/*/tsconfig.json' .
 	@ls -lh bin/steer-runtime.tar.gz
 	@if [ -n "$(STEER_RELEASE_KEY)" ]; then \
 		echo "🔒 Encrypting..."; \

@@ -36,7 +36,13 @@ type releaseInfo struct {
 func SyncSteerRuntime(steerRoot, targetDir string) error {
 	settings := config.ReadSteerSettings()
 
-	if settings.Source == "git" {
+	// Safety: if steerRoot has .git, always use git sync regardless of settings
+	hasGit := false
+	if _, err := os.Stat(filepath.Join(steerRoot, ".git")); err == nil {
+		hasGit = true
+	}
+
+	if settings.Source == "git" || hasGit {
 		if err := syncGit(steerRoot); err != nil {
 			return err
 		}
@@ -142,6 +148,10 @@ func DownloadFromRelease(dir string) error {
 		tarData = data
 	}
 
+	// Refuse to nuke a directory that contains .git (or is a symlink to one)
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+		return fmt.Errorf("refusing to overwrite git repo at %s", dir)
+	}
 	os.RemoveAll(dir)
 	os.MkdirAll(dir, 0755)
 	if err := ExtractTarGz(tarData, dir); err != nil {
