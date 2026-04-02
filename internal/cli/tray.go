@@ -22,7 +22,7 @@ var trayCmd = &cobra.Command{
 			}
 		}
 		fmt.Println("🐾 Koda tray running — check your menu bar")
-		tray.Run(steerRoot)
+		tray.Run(steerRoot, appVersion)
 		return nil
 	},
 }

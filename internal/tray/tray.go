@@ -12,11 +12,15 @@ import (
 	"github.disney.com/SANCR225/koda/internal/ops"
 )
 
-var steerRoot string
+var (
+	steerRoot    string
+	kodaVersion string
+)
 
 // Run launches the menu bar tray app.
-func Run(sr string) {
+func Run(sr, version string) {
 	steerRoot = sr
+	kodaVersion = version
 	systray.Run(onReady, func() {})
 }
 
@@ -28,6 +32,10 @@ func onReady() {
 	mStatus := systray.AddMenuItem("Loading...", "")
 	mStatus.Disable()
 	refreshStatus(mStatus)
+
+	mVer := systray.AddMenuItem("", "")
+	mVer.Disable()
+	refreshVersions(mVer)
 
 	systray.AddSeparator()
 
@@ -52,6 +60,7 @@ func onReady() {
 					mStatus.SetTitle("✗ Sync failed")
 				} else {
 					refreshStatus(mStatus)
+					refreshVersions(mVer)
 					// Rebuild workspace submenu after sync
 					for _, wi := range wsItems {
 						wi.item.Hide()
@@ -82,6 +91,19 @@ func onReady() {
 type wsItem struct {
 	name string
 	item *systray.MenuItem
+}
+
+func refreshVersions(m *systray.MenuItem) {
+	var parts []string
+	if kodaVersion != "" {
+		parts = append(parts, "Koda "+kodaVersion)
+	}
+	if ver, err := os.ReadFile(filepath.Join(steerRoot, "VERSION")); err == nil {
+		parts = append(parts, "Runtime "+strings.TrimSpace(string(ver)))
+	}
+	if len(parts) > 0 {
+		m.SetTitle(strings.Join(parts, " · "))
+	}
 }
 
 func refreshStatus(m *systray.MenuItem) {
