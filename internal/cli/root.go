@@ -3,11 +3,15 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
 	"github.disney.com/SANCR225/koda/internal/config"
+	"github.disney.com/SANCR225/koda/internal/tray"
 	"github.disney.com/SANCR225/koda/internal/tui"
 )
 
@@ -73,6 +77,7 @@ Run with no arguments to launch the interactive TUI.`,
 		if steerRoot == "" {
 			return fmt.Errorf("steer-runtime not found")
 		}
+		spawnTrayIfNeeded()
 		launchChat, err := tui.Run(steerRoot, config.TargetDir(projectDir), appVersion)
 		if err != nil {
 			return err
@@ -90,6 +95,27 @@ var versionCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		PrintBanner(appVersion)
 	},
+}
+
+func spawnTrayIfNeeded() {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
+		return
+	}
+	// Skip if already registered (LaunchAgent/Registry will handle it)
+	if tray.AutoStartEnabled() {
+		return
+	}
+	// First run: register auto-start and spawn tray in background
+	tray.EnableAutoStart()
+	bin, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(bin, "tray")
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Start()
 }
 
 func init() {
