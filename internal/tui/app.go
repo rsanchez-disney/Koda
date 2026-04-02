@@ -64,7 +64,8 @@ type model struct {
 	workspaces  []mdl.Workspace
 	agents      []ops.AgentInfo
 	agentFilter string
-	statusMsg   string
+	statusMsg     string
+	syncing       bool
 	quitting      bool
 	launchChat    bool
 	doctorResults []ops.DoctorResult
@@ -261,11 +262,14 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenWorkspaces
 		m.cursor = 0
 	case "s":
-		if err := ops.SyncSteerRuntime(m.steerRoot, m.targetDir); err != nil {
-			m.statusMsg = "Sync failed: " + err.Error()
-		} else {
-			m.refresh()
-			m.statusMsg = "Synced!"
+		if !m.syncing {
+			m.syncing = true
+			m.statusMsg = "⏳ Syncing..."
+			steerRoot, targetDir := m.steerRoot, m.targetDir
+			return m, func() tea.Msg {
+				err := ops.SyncSteerRuntime(steerRoot, targetDir)
+				return syncDoneMsg{err: err}
+			}
 		}
 	case "f":
 		settings := config.ReadSteerSettings()
@@ -446,6 +450,7 @@ func (m model) updateDoctor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 type doctorFixDoneMsg struct{ err error }
+type syncDoneMsg struct{ err error }
 
 func (m model) viewDoctor() string {
 	var b strings.Builder
