@@ -3,6 +3,7 @@ package model
 // Workspace represents a team workspace configuration.
 type Workspace struct {
 	Name          string             `json:"name"`
+	Extends       string             `json:"extends,omitempty"`
 	Description   string             `json:"description"`
 	Team          string             `json:"team"`
 	Profiles      []string           `json:"profiles"`
