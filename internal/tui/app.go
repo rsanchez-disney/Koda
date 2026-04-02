@@ -872,8 +872,14 @@ func (m model) updateTokens(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	switch key {
 	case "esc":
+		if err := ops.WriteTokens(m.tokens); err != nil {
+			m.statusMsg = "Save failed: " + err.Error()
+		} else {
+			ops.InjectAgentTokens(m.targetDir)
+			m.refresh()
+			m.statusMsg = "Tokens saved!"
+		}
 		m.screen = screenDashboard
-		m.statusMsg = ""
 		m.tokenInput = ""
 	case "up", "shift+tab":
 		if m.cursor > 0 {
@@ -894,11 +900,14 @@ func (m model) updateTokens(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		} else {
-			ops.WriteTokens(m.tokens)
-			ops.InjectAgentTokens(m.targetDir)
-			m.refresh()
+			if err := ops.WriteTokens(m.tokens); err != nil {
+				m.statusMsg = "Save failed: " + err.Error()
+			} else {
+				ops.InjectAgentTokens(m.targetDir)
+				m.refresh()
+				m.statusMsg = "Tokens saved!"
+			}
 			m.screen = screenDashboard
-			m.statusMsg = "Tokens saved!"
 		}
 	case "backspace":
 		if len(m.tokenInput) > 0 {

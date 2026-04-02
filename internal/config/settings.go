@@ -52,6 +52,9 @@ func ReadSteerSettings() SteerSettings {
 	if s.Branch == "" {
 		s.Branch = DefaultSteerBranch
 	}
+	if s.Source == "" {
+		s.Source = "tarball"
+	}
 	return s
 }
 
