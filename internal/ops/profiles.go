@@ -39,6 +39,7 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 		return nil, err
 	}
 	var profiles []model.Profile
+	seen := map[string]bool{}
 	for _, d := range dirs {
 		id := strings.TrimPrefix(filepath.Base(d), config.ProfilePrefix)
 		agents, _ := discoverAgents(d)
@@ -50,6 +51,33 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 			AgentCount: len(agents),
 			Installed:  installed,
 		})
+		seen[id] = true
+	}
+
+	// Workspace-local profiles
+	wsGlob := filepath.Join(steerRoot, config.WorkspacesDir, "*", "profiles", "*")
+	wsDirs, _ := filepath.Glob(wsGlob)
+	for _, d := range wsDirs {
+		info, err := os.Stat(d)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		id := filepath.Base(d)
+		if seen[id] {
+			continue
+		}
+		wsName := filepath.Base(filepath.Dir(filepath.Dir(d)))
+		agents, _ := discoverAgents(d)
+		installed := isProfileInstalled(id, d, targetDir)
+		profiles = append(profiles, model.Profile{
+			ID:            id,
+			SourceDir:     d,
+			Agents:        agents,
+			AgentCount:    len(agents),
+			Installed:     installed,
+			WorkspaceName: wsName,
+		})
+		seen[id] = true
 	}
 	return profiles, nil
 }
@@ -89,6 +117,41 @@ func InstallProfile(steerRoot, profileID, targetDir string) (int, error) {
 
 	return count, nil
 }
+
+// InstallProfileFrom installs a profile from an arbitrary source directory (e.g. workspace profile).
+func InstallProfileFrom(srcDir, targetDir string) (int, error) {
+	if _, err := os.Stat(srcDir); err != nil {
+		return 0, fmt.Errorf("profile source not found: %s", srcDir)
+	}
+
+	agentsSrc := filepath.Join(srcDir, config.AgentsDir)
+	agentsDst := filepath.Join(targetDir, config.AgentsDir)
+	os.MkdirAll(agentsDst, 0755)
+
+	home, _ := os.UserHomeDir()
+	count := 0
+	entries, _ := os.ReadDir(agentsSrc)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), "._") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(agentsSrc, e.Name()))
+		if err != nil {
+			continue
+		}
+		expanded := strings.ReplaceAll(string(data), "$HOME", home)
+		os.WriteFile(filepath.Join(agentsDst, e.Name()), []byte(expanded), 0644)
+		count++
+	}
+
+	for _, sub := range []string{config.PromptsDir, config.ContextDir, "powers", "skills", "steering"} {
+		copyDirContents(filepath.Join(srcDir, sub), filepath.Join(targetDir, sub))
+	}
+
+	return count, nil
+}
+
+
 
 // RemoveProfile removes a profile's agents and prompts from targetDir.
 func RemoveProfile(steerRoot, profileID, targetDir string) (int, error) {

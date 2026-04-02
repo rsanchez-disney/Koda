@@ -92,6 +92,7 @@ type profileItem struct {
 	agentCount int
 	installed  bool
 	selected   bool
+	workspace  string
 }
 
 type ruleItem struct {
@@ -132,7 +133,7 @@ func (m *model) refresh() {
 	m.profiles = nil
 	for _, p := range profiles {
 		m.profiles = append(m.profiles, profileItem{
-			id: p.ID, agentCount: p.AgentCount, installed: p.Installed, selected: p.Installed,
+			id: p.ID, agentCount: p.AgentCount, installed: p.Installed, selected: p.Installed, workspace: p.WorkspaceName,
 		})
 	}
 	m.tokens = ops.ReadTokens()
@@ -845,7 +846,7 @@ func (m model) viewProfiles() string {
 			name = activeStyle.Render(name)
 		}
 		b.WriteString(fmt.Sprintf("%s%s %s %s\n", cursor, check, name,
-			dimStyle.Render(fmt.Sprintf("%d agents", p.agentCount))))
+			dimStyle.Render(fmt.Sprintf("%d agents", p.agentCount))+func() string { if p.workspace != "" { return " " + dimStyle.Render("[ws: "+p.workspace+"]") }; return "" }()))
 	}
 
 	return boxStyle.Render(b.String())

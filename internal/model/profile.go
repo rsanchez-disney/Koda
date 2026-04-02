@@ -6,7 +6,8 @@ type Profile struct {
 	SourceDir  string  `json:"-"`
 	Agents     []Agent `json:"agents,omitempty"`
 	AgentCount int     `json:"agent_count"`
-	Installed  bool    `json:"installed"`
+	Installed     bool   `json:"installed"`
+	WorkspaceName string `json:"workspace,omitempty"`
 }
 
 // Aliases maps shorthand names to their expanded profile lists.

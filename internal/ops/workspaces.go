@@ -55,8 +55,14 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	// Install profiles
 	profiles := ExpandAliases(ws.Profiles)
 	InstallShared(steerRoot, targetDir)
+	wsProfilesDir := filepath.Join(steerRoot, config.WorkspacesDir, ws.Name, "profiles")
 	for _, p := range profiles {
-		InstallProfile(steerRoot, p, targetDir)
+		wsProfile := filepath.Join(wsProfilesDir, p)
+		if _, err := os.Stat(wsProfile); err == nil {
+			InstallProfileFrom(wsProfile, targetDir)
+		} else {
+			InstallProfile(steerRoot, p, targetDir)
+		}
 	}
 
 	// Install common rules
