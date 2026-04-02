@@ -166,21 +166,16 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	InjectAgentTokens(targetDir)
 
 	// Clone missing repos
-	if ws.WorkspacePath != "" {
-		CloneWorkspaceRepos(ws)
+	if resolved.WorkspacePath != "" {
+		CloneWorkspaceRepos(resolved)
 	}
 
 	// Ensure memory banks exist for each project
 	for _, p := range resolved.Projects {
-		projPath := p.Path
-		if strings.HasPrefix(projPath, "~/") {
-			home, _ := os.UserHomeDir()
-			projPath = filepath.Join(home, projPath[2:])
-		} else if strings.HasPrefix(projPath, "../") && steerRoot != "" {
-			projPath = filepath.Join(filepath.Dir(steerRoot), projPath[3:])
-		}
+		projPath := resolveProjectPath(resolved.WorkspacePath, p.Path, steerRoot)
 		if _, err := os.Stat(filepath.Join(projPath, ".git")); err != nil {
-			continue // not cloned locally
+			fmt.Printf("  \u23ed %s (not cloned)\n", p.Name)
+			continue
 		}
 		mbPath := filepath.Join(projPath, ".kiro", config.RulesDir, "memory-bank")
 		if entries, _ := os.ReadDir(mbPath); len(entries) == 0 {
@@ -199,6 +194,22 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	config.SaveSteerSettings(s)
 
 	return nil
+}
+
+// resolveProjectPath resolves a project path using workspace_path as base when set.
+func resolveProjectPath(workspacePath, projPath, steerRoot string) string {
+	if workspacePath != "" && !filepath.IsAbs(projPath) && !strings.HasPrefix(projPath, "~/") && !strings.HasPrefix(projPath, "../") {
+		base := expandHome(workspacePath)
+		return filepath.Join(base, projPath)
+	}
+	if strings.HasPrefix(projPath, "~/") {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, projPath[2:])
+	}
+	if strings.HasPrefix(projPath, "../") && steerRoot != "" {
+		return filepath.Join(filepath.Dir(steerRoot), projPath[3:])
+	}
+	return projPath
 }
 
 // PrintWorkspace prints workspace details.
