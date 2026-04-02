@@ -36,10 +36,51 @@ var wsListCmd = &cobra.Command{
 		}
 		fmt.Println("\U0001f4cb Team workspaces:")
 		fmt.Println()
-		for _, ws := range workspaces {
-			fmt.Printf("  \u2022 %-20s %s\n", ws.Name, ws.Description)
-			if len(ws.Profiles) > 0 {
-				fmt.Printf("    Profiles: %s\n", strings.Join(ws.Profiles, ", "))
+		// Build tree
+		children := map[string][]int{}
+		roots := []int{}
+		for i, ws := range workspaces {
+			if ws.Extends == "" {
+				roots = append(roots, i)
+			} else {
+				children[ws.Extends] = append(children[ws.Extends], i)
+			}
+		}
+		shown := map[int]bool{}
+		var printTree func(idx int, prefix string, last bool)
+		printTree = func(idx int, prefix string, last bool) {
+			shown[idx] = true
+			ws := workspaces[idx]
+			tree := prefix
+			if prefix != "" {
+				if last {
+					tree += "└─ "
+				} else {
+					tree += "├─ "
+				}
+			} else {
+				tree = "  • "
+			}
+			fmt.Printf("%s%-20s %s\n", tree, ws.Name, ws.Description)
+			kids := children[ws.Name]
+			childPrefix := prefix
+			if prefix == "" {
+				childPrefix = "    "
+			} else if last {
+				childPrefix += "   "
+			} else {
+				childPrefix += "│  "
+			}
+			for j, kid := range kids {
+				printTree(kid, childPrefix, j == len(kids)-1)
+			}
+		}
+		for _, idx := range roots {
+			printTree(idx, "", true)
+		}
+		for i := range workspaces {
+			if !shown[i] {
+				printTree(i, "", true)
 			}
 		}
 		return nil

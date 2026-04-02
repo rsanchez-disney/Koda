@@ -50,23 +50,104 @@ func GetWorkspace(steerRoot, name string) (model.Workspace, error) {
 	return ws, nil
 }
 
+// ResolveWorkspace walks the extends chain and merges into a single workspace.
+// Additive: profiles, rules. Child-wins: scalar fields. Context dirs are collected for copy.
+func ResolveWorkspace(steerRoot string, ws model.Workspace) (model.Workspace, []string) {
+	if ws.Extends == "" {
+		return ws, []string{ws.Name}
+	}
+
+	// Walk chain bottom-up, collect ancestors
+	chain := []model.Workspace{ws}
+	seen := map[string]bool{ws.Name: true}
+	cur := ws
+	for cur.Extends != "" {
+		if seen[cur.Extends] {
+			break // cycle guard
+		}
+		parent, err := GetWorkspace(steerRoot, cur.Extends)
+		if err != nil {
+			break
+		}
+		seen[parent.Name] = true
+		chain = append(chain, parent)
+		cur = parent
+	}
+
+	// Merge root-first: start from oldest ancestor
+	merged := chain[len(chain)-1]
+	names := []string{merged.Name}
+	for i := len(chain) - 2; i >= 0; i-- {
+		child := chain[i]
+		names = append(names, child.Name)
+		// Additive
+		merged.Profiles = appendUnique(merged.Profiles, child.Profiles)
+		merged.Rules = appendUnique(merged.Rules, child.Rules)
+		// Child-wins scalars
+		merged.Name = child.Name
+		merged.Extends = child.Extends
+		if child.Description != "" {
+			merged.Description = child.Description
+		}
+		if child.Team != "" {
+			merged.Team = child.Team
+		}
+		if child.DefaultAgent != "" {
+			merged.DefaultAgent = child.DefaultAgent
+		}
+		if child.JiraPrefix != "" {
+			merged.JiraPrefix = child.JiraPrefix
+		}
+		if child.WorkspacePath != "" {
+			merged.WorkspacePath = child.WorkspacePath
+		}
+		if len(child.Projects) > 0 {
+			merged.Projects = child.Projects
+		}
+		if child.EnableTools {
+			merged.EnableTools = true
+		}
+	}
+	return merged, names
+}
+
+func appendUnique(base, add []string) []string {
+	seen := map[string]bool{}
+	for _, s := range base {
+		seen[s] = true
+	}
+	for _, s := range add {
+		if !seen[s] {
+			base = append(base, s)
+			seen[s] = true
+		}
+	}
+	return base
+}
+
 // ApplyWorkspace installs a workspace's profiles, rules, and context.
 func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
-	// Install profiles
-	profiles := ExpandAliases(ws.Profiles)
+	// Resolve inheritance
+	resolved, wsNames := ResolveWorkspace(steerRoot, ws)
+
+	// Install profiles (global first, then workspace overrides win)
+	profiles := ExpandAliases(resolved.Profiles)
 	InstallShared(steerRoot, targetDir)
-	wsProfilesDir := filepath.Join(steerRoot, config.WorkspacesDir, ws.Name, "profiles")
 	for _, p := range profiles {
-		wsProfile := filepath.Join(wsProfilesDir, p)
-		if _, err := os.Stat(wsProfile); err == nil {
-			InstallProfileFrom(wsProfile, targetDir)
-		} else {
-			InstallProfile(steerRoot, p, targetDir)
+		InstallProfile(steerRoot, p, targetDir)
+	}
+	for _, wsName := range wsNames {
+		wsProfilesDir := filepath.Join(steerRoot, config.WorkspacesDir, wsName, "profiles")
+		for _, p := range profiles {
+			wsProfile := filepath.Join(wsProfilesDir, p)
+			if _, err := os.Stat(wsProfile); err == nil {
+				InstallProfileFrom(wsProfile, targetDir)
+			}
 		}
 	}
 
-	// Install common rules
-	for _, rule := range ws.Rules {
+	// Install common rules from all resolved
+	for _, rule := range resolved.Rules {
 		src := filepath.Join(steerRoot, "common", config.RulesDir, rule+".md")
 		if _, err := os.Stat(src); err == nil {
 			dst := filepath.Join(targetDir, config.RulesDir)
@@ -75,10 +156,12 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 		}
 	}
 
-	// Copy workspace-specific rules and context
-	wsPath := filepath.Join(steerRoot, config.WorkspacesDir, ws.Name)
-	copyDirContents(filepath.Join(wsPath, config.RulesDir), filepath.Join(targetDir, config.RulesDir))
-	copyDirContents(filepath.Join(wsPath, config.ContextDir), filepath.Join(targetDir, config.ContextDir))
+	// Copy rules and context from each workspace in the chain (root first)
+	for _, wsName := range wsNames {
+		wsPath := filepath.Join(steerRoot, config.WorkspacesDir, wsName)
+		copyDirContents(filepath.Join(wsPath, config.RulesDir), filepath.Join(targetDir, config.RulesDir))
+		copyDirContents(filepath.Join(wsPath, config.ContextDir), filepath.Join(targetDir, config.ContextDir))
+	}
 
 	InjectAgentTokens(targetDir)
 
@@ -98,6 +181,9 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 // PrintWorkspace prints workspace details.
 func PrintWorkspace(ws model.Workspace) {
 	fmt.Printf("\n  Name:        %s\n", ws.Name)
+	if ws.Extends != "" {
+		fmt.Printf("  Extends:     %s\n", ws.Extends)
+	}
 	if ws.Description != "" {
 		fmt.Printf("  Description: %s\n", ws.Description)
 	}

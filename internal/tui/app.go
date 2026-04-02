@@ -997,6 +997,14 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenCreateWorkspace
 			m.statusMsg = ""
 		}
+	case "x":
+		if m.cursor < len(m.workspaces) {
+			parent := m.workspaces[m.cursor]
+			m.cw = newCWState(m.steerRoot, m.targetDir)
+			m.cw.extends = parent.Name
+			m.screen = screenCreateWorkspace
+			m.statusMsg = ""
+		}
 	}
 	return m, nil
 }
@@ -1004,7 +1012,7 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) viewWorkspaces() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("Workspaces") + dimStyle.Render("  enter=apply  e=edit  n=new  esc=back"))
+	b.WriteString(titleStyle.Render("Workspaces") + dimStyle.Render("  enter=apply  e=edit  x=extend  n=new  esc=back"))
 	b.WriteString("\n\n")
 
 	if len(m.workspaces) == 0 {
@@ -1012,19 +1020,73 @@ func (m model) viewWorkspaces() string {
 		return boxStyle.Render(b.String())
 	}
 
+	// Build parent→children map for tree display
+	children := map[string][]int{}
+	roots := []int{}
 	for i, ws := range m.workspaces {
+		if ws.Extends == "" {
+			roots = append(roots, i)
+		} else {
+			children[ws.Extends] = append(children[ws.Extends], i)
+		}
+	}
+
+	var renderWS func(idx int, prefix string, last bool)
+	renderWS = func(idx int, prefix string, last bool) {
+		ws := m.workspaces[idx]
 		cursor := "  "
-		if i == m.cursor {
+		if idx == m.cursor {
 			cursor = activeStyle.Render("\u25b8 ")
 		}
-		name := fmt.Sprintf("%-20s", ws.Name)
-		if i == m.cursor {
+		tree := prefix
+		if prefix != "" {
+			if last {
+				tree += "└─ "
+			} else {
+				tree += "├─ "
+			}
+		}
+		name := ws.Name
+		if idx == m.cursor {
 			name = activeStyle.Render(name)
 		}
 		profiles := dimStyle.Render(strings.Join(ws.Profiles, ", "))
-		b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, name, profiles))
-		if i == m.cursor && ws.Description != "" {
-			b.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render(ws.Description)))
+		b.WriteString(fmt.Sprintf("%s%s%s %s\n", cursor, dimStyle.Render(tree), name, profiles))
+		if idx == m.cursor && ws.Description != "" {
+			b.WriteString(fmt.Sprintf("    %s%s\n", dimStyle.Render(prefix), dimStyle.Render(ws.Description)))
+		}
+		kids := children[ws.Name]
+		childPrefix := prefix
+		if prefix != "" {
+			if last {
+				childPrefix += "   "
+			} else {
+				childPrefix += "│  "
+			}
+		}
+		for j, kid := range kids {
+			renderWS(kid, childPrefix, j == len(kids)-1)
+		}
+	}
+
+	for _, idx := range roots {
+		renderWS(idx, "", true)
+	}
+	// Show orphans (extends a non-existent parent)
+	shown := map[int]bool{}
+	var markShown func(idx int)
+	markShown = func(idx int) {
+		shown[idx] = true
+		for _, kid := range children[m.workspaces[idx].Name] {
+			markShown(kid)
+		}
+	}
+	for _, idx := range roots {
+		markShown(idx)
+	}
+	for i := range m.workspaces {
+		if !shown[i] {
+			renderWS(i, "", true)
 		}
 	}
 

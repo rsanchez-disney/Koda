@@ -41,6 +41,7 @@ type cwRepoItem struct {
 type cwState struct {
 	field     cwField
 	name      string
+	extends   string
 	desc      string
 	team      string
 	jira      string
@@ -83,6 +84,7 @@ func newCWStateFromWorkspace(steerRoot, targetDir string, ws mdl.Workspace) cwSt
 	s := newCWState(steerRoot, targetDir)
 	s.editing = true
 	s.name = ws.Name
+	s.extends = ws.Extends
 	s.desc = ws.Description
 	s.team = ws.Team
 	s.jira = ws.JiraPrefix
@@ -335,6 +337,7 @@ func (m model) cwBuildWorkspace() mdl.Workspace {
 	cw := &m.cw
 	ws := mdl.Workspace{
 		Name:          cw.name,
+		Extends:       cw.extends,
 		Description:   cw.desc,
 		Team:          cw.team,
 		JiraPrefix:    cw.jira,
@@ -440,6 +443,10 @@ func (m model) viewCreateWorkspace() string {
 	}
 	b.WriteString(titleStyle.Render(title) + dimStyle.Render("  tab=next  ctrl+s=save  ctrl+e=editor  esc=back"))
 	b.WriteString("\n\n")
+
+	if cw.extends != "" {
+		b.WriteString("  " + dimStyle.Render("Extends: "+cw.extends) + "\n\n")
+	}
 
 	// Text fields
 	textFields := []struct {
