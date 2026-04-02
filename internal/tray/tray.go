@@ -3,7 +3,6 @@ package tray
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -40,12 +39,6 @@ func onReady() {
 	wsItems := refreshWorkspaces(mWorkspaces)
 
 	systray.AddSeparator()
-
-	// Launch actions
-	mChat := systray.AddMenuItem("💬 Open Chat", "Launch koda chat in terminal")
-	mTUI := systray.AddMenuItem("🖥 Open TUI", "Launch koda TUI in terminal")
-
-	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Quit", "")
 
 	// Event loop
@@ -59,16 +52,15 @@ func onReady() {
 					mStatus.SetTitle("✗ Sync failed")
 				} else {
 					refreshStatus(mStatus)
+					// Rebuild workspace submenu after sync
+					for _, wi := range wsItems {
+						wi.item.Hide()
+					}
 					wsItems = refreshWorkspaces(mWorkspaces)
 				}
-			case <-mChat.ClickedCh:
-				openTerminal("koda", "chat")
-			case <-mTUI.ClickedCh:
-				openTerminal("koda")
 			case <-mQuit.ClickedCh:
 				systray.Quit()
 			default:
-				// Check workspace submenu clicks
 				for _, wi := range wsItems {
 					select {
 					case <-wi.item.ClickedCh:
@@ -98,17 +90,12 @@ func refreshStatus(m *systray.MenuItem) {
 
 	var parts []string
 
-	// Runtime version
 	if ver, err := os.ReadFile(filepath.Join(steerRoot, "VERSION")); err == nil {
 		parts = append(parts, strings.TrimSpace(string(ver)))
 	}
-
-	// Active workspace
 	if settings.ActiveWorkspace != "" {
 		parts = append(parts, "ws:"+settings.ActiveWorkspace)
 	}
-
-	// Agent count
 	report := ops.CheckInstallation(steerRoot, target)
 	if report.TotalAgents > 0 {
 		parts = append(parts, fmt.Sprintf("%d agents", report.TotalAgents))
@@ -133,12 +120,4 @@ func refreshWorkspaces(parent *systray.MenuItem) []wsItem {
 		items = append(items, wsItem{name: ws.Name, item: sub})
 	}
 	return items
-}
-
-func openTerminal(args ...string) {
-	script := fmt.Sprintf(`tell application "Terminal"
-	activate
-	do script "%s"
-end tell`, strings.Join(args, " "))
-	exec.Command("osascript", "-e", script).Start()
 }
