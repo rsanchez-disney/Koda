@@ -37,6 +37,10 @@ func onReady() {
 	mVer.Disable()
 	refreshVersions(mVer)
 
+	mHealth := systray.AddMenuItem("", "")
+	mHealth.Disable()
+	refreshHealth(mHealth)
+
 	systray.AddSeparator()
 
 	// Sync
@@ -61,6 +65,7 @@ func onReady() {
 				} else {
 					refreshStatus(mStatus)
 					refreshVersions(mVer)
+					refreshHealth(mHealth)
 					// Rebuild workspace submenu after sync
 					for _, wi := range wsItems {
 						wi.item.Hide()
@@ -127,6 +132,22 @@ func refreshStatus(m *systray.MenuItem) {
 		m.SetTitle("🐾 " + strings.Join(parts, " · "))
 	} else {
 		m.SetTitle("🐾 Koda")
+	}
+}
+
+func refreshHealth(m *systray.MenuItem) {
+	target := config.TargetDir("")
+	results := ops.RunDoctor(steerRoot, target)
+	fails := 0
+	for _, r := range results {
+		if !r.OK && !strings.HasPrefix(r.Name, "  ") {
+			fails++
+		}
+	}
+	if fails == 0 {
+		m.SetTitle("\u2713 All checks passed")
+	} else {
+		m.SetTitle(fmt.Sprintf("\u26a0 %d issue(s) — run koda doctor", fails))
 	}
 }
 
