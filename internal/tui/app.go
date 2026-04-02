@@ -187,6 +187,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ruleEditing = ""
 		}
 		return m, nil
+	case syncDoneMsg:
+		m.syncing = false
+		if msg.err != nil {
+			m.statusMsg = "Sync failed: " + msg.err.Error()
+		} else {
+			m.refresh()
+			m.statusMsg = "✅ Synced!"
+		}
+		return m, nil
 	case doctorFixDoneMsg:
 		m.envVars = ops.ReadEnvVars()
 	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
