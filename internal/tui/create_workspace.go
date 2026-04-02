@@ -582,7 +582,20 @@ func (m model) viewCreateWorkspace() string {
 		b.WriteString("    " + dimStyle.Render("none — set repos path to scan") + "\n")
 	}
 
-	for i, r := range cw.repos {
+	// Windowed repo list (max 10 visible)
+	repoStart := 0
+	if cw.field == cwRepos && cw.repoCursor > 8 && cw.repoCursor < len(cw.repos) {
+		repoStart = cw.repoCursor - 8
+	}
+	repoEnd := repoStart + 10
+	if repoEnd > len(cw.repos) {
+		repoEnd = len(cw.repos)
+	}
+	if repoStart > 0 {
+		b.WriteString("    " + dimStyle.Render(fmt.Sprintf("↑ %d more", repoStart)) + "\n")
+	}
+	for i := repoStart; i < repoEnd; i++ {
+		r := cw.repos[i]
 		cursor := "    "
 		if cw.field == cwRepos && i == cw.repoCursor {
 			cursor = "  " + activeStyle.Render("▸ ")
@@ -598,6 +611,9 @@ func (m model) viewCreateWorkspace() string {
 			tag = warnStyle.Render(" (clone on apply)")
 		}
 		b.WriteString(cursor + check + " " + r.repo + tag + "\n")
+	}
+	if repoEnd < len(cw.repos) {
+		b.WriteString("    " + dimStyle.Render(fmt.Sprintf("↓ %d more", len(cw.repos)-repoEnd)) + "\n")
 	}
 
 	// Add input line
