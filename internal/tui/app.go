@@ -1063,9 +1063,12 @@ func (m model) viewWorkspaces() string {
 				tree += "├─ "
 			}
 		}
+		isParent := len(children[ws.Name]) > 0
 		name := ws.Name
 		if idx == m.cursor {
 			name = activeStyle.Render(name)
+		} else if isParent {
+			name = titleStyle.Render(name)
 		}
 		profiles := dimStyle.Render(strings.Join(ws.Profiles, ", "))
 		b.WriteString(fmt.Sprintf("%s%s%s %s\n", cursor, dimStyle.Render(tree), name, profiles))

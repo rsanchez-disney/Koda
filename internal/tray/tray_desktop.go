@@ -160,9 +160,21 @@ func refreshHealth(m *systray.MenuItem) {
 
 func refreshWorkspaces(parent *systray.MenuItem) []wsItem {
 	workspaces, _ := ops.ListWorkspaces(steerRoot)
+	hasChildren := map[string]bool{}
+	for _, ws := range workspaces {
+		if ws.Extends != "" {
+			hasChildren[ws.Extends] = true
+		}
+	}
 	var items []wsItem
 	for _, ws := range workspaces {
-		label := ws.Name
+		var prefix string
+		if hasChildren[ws.Name] {
+			prefix = "\U0001f4c1 "
+		} else if ws.Extends != "" {
+			prefix = "  \u21b3 "
+		}
+		label := prefix + ws.Name
 		if ws.Description != "" {
 			label += " — " + ws.Description
 		}
