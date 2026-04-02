@@ -398,20 +398,16 @@ func (m model) saveWorkspace() (tea.Model, tea.Cmd) {
 		} else {
 			m.statusMsg = fmt.Sprintf(verb+" '%s' — PR: %s", ws.Name, prURL)
 		}
-	} else if ops.CanWriteRepo(config.DefaultSteerRepo) {
-		// Tarball + write access to upstream: init git temporarily, publish, clean up
+	} else {
+		// Tarball mode: init git temporarily, publish to upstream, clean up
 		prURL, err := ops.PublishWorkspaceToUpstream(m.steerRoot, ws.Name, cw.editing)
 		m.refresh()
 		m.screen = screenWorkspaces
 		if err != nil {
-			m.statusMsg = fmt.Sprintf(verb+" '%s' (PR failed: %s)", ws.Name, err)
+			m.statusMsg = fmt.Sprintf(verb+" '%s' locally (PR failed: %s)", ws.Name, err)
 		} else {
 			m.statusMsg = fmt.Sprintf(verb+" '%s' — PR: %s", ws.Name, prURL)
 		}
-	} else {
-		m.refresh()
-		m.screen = screenWorkspaces
-		m.statusMsg = fmt.Sprintf("Workspace '%s' saved locally.", ws.Name)
 	}
 	return m, nil
 }

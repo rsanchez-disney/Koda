@@ -948,18 +948,9 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenDashboard
 		m.statusMsg = ""
 	case "n":
-		settings := config.ReadSteerSettings()
-		repo := settings.Repo
-		if settings.Source != "git" {
-			repo = config.DefaultSteerRepo
-		}
-		if !ops.CanWriteRepo(repo) {
-			m.statusMsg = "You need write access to " + repo + " to create workspaces."
-		} else {
-			m.cw = newCWState(m.steerRoot, m.targetDir)
-			m.screen = screenCreateWorkspace
-			m.statusMsg = ""
-		}
+		m.cw = newCWState(m.steerRoot, m.targetDir)
+		m.screen = screenCreateWorkspace
+		m.statusMsg = ""
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
