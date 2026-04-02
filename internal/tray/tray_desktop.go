@@ -3,6 +3,7 @@
 package tray
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,9 @@ import (
 	"github.disney.com/SANCR225/koda/internal/config"
 	"github.disney.com/SANCR225/koda/internal/ops"
 )
+
+//go:embed icon.png
+var iconData []byte
 
 var (
 	steerRoot    string
@@ -29,6 +33,7 @@ func Run(sr, version string) {
 func onReady() {
 	systray.SetTitle("🐾")
 	systray.SetTooltip("Koda — Agent Runtime Manager")
+	systray.SetIcon(iconData)
 
 	// Status section
 	mStatus := systray.AddMenuItem("Loading...", "")
