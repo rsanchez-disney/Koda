@@ -149,7 +149,6 @@ func DownloadFromRelease(dir string) error {
 	}
 
 	os.WriteFile(filepath.Join(dir, "VERSION"), []byte(rel.TagName), 0644)
-	fmt.Printf("   ✅ Installed %s to %s\n", rel.TagName, dir)
 	return nil
 }
 
