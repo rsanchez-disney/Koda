@@ -3,16 +3,17 @@ package tray
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
-const launchAgentLabel = "com.koda.tray"
-
-func plistPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "LaunchAgents", launchAgentLabel+".plist")
-}
+const (
+	launchAgentLabel = "com.koda.tray"
+	winRegKey        = `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+	winRegValue      = "KodaTray"
+)
 
 func kodaBinary() string {
 	path, err := os.Executable()
@@ -24,9 +25,50 @@ func kodaBinary() string {
 
 // EnableAutoStart registers the tray to launch on login.
 func EnableAutoStart() error {
-	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("tray auto-start only supported on macOS")
+	switch runtime.GOOS {
+	case "darwin":
+		return enableMacOS()
+	case "windows":
+		return enableWindows()
+	default:
+		return fmt.Errorf("tray auto-start not supported on %s", runtime.GOOS)
 	}
+}
+
+// DisableAutoStart removes the login auto-start.
+func DisableAutoStart() error {
+	switch runtime.GOOS {
+	case "darwin":
+		return os.Remove(plistPath())
+	case "windows":
+		return exec.Command("reg", "delete", winRegKey, "/v", winRegValue, "/f").Run()
+	default:
+		return fmt.Errorf("tray auto-start not supported on %s", runtime.GOOS)
+	}
+}
+
+// AutoStartEnabled returns whether the tray auto-starts on login.
+func AutoStartEnabled() bool {
+	switch runtime.GOOS {
+	case "darwin":
+		_, err := os.Stat(plistPath())
+		return err == nil
+	case "windows":
+		out, err := exec.Command("reg", "query", winRegKey, "/v", winRegValue).CombinedOutput()
+		return err == nil && strings.Contains(string(out), winRegValue)
+	default:
+		return false
+	}
+}
+
+// --- macOS ---
+
+func plistPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Library", "LaunchAgents", launchAgentLabel+".plist")
+}
+
+func enableMacOS() error {
 	bin := kodaBinary()
 	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -55,13 +97,9 @@ func EnableAutoStart() error {
 	return os.WriteFile(path, []byte(plist), 0644)
 }
 
-// DisableAutoStart removes the login launch agent.
-func DisableAutoStart() error {
-	return os.Remove(plistPath())
-}
+// --- Windows ---
 
-// AutoStartEnabled returns whether the tray auto-starts on login.
-func AutoStartEnabled() bool {
-	_, err := os.Stat(plistPath())
-	return err == nil
+func enableWindows() error {
+	bin := kodaBinary()
+	return exec.Command("reg", "add", winRegKey, "/v", winRegValue, "/t", "REG_SZ", "/d", bin+" tray", "/f").Run()
 }
