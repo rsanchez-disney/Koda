@@ -170,6 +170,29 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 		CloneWorkspaceRepos(ws)
 	}
 
+	// Ensure memory banks exist for each project
+	for _, p := range resolved.Projects {
+		projPath := p.Path
+		if strings.HasPrefix(projPath, "~/") {
+			home, _ := os.UserHomeDir()
+			projPath = filepath.Join(home, projPath[2:])
+		} else if strings.HasPrefix(projPath, "../") && steerRoot != "" {
+			projPath = filepath.Join(filepath.Dir(steerRoot), projPath[3:])
+		}
+		if _, err := os.Stat(filepath.Join(projPath, ".git")); err != nil {
+			continue // not cloned locally
+		}
+		mbPath := filepath.Join(projPath, ".kiro", config.RulesDir, "memory-bank")
+		if entries, _ := os.ReadDir(mbPath); len(entries) == 0 {
+			fmt.Printf("  Initializing memory bank for %s...\n", p.Name)
+			from := p.MemoryBank
+			if from == "" {
+				from = p.Name
+			}
+			InitMemory(steerRoot, projPath, from)
+		}
+	}
+
 	// Save active workspace
 	s := config.ReadSteerSettings()
 	s.ActiveWorkspace = ws.Name
