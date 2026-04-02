@@ -3,6 +3,7 @@ package ops
 import (
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,17 +166,22 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 
 	InjectAgentTokens(targetDir)
 
-	// Clone missing repos
-	if resolved.WorkspacePath != "" {
-		CloneWorkspaceRepos(resolved)
-	}
-
-	// Ensure memory banks exist for each project
+	// For each project: clone if missing, then ensure memory bank exists
 	for _, p := range resolved.Projects {
 		projPath := resolveProjectPath(resolved.WorkspacePath, p.Path, steerRoot)
 		if _, err := os.Stat(filepath.Join(projPath, ".git")); err != nil {
-			fmt.Printf("  \u23ed %s (not cloned)\n", p.Name)
-			continue
+			if p.Repo != "" && resolved.WorkspacePath != "" {
+				fmt.Printf("  Cloning %s...\n", p.Name)
+				url := fmt.Sprintf("https://%s/%s.git", config.GHHost, p.Repo)
+				if err := exec.Command("git", "clone", url, projPath).Run(); err != nil {
+					fmt.Printf("  \u2717 %s (clone failed: %v)\n", p.Name, err)
+					continue
+				}
+				fmt.Printf("  \u2713 %s cloned\n", p.Name)
+			} else {
+				fmt.Printf("  \u23ed %s (not cloned)\n", p.Name)
+				continue
+			}
 		}
 		mbPath := filepath.Join(projPath, ".kiro", config.RulesDir, "memory-bank")
 		if entries, _ := os.ReadDir(mbPath); len(entries) == 0 {
