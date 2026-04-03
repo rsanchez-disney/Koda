@@ -57,6 +57,46 @@ var configureCmd = &cobra.Command{
 		if err := ops.WriteTokens(tokens); err != nil {
 			return err
 		}
+
+		// GitHub remotes
+		fmt.Println("\n\U0001f527 GitHub Remotes")
+		remotes := ops.ReadGitHubRemotes()
+		if len(remotes) > 0 {
+			fmt.Println("  Current remotes:")
+			for _, r := range remotes {
+				fmt.Printf("    • %s (%s) %s\n", r.Name, r.Host, ops.MaskToken(r.Token))
+			}
+		}
+		for {
+			fmt.Print("\nAdd GitHub remote? (name or Enter to skip): ")
+			line, _ := reader.ReadString('\n')
+			name := strings.TrimSpace(line)
+			if name == "" {
+				break
+			}
+			fmt.Printf("  Host for '%s' (e.g., github.disney.com): ", name)
+			line, _ = reader.ReadString('\n')
+			host := strings.TrimSpace(line)
+			if host == "" {
+				continue
+			}
+			fmt.Printf("  Token for '%s': ", name)
+			var tok string
+			if isTerminal() {
+				raw, _ := term.ReadPassword(int(syscall.Stdin))
+				fmt.Println()
+				tok = strings.TrimSpace(string(raw))
+			} else {
+				line, _ = reader.ReadString('\n')
+				tok = strings.TrimSpace(line)
+			}
+			if tok == "" {
+				continue
+			}
+			ops.WriteGitHubRemote(model.GitHubRemote{Name: name, Host: host, Token: tok})
+			fmt.Printf("  \u2713 Added remote '%s'\n", name)
+		}
+
 		ops.InjectAgentTokens(config.TargetDir(projectDir))
 		fmt.Println("\n\u2705 Tokens saved")
 		return nil

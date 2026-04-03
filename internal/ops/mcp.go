@@ -69,11 +69,6 @@ func MCPInstall(steerRoot, targetDir string) error {
 			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "confluence-mcp", "dist", "index.cjs")},
 			Env:     map[string]string{"CONFLUENCE_URL": envVars["CONFLUENCE_URL"], "CONFLUENCE_PAT": tokens["CONFLUENCE_PAT"]},
 		},
-		"github": {
-			Command: "node",
-			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "github-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"GITHUB_URL": envVars["GITHUB_URL"], "GITHUB_TOKEN": tokens["GITHUB_TOKEN"]},
-		},
 		"mermaid": {
 			Command: "node",
 			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "mermaid-diagram-mcp", "dist", "index.cjs")},
@@ -96,6 +91,25 @@ func MCPInstall(steerRoot, targetDir string) error {
 			Command: "npx",
 			Args:    []string{"-y", "@upstash/context7-mcp"},
 		},
+	}
+
+	// GitHub: per-remote entries (single remote keeps "github" name for compat)
+	ghRemotes := ReadGitHubRemotes()
+	ghBundle := filepath.Join(home, ".kiro", "tools", "mcp-servers", "github-mcp", "dist", "index.cjs")
+	if len(ghRemotes) == 1 {
+		env := map[string]string{"GITHUB_REMOTE": ghRemotes[0].Name, "GITHUB_HOST": ghRemotes[0].Host, "GITHUB_TOKEN": ghRemotes[0].Token}
+		if ghRemotes[0].APIPath != "" {
+			env["GITHUB_API_PATH"] = ghRemotes[0].APIPath
+		}
+		servers["github"] = mcpServer{Command: "node", Args: []string{ghBundle}, Env: env}
+	} else {
+		for _, r := range ghRemotes {
+			env := map[string]string{"GITHUB_REMOTE": r.Name, "GITHUB_HOST": r.Host, "GITHUB_TOKEN": r.Token}
+			if r.APIPath != "" {
+				env["GITHUB_API_PATH"] = r.APIPath
+			}
+			servers["github-"+r.Name] = mcpServer{Command: "node", Args: []string{ghBundle}, Env: env}
+		}
 	}
 
 	mcpConfig := map[string]any{"mcpServers": servers}

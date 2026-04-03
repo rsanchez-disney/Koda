@@ -51,6 +51,7 @@ const (
 	screenFork
 	screenCreateWorkspace
 	screenEnvVars
+	screenGitHub
 )
 
 type model struct {
@@ -73,6 +74,10 @@ type model struct {
 	rules         []ruleItem
 	mcpServers    []mcpItem
 	envVars       map[string]string
+	ghRemotes     []mdl.GitHubRemote
+	ghInput       string
+	ghField       int // 0=name, 1=host, 2=token
+	ghAdding      bool
 	envVarKeys    []string
 	envInput      string
 	envNewKey     string
@@ -142,6 +147,7 @@ func (m *model) refresh() {
 	m.workspaces, _ = ops.ListWorkspaces(m.steerRoot)
 	m.agents = ops.AllAgents(m.steerRoot, m.targetDir)
 	m.envVars = ops.ReadEnvVars()
+	m.ghRemotes = ops.ReadGitHubRemotes()
 	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
 	availRules := ops.ListRules(m.steerRoot)
 	m.rules = nil
@@ -199,6 +205,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case doctorFixDoneMsg:
 		m.envVars = ops.ReadEnvVars()
+	m.ghRemotes = ops.ReadGitHubRemotes()
 	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
 		if msg.err != nil {
 			m.statusMsg = "Fix failed: " + msg.err.Error()
@@ -281,6 +288,13 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return syncDoneMsg{err: err}
 			}
 		}
+	case "g":
+		m.ghRemotes = ops.ReadGitHubRemotes()
+		m.ghAdding = false
+		m.ghInput = ""
+		m.ghField = 0
+		m.cursor = 0
+		m.screen = screenGitHub
 	case "y":
 		if tray.AutoStartEnabled() {
 			tray.DisableAutoStart()
@@ -415,6 +429,7 @@ func (m model) viewDashboard() string {
 	b.WriteString(activeStyle.Render("[r]") + " Rules\n")
 	b.WriteString(activeStyle.Render("  [m]") + " MCP         ")
 	b.WriteString(activeStyle.Render("[e]") + " Env Vars\n")
+	b.WriteString(activeStyle.Render("  [g]") + fmt.Sprintf(" GitHub (%d) ", len(m.ghRemotes)))
 	b.WriteString(activeStyle.Render("  [s]") + " Sync        ")
 	b.WriteString(activeStyle.Render("[c]") + " Clean\n")
 	if settings.Source == "git" {
@@ -1115,6 +1130,129 @@ func (m model) viewWorkspaces() string {
 	return boxStyle.Render(b.String())
 }
 
+// --- GitHub Remotes ---
+
+func (m model) updateGitHub(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	if m.ghAdding {
+		switch key {
+		case "esc":
+			m.ghAdding = false
+			m.ghInput = ""
+			m.ghField = 0
+		case "enter":
+			val := strings.TrimSpace(m.ghInput)
+			m.ghInput = ""
+			switch m.ghField {
+			case 0: // name entered
+				if val != "" {
+					m.ghRemotes = append(m.ghRemotes, mdl.GitHubRemote{Name: val})
+					m.ghField = 1
+				}
+			case 1: // host entered
+				if val != "" {
+					m.ghRemotes[len(m.ghRemotes)-1].Host = val
+					m.ghField = 2
+				}
+			case 2: // token entered
+				if val != "" {
+					r := &m.ghRemotes[len(m.ghRemotes)-1]
+					r.Token = val
+					ops.WriteGitHubRemote(*r)
+					m.ghAdding = false
+					m.ghField = 0
+					m.statusMsg = fmt.Sprintf("Added remote '%s'", r.Name)
+				}
+			}
+		case "backspace":
+			if len(m.ghInput) > 0 {
+				m.ghInput = m.ghInput[:len(m.ghInput)-1]
+			}
+		default:
+			if len(key) >= 1 && key[0] >= 32 {
+				m.ghInput += key
+			}
+		}
+		return m, nil
+	}
+
+	switch key {
+	case "esc":
+		m.screen = screenDashboard
+		m.statusMsg = ""
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.ghRemotes)-1 {
+			m.cursor++
+		}
+	case "n":
+		m.ghAdding = true
+		m.ghField = 0
+		m.ghInput = ""
+	case "d":
+		if m.cursor < len(m.ghRemotes) {
+			name := m.ghRemotes[m.cursor].Name
+			ops.RemoveGitHubRemote(name)
+			m.ghRemotes = ops.ReadGitHubRemotes()
+			if m.cursor >= len(m.ghRemotes) {
+				m.cursor = len(m.ghRemotes) - 1
+			}
+			m.statusMsg = fmt.Sprintf("Removed remote '%s'", name)
+		}
+	}
+	return m, nil
+}
+
+func (m model) viewGitHub() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("GitHub Remotes") + dimStyle.Render("  n=add  d=delete  esc=back"))
+	b.WriteString("\n\n")
+
+	if len(m.ghRemotes) == 0 && !m.ghAdding {
+		b.WriteString(dimStyle.Render("  No GitHub remotes configured"))
+		b.WriteString("\n")
+	}
+
+	for i, r := range m.ghRemotes {
+		cursor := "  "
+		if i == m.cursor && !m.ghAdding {
+			cursor = activeStyle.Render("\u25b8 ")
+		}
+		name := r.Name
+		host := dimStyle.Render(r.Host)
+		tok := errStyle.Render("no token")
+		if r.Token != "" {
+			tok = checkStyle.Render(ops.MaskToken(r.Token))
+		}
+		b.WriteString(fmt.Sprintf("%s%-12s %s  %s\n", cursor, name, host, tok))
+	}
+
+	if m.ghAdding {
+		b.WriteString("\n")
+		labels := []string{"  Name:  ", "  Host:  ", "  Token: "}
+		for i, label := range labels {
+			if i == m.ghField {
+				b.WriteString(activeStyle.Render("\u25b8 "+label) + activeStyle.Render(m.ghInput+"\u2588") + "\n")
+			} else if i < m.ghField {
+				var val string
+				switch i {
+				case 0:
+					val = m.ghRemotes[len(m.ghRemotes)-1].Name
+				case 1:
+					val = m.ghRemotes[len(m.ghRemotes)-1].Host
+				}
+				b.WriteString("  " + label + checkStyle.Render(val) + "\n")
+			}
+		}
+	}
+
+	return boxStyle.Render(b.String())
+}
+
 // --- Agents ---
 
 func (m model) updateAgents(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1408,6 +1546,8 @@ func (m model) View() string {
 		return m.viewFork()
 	case screenEnvVars:
 		return m.viewEnvVars()
+	case screenGitHub:
+		return m.viewGitHub()
 	case screenCreateWorkspace:
 		return m.viewCreateWorkspace()
 	default:
