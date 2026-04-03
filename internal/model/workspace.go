@@ -39,6 +39,7 @@ var KnownTokens = []Token{
 	{Key: "SONARQUBE_TOKEN", Label: "SonarQube Token", Hint: "https://sonar.cicd.wdprapps.disney.com/account/security"},
 	{Key: "MYWIKI_PAT", Label: "MyWiki PAT", Hint: "https://mywiki.disney.com/plugins/personalaccesstokens/usertokens.action"},
 	{Key: "HARNESS_API_KEY", Label: "Harness API Key", Hint: "https://disney.harness.io/ → My Profile → API Key"},
+	{Key: "FIGMA_TOKEN", Label: "Figma Token", Hint: "https://www.figma.com/developers/api#access-tokens"},
 }
 
 // EnvVar represents a managed environment variable.
