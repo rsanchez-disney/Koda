@@ -384,11 +384,13 @@ func (m model) viewDashboard() string {
 	b.WriteString(fmt.Sprintf("  Target:    %s\n", dimStyle.Render(m.targetDir)))
 
 	settings := config.ReadSteerSettings()
-	if settings.Source == "git" {
-		b.WriteString(fmt.Sprintf("  Runtime:   %s\n", dimStyle.Render(settings.Repo+"@"+settings.Branch+" (git)")))
-	} else if ver, err := os.ReadFile(filepath.Join(m.steerRoot, "VERSION")); err == nil {
-		b.WriteString(fmt.Sprintf("  Runtime:   %s\n", dimStyle.Render(strings.TrimSpace(string(ver))+" (tarball)")))
+	runtimeInfo := settings.Source
+	if ver, err := os.ReadFile(filepath.Join(m.steerRoot, "VERSION")); err == nil {
+		runtimeInfo = strings.TrimSpace(string(ver)) + " (" + settings.Source + ")"
+	} else if settings.Source == "git" {
+		runtimeInfo = settings.Repo + "@" + settings.Branch + " (git)"
 	}
+	b.WriteString(fmt.Sprintf("  Runtime:   %s\n", dimStyle.Render(runtimeInfo)))
 	if ws := config.ReadSteerSettings().ActiveWorkspace; ws != "" {
 		b.WriteString(fmt.Sprintf("  Workspace: %s\n", checkStyle.Render(ws)))
 	}
