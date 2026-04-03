@@ -53,9 +53,12 @@ func MCPInstall(steerRoot, targetDir string) error {
 	home, _ := os.UserHomeDir()
 
 	type mcpServer struct {
-		Command string            `json:"command"`
-		Args    []string          `json:"args"`
+		Command string            `json:"command,omitempty"`
+		Args    []string          `json:"args,omitempty"`
 		Env     map[string]string `json:"env,omitempty"`
+		URL     string            `json:"url,omitempty"`
+		Type    string            `json:"type,omitempty"`
+		Headers map[string]string `json:"headers,omitempty"`
 	}
 
 	servers := map[string]mcpServer{
@@ -109,6 +112,15 @@ func MCPInstall(steerRoot, targetDir string) error {
 				env["GITHUB_API_PATH"] = r.APIPath
 			}
 			servers["github-"+r.Name] = mcpServer{Command: "node", Args: []string{ghBundle}, Env: env}
+		}
+	}
+
+	// Compass: remote SSE MCP
+	if ct := tokens["COMPASS_TOKEN"]; ct != "" {
+		servers["compass"] = mcpServer{
+			URL:     envVars["COMPASS_URL"],
+			Type:    "sse",
+			Headers: map[string]string{"Authorization": "Bearer " + ct},
 		}
 	}
 
