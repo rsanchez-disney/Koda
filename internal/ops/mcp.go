@@ -87,6 +87,11 @@ func MCPInstall(steerRoot, targetDir string) error {
 			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "mywiki-mcp", "dist", "index.cjs")},
 			Env:     map[string]string{"CONFLUENCE_URL": envVars["MYWIKI_URL"], "CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
 		},
+		"figma": {
+			Command: "node",
+			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "figma-mcp", "dist", "index.cjs")},
+			Env:     map[string]string{"FIGMA_TOKEN": tokens["FIGMA_TOKEN"]},
+		},
 		"context7": {
 			Command: "npx",
 			Args:    []string{"-y", "@upstash/context7-mcp"},
