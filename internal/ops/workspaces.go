@@ -12,43 +12,86 @@ import (
 	"github.disney.com/SANCR225/koda/internal/model"
 )
 
-// ListWorkspaces discovers workspace.json files under steerRoot/workspaces/.
+// ListWorkspaces discovers workspace.json files under steerRoot/workspaces/ recursively.
 func ListWorkspaces(steerRoot string) ([]model.Workspace, error) {
 	wsDir := filepath.Join(steerRoot, config.WorkspacesDir)
-	entries, err := os.ReadDir(wsDir)
-	if err != nil {
-		return nil, nil
-	}
 	var workspaces []model.Workspace
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
+	filepath.Walk(wsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || info.Name() != "workspace.json" {
+			return nil
 		}
-		wsFile := filepath.Join(wsDir, e.Name(), "workspace.json")
-		data, err := os.ReadFile(wsFile)
+		data, err := os.ReadFile(path)
 		if err != nil {
-			continue
+			return nil
 		}
 		var ws model.Workspace
 		if json.Unmarshal(data, &ws) == nil {
 			workspaces = append(workspaces, ws)
 		}
-	}
+		return nil
+	})
 	return workspaces, nil
 }
 
-// GetWorkspace loads a single workspace by name.
+// GetWorkspace loads a single workspace by name, searching recursively.
 func GetWorkspace(steerRoot, name string) (model.Workspace, error) {
+	// Try flat path first (fast path)
 	wsFile := filepath.Join(steerRoot, config.WorkspacesDir, name, "workspace.json")
-	data, err := os.ReadFile(wsFile)
-	if err != nil {
-		return model.Workspace{}, fmt.Errorf("workspace not found: %s", name)
+	if data, err := os.ReadFile(wsFile); err == nil {
+		var ws model.Workspace
+		if json.Unmarshal(data, &ws) == nil {
+			return ws, nil
+		}
 	}
-	var ws model.Workspace
-	if err := json.Unmarshal(data, &ws); err != nil {
-		return model.Workspace{}, err
+	// Search recursively
+	wsDir := filepath.Join(steerRoot, config.WorkspacesDir)
+	var found model.Workspace
+	var foundErr error = fmt.Errorf("workspace not found: %s", name)
+	filepath.Walk(wsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || info.Name() != "workspace.json" {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		var ws model.Workspace
+		if json.Unmarshal(data, &ws) == nil && ws.Name == name {
+			found = ws
+			foundErr = nil
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found, foundErr
+}
+
+// findWorkspaceDir returns the directory containing a workspace.json for the given name.
+func findWorkspaceDir(steerRoot, name string) string {
+	// Try flat path first
+	flat := filepath.Join(steerRoot, config.WorkspacesDir, name)
+	if _, err := os.Stat(filepath.Join(flat, "workspace.json")); err == nil {
+		return flat
 	}
-	return ws, nil
+	// Search recursively
+	wsDir := filepath.Join(steerRoot, config.WorkspacesDir)
+	var result string
+	filepath.Walk(wsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || info.Name() != "workspace.json" {
+			return nil
+		}
+		data, _ := os.ReadFile(path)
+		var ws model.Workspace
+		if json.Unmarshal(data, &ws) == nil && ws.Name == name {
+			result = filepath.Dir(path)
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if result != "" {
+		return result
+	}
+	return flat // fallback
 }
 
 // ResolveWorkspace walks the extends chain and merges into a single workspace.
@@ -138,7 +181,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 		InstallProfile(steerRoot, p, targetDir)
 	}
 	for _, wsName := range wsNames {
-		wsProfilesDir := filepath.Join(steerRoot, config.WorkspacesDir, wsName, "profiles")
+		wsProfilesDir := filepath.Join(findWorkspaceDir(steerRoot, wsName), "profiles")
 		for _, p := range profiles {
 			wsProfile := filepath.Join(wsProfilesDir, p)
 			if _, err := os.Stat(wsProfile); err == nil {
@@ -159,7 +202,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 
 	// Copy rules and context from each workspace in the chain (root first)
 	for _, wsName := range wsNames {
-		wsPath := filepath.Join(steerRoot, config.WorkspacesDir, wsName)
+		wsPath := findWorkspaceDir(steerRoot, wsName)
 		copyDirContents(filepath.Join(wsPath, config.RulesDir), filepath.Join(targetDir, config.RulesDir))
 		copyDirContents(filepath.Join(wsPath, config.ContextDir), filepath.Join(targetDir, config.ContextDir))
 	}
