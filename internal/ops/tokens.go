@@ -12,6 +12,72 @@ import (
 	"github.disney.com/SANCR225/koda/internal/model"
 )
 
+// ReadGitHubRemotes discovers GitHub remotes from tokens.env by scanning for GITHUB_TOKEN_* keys.
+// Falls back to single remote from GITHUB_TOKEN + GITHUB_URL if no suffixed keys found.
+func ReadGitHubRemotes() []model.GitHubRemote {
+	tokens := ReadTokens()
+	var remotes []model.GitHubRemote
+	seen := map[string]bool{}
+
+	for k, v := range tokens {
+		if !strings.HasPrefix(k, "GITHUB_TOKEN_") || v == "" {
+			continue
+		}
+		name := strings.TrimPrefix(k, "GITHUB_TOKEN_")
+		host := tokens["GITHUB_HOST_"+name]
+		if host == "" {
+			continue
+		}
+		seen[name] = true
+		remotes = append(remotes, model.GitHubRemote{
+			Name:    name,
+			Host:    host,
+			Token:   v,
+			APIPath: tokens["GITHUB_API_PATH_"+name],
+		})
+	}
+
+	// Backward compat: single GITHUB_TOKEN → remote "disney"
+	if len(remotes) == 0 {
+		if tok := tokens["GITHUB_TOKEN"]; tok != "" {
+			host := tokens["GITHUB_URL"]
+			if host == "" {
+				host = "https://github.disney.com"
+			}
+			// Strip https:// for host
+			host = strings.TrimPrefix(host, "https://")
+			host = strings.TrimPrefix(host, "http://")
+			remotes = append(remotes, model.GitHubRemote{
+				Name:  "disney",
+				Host:  host,
+				Token: tok,
+			})
+		}
+	}
+
+	return remotes
+}
+
+// WriteGitHubRemote adds or updates a GitHub remote in tokens.env.
+func WriteGitHubRemote(r model.GitHubRemote) {
+	tokens := ReadTokens()
+	tokens["GITHUB_TOKEN_"+r.Name] = r.Token
+	tokens["GITHUB_HOST_"+r.Name] = r.Host
+	if r.APIPath != "" {
+		tokens["GITHUB_API_PATH_"+r.Name] = r.APIPath
+	}
+	WriteTokens(tokens)
+}
+
+// RemoveGitHubRemote removes a GitHub remote from tokens.env.
+func RemoveGitHubRemote(name string) {
+	tokens := ReadTokens()
+	delete(tokens, "GITHUB_TOKEN_"+name)
+	delete(tokens, "GITHUB_HOST_"+name)
+	delete(tokens, "GITHUB_API_PATH_"+name)
+	WriteTokens(tokens)
+}
+
 // ReadTokens reads key=value pairs from ~/.kiro/tokens.env.
 func ReadTokens() map[string]string {
 	tokens := map[string]string{}
@@ -42,9 +108,17 @@ func WriteTokens(tokens map[string]string) error {
 
 	var lines []string
 	lines = append(lines, "# Koda Agent Tokens")
+	written := map[string]bool{}
 	for _, t := range model.KnownTokens {
 		if v, ok := tokens[t.Key]; ok && v != "" {
 			lines = append(lines, fmt.Sprintf("%s=%s", t.Key, v))
+			written[t.Key] = true
+		}
+	}
+	// Write GitHub remote keys and any other custom keys
+	for k, v := range tokens {
+		if !written[k] && v != "" {
+			lines = append(lines, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0600)
@@ -61,9 +135,18 @@ func InjectAgentTokens(targetDir string) error {
 	injections := map[string]map[string]string{
 		"jira":       {"JIRA_PAT": tokens["JIRA_PAT"]},
 		"confluence": {"CONFLUENCE_PAT": tokens["CONFLUENCE_PAT"]},
-		"github":     {"GITHUB_TOKEN": tokens["GITHUB_TOKEN"]},
 		"mywiki":     {"CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
 		"figma":      {"FIGMA_TOKEN": tokens["FIGMA_TOKEN"]},
+	}
+
+	// GitHub: per-remote injections
+	ghRemotes := ReadGitHubRemotes()
+	if len(ghRemotes) == 1 {
+		injections["github"] = map[string]string{"GITHUB_TOKEN": ghRemotes[0].Token}
+	} else {
+		for _, r := range ghRemotes {
+			injections["github-"+r.Name] = map[string]string{"GITHUB_TOKEN": r.Token}
+		}
 	}
 
 	agentsDir := filepath.Join(targetDir, config.AgentsDir)
