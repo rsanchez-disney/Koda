@@ -66,8 +66,8 @@ func SyncSteerRuntime(steerRoot, targetDir string) error {
 
 func syncGit(steerRoot string) error {
 	cmd := exec.Command("git", "-C", steerRoot, "pull", "--ff-only")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	return cmd.Run()
 }
 
