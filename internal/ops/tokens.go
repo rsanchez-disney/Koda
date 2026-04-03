@@ -155,14 +155,65 @@ func InjectAgentTokens(targetDir string) error {
 		return nil
 	}
 
+	// Build tool expansion map for multi-remote (e.g., @github/* → @github-disney/*, @github-public/*)
+	var toolExpansions map[string][]string
+	if len(ghRemotes) > 1 {
+		toolExpansions = map[string][]string{}
+		for _, r := range ghRemotes {
+			toolExpansions["@github/*"] = append(toolExpansions["@github/*"], "@github-"+r.Name+"/*")
+		}
+	}
+
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), "._") {
 			continue
 		}
 		path := filepath.Join(agentsDir, e.Name())
 		injectTokensInFile(path, injections)
+		if len(toolExpansions) > 0 {
+			expandToolRefs(path, toolExpansions)
+		}
 	}
 	return nil
+}
+
+// expandToolRefs replaces tool references in an agent's tools array.
+// e.g., @github/* → @github-disney/*, @github-public/*
+func expandToolRefs(path string, expansions map[string][]string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return
+	}
+	toolsRaw, ok := raw["tools"]
+	if !ok {
+		return
+	}
+	var tools []string
+	if json.Unmarshal(toolsRaw, &tools) != nil {
+		return
+	}
+	var expanded []string
+	changed := false
+	for _, t := range tools {
+		if replacements, ok := expansions[t]; ok {
+			expanded = append(expanded, replacements...)
+			changed = true
+		} else {
+			expanded = append(expanded, t)
+		}
+	}
+	if changed {
+		if b, err := json.Marshal(expanded); err == nil {
+			raw["tools"] = b
+		}
+		if out, err := json.MarshalIndent(raw, "", "  "); err == nil {
+			os.WriteFile(path, append(out, '\n'), 0644)
+		}
+	}
 }
 
 func injectTokensInFile(path string, injections map[string]map[string]string) {
