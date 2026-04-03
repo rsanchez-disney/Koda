@@ -39,6 +39,7 @@ var KnownTokens = []Token{
 	{Key: "MYWIKI_PAT", Label: "MyWiki PAT", Hint: "https://mywiki.disney.com/plugins/personalaccesstokens/usertokens.action"},
 	{Key: "HARNESS_API_KEY", Label: "Harness API Key", Hint: "https://disney.harness.io/ → My Profile → API Key"},
 	{Key: "FIGMA_TOKEN", Label: "Figma Token", Hint: "https://www.figma.com/developers/api#access-tokens"},
+	{Key: "COMPASS_TOKEN", Label: "Compass Token", Hint: "https://compass.wdprapps.disney.com — contact your team lead"},
 }
 
 // EnvVar represents a managed environment variable.
@@ -61,4 +62,5 @@ var KnownEnvVars = []EnvVar{
 	{Key: "CONFLUENCE_URL", Default: "https://confluence.disney.com", Description: "Confluence URL"},
 	{Key: "MYWIKI_URL", Default: "https://mywiki.disney.com", Description: "MyWiki Confluence URL"},
 	{Key: "JIRA_URL", Default: "https://jira.disney.com", Description: "Jira URL"},
+	{Key: "COMPASS_URL", Default: "https://compass.wdprapps.disney.com/api/mcp/mcp-60d5792b-5ce9-469b-9a6b-b08216eb267e", Description: "Compass MCP endpoint URL"},
 }
