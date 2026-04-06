@@ -38,38 +38,38 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 	if err != nil {
 		return nil, err
 	}
-	var profiles []model.Profile
-	seen := map[string]bool{}
+	// Index global profiles by ID
+	globalByID := map[string]model.Profile{}
+	var globalOrder []string
 	for _, d := range dirs {
-		id := strings.TrimPrefix(filepath.Base(d), config.ProfilePrefix)
+		id := filepath.Base(d)
 		agents, _ := discoverAgents(d)
 		installed := isProfileInstalled(id, d, targetDir)
-		profiles = append(profiles, model.Profile{
+		globalByID[id] = model.Profile{
 			ID:         id,
 			SourceDir:  d,
 			Agents:     agents,
 			AgentCount: len(agents),
 			Installed:  installed,
-		})
-		seen[id] = true
+		}
+		globalOrder = append(globalOrder, id)
 	}
 
-	// Workspace-local profiles
+	// Workspace profiles override globals with same ID
 	wsGlob := filepath.Join(steerRoot, config.WorkspacesDir, "*", "profiles", "*")
 	wsDirs, _ := filepath.Glob(wsGlob)
+	overridden := map[string]bool{}
+	var wsProfiles []model.Profile
 	for _, d := range wsDirs {
 		info, err := os.Stat(d)
 		if err != nil || !info.IsDir() {
 			continue
 		}
 		id := filepath.Base(d)
-		if seen[id] {
-			continue
-		}
 		wsName := filepath.Base(filepath.Dir(filepath.Dir(d)))
 		agents, _ := discoverAgents(d)
 		installed := isProfileInstalled(id, d, targetDir)
-		profiles = append(profiles, model.Profile{
+		wsProfiles = append(wsProfiles, model.Profile{
 			ID:            id,
 			SourceDir:     d,
 			Agents:        agents,
@@ -77,8 +77,17 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 			Installed:     installed,
 			WorkspaceName: wsName,
 		})
-		seen[id] = true
+		overridden[id] = true
 	}
+
+	// Build result: globals (not overridden) + workspace profiles
+	var profiles []model.Profile
+	for _, id := range globalOrder {
+		if !overridden[id] {
+			profiles = append(profiles, globalByID[id])
+		}
+	}
+	profiles = append(profiles, wsProfiles...)
 	return profiles, nil
 }
 
