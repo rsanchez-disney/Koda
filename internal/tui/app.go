@@ -248,6 +248,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateFork(msg)
 		case screenEnvVars:
 			return m.updateEnvVars(msg)
+		case screenGitHub:
+			return m.updateGitHub(msg)
 		case screenCreateWorkspace:
 			return m.updateCreateWorkspace(msg)
 		}
