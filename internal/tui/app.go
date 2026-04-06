@@ -96,6 +96,7 @@ type model struct {
 
 type profileItem struct {
 	id         string
+	sourceDir  string
 	agentCount int
 	installed  bool
 	selected   bool
@@ -140,7 +141,7 @@ func (m *model) refresh() {
 	m.profiles = nil
 	for _, p := range profiles {
 		m.profiles = append(m.profiles, profileItem{
-			id: p.ID, agentCount: p.AgentCount, installed: p.Installed, selected: p.Installed, workspace: p.WorkspaceName,
+			id: p.ID, sourceDir: p.SourceDir, agentCount: p.AgentCount, installed: p.Installed, selected: p.Installed, workspace: p.WorkspaceName,
 		})
 	}
 	m.tokens = ops.ReadTokens()
@@ -866,7 +867,11 @@ func (m *model) applyProfileChanges() {
 	ops.InstallShared(m.steerRoot, m.targetDir)
 	for _, p := range m.profiles {
 		if p.selected && !p.installed {
-			ops.InstallProfile(m.steerRoot, p.id, m.targetDir)
+			if p.workspace != "" {
+				ops.InstallProfileFrom(p.sourceDir, m.targetDir)
+			} else {
+				ops.InstallProfile(m.steerRoot, p.id, m.targetDir)
+			}
 		} else if !p.selected && p.installed {
 			ops.RemoveProfile(m.steerRoot, p.id, m.targetDir)
 		}
@@ -880,21 +885,55 @@ func (m model) viewProfiles() string {
 	b.WriteString(titleStyle.Render("Profiles") + dimStyle.Render("  space=toggle  enter=apply  esc=back"))
 	b.WriteString("\n\n")
 
+	// Separate global and workspace profiles
+	var globals, wsProfiles []int
 	for i, p := range m.profiles {
+		if p.workspace != "" {
+			wsProfiles = append(wsProfiles, i)
+		} else {
+			globals = append(globals, i)
+		}
+	}
+
+	renderItem := func(i int) string {
+		p := m.profiles[i]
 		cursor := "  "
 		if i == m.cursor {
-			cursor = activeStyle.Render("\u25b8 ")
+			cursor = activeStyle.Render("▸ ")
 		}
 		check := dimStyle.Render("[ ]")
 		if p.selected {
-			check = checkStyle.Render("[\u2713]")
+			check = checkStyle.Render("[✓]")
 		}
 		name := fmt.Sprintf("%-14s", p.id)
 		if i == m.cursor {
 			name = activeStyle.Render(name)
 		}
-		b.WriteString(fmt.Sprintf("%s%s %s %s\n", cursor, check, name,
-			dimStyle.Render(fmt.Sprintf("%d agents", p.agentCount))+func() string { if p.workspace != "" { return " " + dimStyle.Render("[ws: "+p.workspace+"]") }; return "" }()))
+		return fmt.Sprintf("%s%s %s %s", cursor, check, name, dimStyle.Render(fmt.Sprintf("%d agents", p.agentCount)))
+	}
+
+	b.WriteString(dimStyle.Render("  ── Global ──") + "\n")
+	for _, i := range globals {
+		b.WriteString(renderItem(i) + "\n")
+	}
+
+	if len(wsProfiles) > 0 {
+		// Group by workspace name
+		wsGroups := map[string][]int{}
+		var wsOrder []string
+		for _, i := range wsProfiles {
+			ws := m.profiles[i].workspace
+			if _, seen := wsGroups[ws]; !seen {
+				wsOrder = append(wsOrder, ws)
+			}
+			wsGroups[ws] = append(wsGroups[ws], i)
+		}
+		for _, ws := range wsOrder {
+			b.WriteString("\n" + warnStyle.Render("  ── "+ws+" ──") + "\n")
+			for _, i := range wsGroups[ws] {
+				b.WriteString(renderItem(i) + "\n")
+			}
+		}
 	}
 
 	return boxStyle.Render(b.String())
