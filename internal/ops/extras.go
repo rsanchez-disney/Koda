@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -161,4 +162,116 @@ func listMDFiles(dir string) []string {
 		}
 	}
 	return names
+}
+
+// SyncAmazonQContext copies ~/.kiro/context/*.md to projectDir/.amazonq/rules/
+// as 60-ctx-<name> files, skipping any already covered by templates.
+func SyncAmazonQContext(projectDir string) int {
+	ctxDir := filepath.Join(config.KiroRoot(), config.ContextDir)
+	dstDir := filepath.Join(projectDir, ".amazonq", "rules")
+	os.MkdirAll(dstDir, 0755)
+
+	entries, err := os.ReadDir(ctxDir)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || strings.HasPrefix(e.Name(), "._") {
+			continue
+		}
+		// Skip if a template already covers this name
+		matches, _ := filepath.Glob(filepath.Join(dstDir, "*"+e.Name()+"*"))
+		if len(matches) > 0 {
+			continue
+		}
+		copyFile(filepath.Join(ctxDir, e.Name()), filepath.Join(dstDir, "60-ctx-"+e.Name()))
+		count++
+	}
+	return count
+}
+
+// SyncAmazonQMCP merges ~/.kiro/settings/mcp.json into ~/.aws/amazonq/mcp.json,
+// preserving any user-added servers.
+func SyncAmazonQMCP() (int, error) {
+	home, _ := os.UserHomeDir()
+	kiroMCP := filepath.Join(config.KiroRoot(), config.SettingsDir, "mcp.json")
+	aqMCP := filepath.Join(home, ".aws", "amazonq", "mcp.json")
+
+	kiroData, err := os.ReadFile(kiroMCP)
+	if err != nil {
+		return 0, fmt.Errorf("no Kiro MCP config at %s — run 'koda mcp-install' first", kiroMCP)
+	}
+
+	// Parse Kiro config
+	var kiro map[string]interface{}
+	if err := json.Unmarshal(kiroData, &kiro); err != nil {
+		return 0, fmt.Errorf("invalid JSON in %s: %w", kiroMCP, err)
+	}
+	kiroServers, _ := kiro["mcpServers"].(map[string]interface{})
+
+	// Parse existing Amazon Q config (if any)
+	merged := map[string]interface{}{}
+	if aqData, err := os.ReadFile(aqMCP); err == nil {
+		var existing map[string]interface{}
+		if json.Unmarshal(aqData, &existing) == nil {
+			if s, ok := existing["mcpServers"].(map[string]interface{}); ok {
+				for k, v := range s {
+					merged[k] = v
+				}
+			}
+		}
+	}
+
+	// Kiro servers override existing
+	for k, v := range kiroServers {
+		merged[k] = v
+	}
+
+	os.MkdirAll(filepath.Dir(aqMCP), 0755)
+	result, _ := json.MarshalIndent(map[string]interface{}{"mcpServers": merged}, "", "  ")
+	if err := os.WriteFile(aqMCP, append(result, '\n'), 0644); err != nil {
+		return 0, fmt.Errorf("failed to write %s: %w", aqMCP, err)
+	}
+	return len(kiroServers), nil
+}
+
+// AmazonQStatus returns a status report of Amazon Q sync state.
+type AmazonQStatusReport struct {
+	RulesDir   string
+	RulesCount int
+	MCPPath    string
+	MCPCount   int
+	KiroMCP    bool
+}
+
+func AmazonQStatus(projectDir string) AmazonQStatusReport {
+	home, _ := os.UserHomeDir()
+	report := AmazonQStatusReport{
+		RulesDir: filepath.Join(projectDir, ".amazonq", "rules"),
+		MCPPath:  filepath.Join(home, ".aws", "amazonq", "mcp.json"),
+	}
+
+	if entries, err := os.ReadDir(report.RulesDir); err == nil {
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".md") && !strings.HasPrefix(e.Name(), "._") {
+				report.RulesCount++
+			}
+		}
+	}
+
+	if data, err := os.ReadFile(report.MCPPath); err == nil {
+		var cfg map[string]interface{}
+		if json.Unmarshal(data, &cfg) == nil {
+			if s, ok := cfg["mcpServers"].(map[string]interface{}); ok {
+				report.MCPCount = len(s)
+			}
+		}
+	}
+
+	kiroMCP := filepath.Join(config.KiroRoot(), config.SettingsDir, "mcp.json")
+	_, err := os.Stat(kiroMCP)
+	report.KiroMCP = err == nil
+
+	return report
 }

@@ -200,4 +200,99 @@ func init() {
 	amazonqCmd.AddCommand(amazonqInstallCmd)
 	amazonqCmd.AddCommand(amazonqRemoveCmd)
 	amazonqCmd.AddCommand(amazonqSyncCmd)
+	amazonqCmd.AddCommand(amazonqSyncAllCmd)
+	amazonqCmd.AddCommand(amazonqSyncMCPCmd)
+	amazonqCmd.AddCommand(amazonqStatusCmd)
+}
+
+var amazonqSyncAllCmd = &cobra.Command{
+	Use:   "sync-all [dir]",
+	Short: "Full sync: templates + context + MCP to Amazon Q",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if steerRoot == "" {
+			return fmt.Errorf("steer-runtime not found")
+		}
+		dir := "."
+		if len(args) > 0 {
+			dir = args[0]
+		}
+		dir = expandHome(dir)
+
+		// 1. Templates
+		tplCount, err := ops.InstallAmazonQRules(steerRoot, dir)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("  ✓ %d template rules\n", tplCount)
+
+		// 2. Context
+		ctxCount := ops.SyncAmazonQContext(dir)
+		fmt.Printf("  ✓ %d context rules\n", ctxCount)
+
+		// 3. MCP
+		mcpCount, err := ops.SyncAmazonQMCP()
+		if err != nil {
+			fmt.Printf("  ⚠ MCP: %v\n", err)
+		} else {
+			fmt.Printf("  ✓ %d MCP servers synced\n", mcpCount)
+		}
+
+		fmt.Printf("\n✅ Amazon Q sync complete (%d rules total)\n", tplCount+ctxCount)
+		return nil
+	},
+}
+
+var amazonqSyncMCPCmd = &cobra.Command{
+	Use:   "sync-mcp",
+	Short: "Sync MCP servers to Amazon Q",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		count, err := ops.SyncAmazonQMCP()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("✅ %d MCP servers synced to Amazon Q\n", count)
+		return nil
+	},
+}
+
+var amazonqStatusCmd = &cobra.Command{
+	Use:   "status [dir]",
+	Short: "Show Amazon Q sync status",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dir := "."
+		if len(args) > 0 {
+			dir = args[0]
+		}
+		dir = expandHome(dir)
+
+		report := ops.AmazonQStatus(dir)
+		fmt.Println("📋 Amazon Q Sync Status")
+		fmt.Println()
+		if report.RulesCount > 0 {
+			fmt.Printf("  Rules:  %d files in %s\n", report.RulesCount, report.RulesDir)
+		} else {
+			fmt.Printf("  Rules:  ❌ Not configured (%s missing)\n", report.RulesDir)
+		}
+		if report.MCPCount > 0 {
+			fmt.Printf("  MCP:    %d servers in %s\n", report.MCPCount, report.MCPPath)
+		} else {
+			fmt.Printf("  MCP:    ❌ Not configured (%s missing)\n", report.MCPPath)
+		}
+		if report.KiroMCP {
+			fmt.Println("  Source: ✓ Kiro MCP config found")
+		} else {
+			fmt.Println("  Source: ❌ Run 'koda mcp-install' first")
+		}
+		return nil
+	},
+}
+
+func expandHome(path string) string {
+	if len(path) > 0 && path[0] == '~' {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, path[1:])
+	}
+	return path
 }
