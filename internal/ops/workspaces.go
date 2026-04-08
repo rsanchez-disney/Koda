@@ -127,6 +127,8 @@ func ResolveWorkspace(steerRoot string, ws model.Workspace) (model.Workspace, []
 		// Additive
 		merged.Profiles = appendUnique(merged.Profiles, child.Profiles)
 		merged.Rules = appendUnique(merged.Rules, child.Rules)
+		merged.Services = appendUnique(merged.Services, child.Services)
+		merged.Channels = appendUnique(merged.Channels, child.Channels)
 		// Child-wins scalars
 		merged.Name = child.Name
 		merged.Extends = child.Extends
@@ -208,6 +210,14 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	}
 
 	InjectAgentTokens(targetDir)
+
+	// Install service and channel banks
+	if len(resolved.Services) > 0 || len(resolved.Channels) > 0 {
+		svcN, chN := InstallBanks(steerRoot, targetDir, resolved.Services, resolved.Channels)
+		if svcN > 0 || chN > 0 {
+			fmt.Printf("  \u2713 %d service banks, %d channel banks\n", svcN, chN)
+		}
+	}
 
 	// For each project: clone if missing, then ensure memory bank exists
 	for _, p := range resolved.Projects {

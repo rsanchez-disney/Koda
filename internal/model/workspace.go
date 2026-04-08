@@ -12,6 +12,8 @@ type Workspace struct {
 	Rules         []string           `json:"rules"`
 	EnableTools   bool               `json:"enable_tools"`
 	JiraPrefix    string             `json:"jira_prefix"`
+	Services      []string           `json:"services,omitempty"`
+	Channels      []string           `json:"channels,omitempty"`
 	WorkspacePath string             `json:"workspace_path,omitempty"`
 }
 
