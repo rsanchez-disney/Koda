@@ -76,10 +76,8 @@ func ForkSteerRuntime(steerRoot, repo, branch string) error {
 	url := fmt.Sprintf("git@%s:%s.git", config.GHHost, repo)
 	os.RemoveAll(steerRoot)
 	cmd := exec.Command("git", "clone", "--depth", "1", "-b", branch, url, steerRoot)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git clone failed: %w", err)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git clone failed: %s", strings.TrimSpace(string(out)))
 	}
 
 	s := config.ReadSteerSettings()
