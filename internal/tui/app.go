@@ -115,10 +115,12 @@ type mcpItem struct {
 }
 
 // cleanKey strips terminal bracket-paste markers from pasted text.
-func cleanKey(key string) string {
-	key = strings.ReplaceAll(key, "[200~", "")
-	key = strings.ReplaceAll(key, "[201~", "")
-	return strings.TrimSpace(key)
+// Bubbletea wraps pasted text in [...] when Paste=true on KeyMsg.
+func cleanKey(msg tea.KeyMsg) string {
+	if msg.Paste {
+		return string(msg.Runes)
+	}
+	return msg.String()
 }
 
 type editorFinishedMsg struct{ err error }
@@ -551,7 +553,7 @@ func (m model) updateRules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.ruleInput = " " // activate input mode (trimmed on use)
 				return m, nil
 			}
-			m.ruleInput += cleanKey(key)
+			m.ruleInput += cleanKey(msg)
 		case "esc":
 			m.ruleInput = ""
 		case "enter":
@@ -772,7 +774,7 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.envInput == "" {
 			m.envNewKey = " "
 		} else {
-			m.envInput += cleanKey(key)
+			m.envInput += cleanKey(msg)
 		}
 	case "d":
 		if m.envInput == "" && m.cursor < len(m.envVarKeys) {
@@ -793,7 +795,7 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		} else {
-			m.envInput += cleanKey(key)
+			m.envInput += cleanKey(msg)
 		}
 	case "backspace":
 		if len(m.envInput) > 0 {
@@ -802,7 +804,7 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+u":
 		m.envInput = ""
 	default:
-		if ck := cleanKey(key); len(ck) >= 1 && ck[0] >= 32 {
+		if ck := cleanKey(msg); len(ck) >= 1 && ck[0] >= 32 {
 			m.envInput += ck
 		}
 	}
@@ -1021,7 +1023,7 @@ func (m model) updateTokens(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		delete(m.tokens, tk.Key)
 		m.tokenInput = ""
 	default:
-		if ck := cleanKey(key); len(ck) >= 1 && ck[0] >= 32 {
+		if ck := cleanKey(msg); len(ck) >= 1 && ck[0] >= 32 {
 			m.tokenInput += ck
 		}
 	}
@@ -1237,7 +1239,7 @@ func (m model) updateGitHub(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.ghInput = m.ghInput[:len(m.ghInput)-1]
 			}
 		default:
-			if ck := cleanKey(key); len(ck) >= 1 && ck[0] >= 32 {
+			if ck := cleanKey(msg); len(ck) >= 1 && ck[0] >= 32 {
 				m.ghInput += ck
 			}
 		}

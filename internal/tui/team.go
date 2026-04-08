@@ -214,7 +214,7 @@ func (m teamModel) updateWorkerChat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		key := msg.String()
 		if len(key) == 1 && key[0] >= 32 {
-			m.chatInput += cleanKey(key)
+			m.chatInput += cleanKey(msg)
 		}
 	}
 	return m, nil

@@ -153,15 +153,16 @@ func (m model) updateCreateWorkspace(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case cwRepos:
-		return m.cwUpdateRepos(key)
+		return m.cwUpdateRepos(msg)
 	default:
-		return m.cwUpdateTextField(key)
+		return m.cwUpdateTextField(msg)
 	}
 }
 
-func (m model) cwUpdateTextField(key string) (tea.Model, tea.Cmd) {
+func (m model) cwUpdateTextField(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	cw := &m.cw
 	ptr := cw.activeTextPtr()
+	key := msg.String()
 
 	switch key {
 	case "tab", "down", "enter":
@@ -184,7 +185,7 @@ func (m model) cwUpdateTextField(key string) (tea.Model, tea.Cmd) {
 		*ptr = ""
 	default:
 		if len(key) == 1 && key[0] >= 32 {
-			*ptr += cleanKey(key)
+			*ptr += cleanKey(msg)
 		}
 	}
 	return m, nil
@@ -232,8 +233,9 @@ func (m model) cwUpdateToggleList(key string, items []cwToggle) (tea.Model, tea.
 	return m, nil
 }
 
-func (m model) cwUpdateRepos(key string) (tea.Model, tea.Cmd) {
+func (m model) cwUpdateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	cw := &m.cw
+	key := msg.String()
 	totalItems := len(cw.repos) + 1 // repos + add input
 
 	switch key {
@@ -284,7 +286,7 @@ func (m model) cwUpdateRepos(key string) (tea.Model, tea.Cmd) {
 		}
 	default:
 		if cw.repoCursor >= len(cw.repos) && len(key) == 1 && key[0] >= 32 {
-			cw.repoInput += cleanKey(key)
+			cw.repoInput += cleanKey(msg)
 		}
 	}
 	return m, nil
