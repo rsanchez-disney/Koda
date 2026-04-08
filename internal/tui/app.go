@@ -89,6 +89,7 @@ type model struct {
 	forkField     int // 0=list, 1=branch, 2=manual
 	forkManual    string
 	forkError     string
+	forking       bool
 	cw            cwState
 	ghIdentity    ops.GHIdentity
 	kodaVersion   string
@@ -204,6 +205,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = "✅ Synced!"
 		}
 		return m, nil
+	case forkDoneMsg:
+		m.forking = false
+		if msg.err != nil {
+			m.statusMsg = "❌ " + msg.err.Error()
+		} else {
+			m.refresh()
+			if msg.repo == "official" {
+				m.statusMsg = "✅ Unforked! Back to official tarball."
+			} else {
+				m.statusMsg = fmt.Sprintf("✅ Forked to %s!", msg.repo)
+			}
+		}
+		return m, nil
 	case doctorFixDoneMsg:
 		m.envVars = ops.ReadEnvVars()
 	m.ghRemotes = ops.ReadGitHubRemotes()
@@ -313,11 +327,12 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		settings := config.ReadSteerSettings()
 		if settings.Source == "git" {
 			// Unfork: switch back to tarball
-			if err := ops.UnforkSteerRuntime(m.steerRoot); err != nil {
-				m.statusMsg = "Unfork failed: " + err.Error()
-			} else {
-				m.refresh()
-				m.statusMsg = "Unforked! Back to official tarball."
+			m.forking = true
+			m.statusMsg = "⏳ Switching to official tarball..."
+			steerRoot := m.steerRoot
+			return m, func() tea.Msg {
+				err := ops.UnforkSteerRuntime(steerRoot)
+				return forkDoneMsg{err: err, repo: "official"}
 			}
 		} else {
 			// Fork: load forks and show screen
@@ -497,6 +512,10 @@ func (m model) updateDoctor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 type doctorFixDoneMsg struct{ err error }
 type syncDoneMsg struct{ err error }
+type forkDoneMsg struct {
+	err  error
+	repo string
+}
 
 func (m model) viewDoctor() string {
 	var b strings.Builder
@@ -1448,13 +1467,14 @@ func (m model) updateFork(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if repo == "" {
 			return m, nil
 		}
-		if err := ops.ForkSteerRuntime(m.steerRoot, repo, m.forkBranch); err != nil {
-			m.statusMsg = "Fork failed: " + err.Error()
-		} else {
-			m.refresh()
-			m.statusMsg = fmt.Sprintf("Forked to %s@%s!", repo, m.forkBranch)
-		}
+		m.forking = true
+		m.statusMsg = "⏳ Cloning fork..."
 		m.screen = screenDashboard
+		steerRoot, branch := m.steerRoot, m.forkBranch
+		return m, func() tea.Msg {
+			err := ops.ForkSteerRuntime(steerRoot, repo, branch)
+			return forkDoneMsg{err: err, repo: repo}
+		}
 	case "backspace":
 		if m.forkField == 2 && len(m.forkManual) > 0 {
 			m.forkManual = m.forkManual[:len(m.forkManual)-1]
