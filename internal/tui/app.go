@@ -105,8 +105,9 @@ type profileItem struct {
 }
 
 type ruleItem struct {
-	name     string
-	selected bool
+	name      string
+	selected  bool
+	workspace string
 }
 
 type mcpItem struct {
@@ -160,10 +161,11 @@ func (m *model) refresh() {
 	m.envVars = ops.ReadEnvVars()
 	m.ghRemotes = ops.ReadGitHubRemotes()
 	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
-	availRules := ops.ListRules(m.steerRoot)
+	availRules := ops.ListRulesAll(m.steerRoot)
 	m.rules = nil
 	for _, r := range availRules {
-		m.rules = append(m.rules, ruleItem{name: r})
+		_, installed := os.Stat(filepath.Join(m.targetDir, config.RulesDir, r.Name+".md"))
+		m.rules = append(m.rules, ruleItem{name: r.Name, workspace: r.WorkspaceName, selected: installed == nil})
 	}
 	mcpDir := filepath.Join(m.targetDir, "tools", "mcp-servers")
 	m.mcpServers = nil
@@ -604,17 +606,17 @@ func (m model) updateRules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.rules[m.cursor].selected = !m.rules[m.cursor].selected
 		}
 	case "enter":
-		var names []string
+		var selected []ops.RuleInfo
 		for _, r := range m.rules {
 			if r.selected {
-				names = append(names, r.name)
+				selected = append(selected, ops.RuleInfo{Name: r.name, WorkspaceName: r.workspace})
 			}
 		}
-		if len(names) > 0 {
-			ops.InstallRules(m.steerRoot, m.targetDir, names)
+		if len(selected) > 0 {
+			ops.InstallRulesAll(m.steerRoot, m.targetDir, selected)
 		}
 		m.screen = screenDashboard
-		m.statusMsg = fmt.Sprintf("%d rules installed!", len(names))
+		m.statusMsg = fmt.Sprintf("%d rules installed!", len(selected))
 	}
 	return m, nil
 }
@@ -631,21 +633,57 @@ func (m model) viewRules() string {
 		b.WriteString(dimStyle.Render("  No rules found"))
 		return boxStyle.Render(b.String())
 	}
-	for i, r := range m.rules {
+
+	renderItem := func(i int) string {
+		r := m.rules[i]
 		cursor := "  "
 		if i == m.cursor {
-			cursor = activeStyle.Render("\u25b8 ")
+			cursor = activeStyle.Render("▸ ")
 		}
 		check := dimStyle.Render("[ ]")
 		if r.selected {
-			check = checkStyle.Render("[\u2713]")
+			check = checkStyle.Render("[✓]")
 		}
 		name := r.name
 		if i == m.cursor {
 			name = activeStyle.Render(name)
 		}
-		b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, check, name))
+		return fmt.Sprintf("%s%s %s", cursor, check, name)
 	}
+
+	// Separate global and workspace rules
+	var globals, wsRules []int
+	for i, r := range m.rules {
+		if r.workspace != "" {
+			wsRules = append(wsRules, i)
+		} else {
+			globals = append(globals, i)
+		}
+	}
+
+	b.WriteString(dimStyle.Render("  ── Global ──") + "\n")
+	for _, i := range globals {
+		b.WriteString(renderItem(i) + "\n")
+	}
+
+	if len(wsRules) > 0 {
+		wsGroups := map[string][]int{}
+		var wsOrder []string
+		for _, i := range wsRules {
+			ws := m.rules[i].workspace
+			if _, seen := wsGroups[ws]; !seen {
+				wsOrder = append(wsOrder, ws)
+			}
+			wsGroups[ws] = append(wsGroups[ws], i)
+		}
+		for _, ws := range wsOrder {
+			b.WriteString("\n" + activeStyle.Render("  ── "+ws+" ──") + "\n")
+			for _, i := range wsGroups[ws] {
+				b.WriteString(renderItem(i) + "\n")
+			}
+		}
+	}
+
 	return boxStyle.Render(b.String())
 }
 

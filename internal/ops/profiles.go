@@ -153,14 +153,12 @@ func InstallProfileFrom(srcDir, targetDir string) (int, error) {
 		count++
 	}
 
-	for _, sub := range []string{config.PromptsDir, config.ContextDir, "powers", "skills", "steering"} {
+	for _, sub := range []string{config.PromptsDir, config.ContextDir, config.RulesDir, "powers", "skills", "steering"} {
 		copyDirContents(filepath.Join(srcDir, sub), filepath.Join(targetDir, sub))
 	}
 
 	return count, nil
 }
-
-
 
 // RemoveProfile removes a profile's agents and prompts from targetDir.
 func RemoveProfile(steerRoot, profileID, targetDir string) (int, error) {
