@@ -444,7 +444,7 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		key := msg.String()
 		if len(key) == 1 && key[0] >= 32 {
-			m.input += key
+			m.input += cleanKey(key)
 		}
 	}
 	m.updateSuggestions()

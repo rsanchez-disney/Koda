@@ -184,7 +184,7 @@ func (m model) cwUpdateTextField(key string) (tea.Model, tea.Cmd) {
 		*ptr = ""
 	default:
 		if len(key) == 1 && key[0] >= 32 {
-			*ptr += key
+			*ptr += cleanKey(key)
 		}
 	}
 	return m, nil
@@ -284,7 +284,7 @@ func (m model) cwUpdateRepos(key string) (tea.Model, tea.Cmd) {
 		}
 	default:
 		if cw.repoCursor >= len(cw.repos) && len(key) == 1 && key[0] >= 32 {
-			cw.repoInput += key
+			cw.repoInput += cleanKey(key)
 		}
 	}
 	return m, nil

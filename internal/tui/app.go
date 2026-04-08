@@ -114,6 +114,13 @@ type mcpItem struct {
 	hasBundle bool
 }
 
+// cleanKey strips terminal bracket-paste markers from pasted text.
+func cleanKey(key string) string {
+	key = strings.ReplaceAll(key, "[200~", "")
+	key = strings.ReplaceAll(key, "[201~", "")
+	return strings.TrimSpace(key)
+}
+
 type editorFinishedMsg struct{ err error }
 
 func Run(steerRoot, targetDir, version string) (bool, error) {
@@ -544,7 +551,7 @@ func (m model) updateRules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.ruleInput = " " // activate input mode (trimmed on use)
 				return m, nil
 			}
-			m.ruleInput += key
+			m.ruleInput += cleanKey(key)
 		case "esc":
 			m.ruleInput = ""
 		case "enter":
@@ -765,7 +772,7 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.envInput == "" {
 			m.envNewKey = " "
 		} else {
-			m.envInput += key
+			m.envInput += cleanKey(key)
 		}
 	case "d":
 		if m.envInput == "" && m.cursor < len(m.envVarKeys) {
@@ -786,7 +793,7 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		} else {
-			m.envInput += key
+			m.envInput += cleanKey(key)
 		}
 	case "backspace":
 		if len(m.envInput) > 0 {
@@ -795,8 +802,8 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+u":
 		m.envInput = ""
 	default:
-		if len(key) >= 1 && key[0] >= 32 {
-			m.envInput += key
+		if ck := cleanKey(key); len(ck) >= 1 && ck[0] >= 32 {
+			m.envInput += ck
 		}
 	}
 	return m, nil
@@ -1014,8 +1021,8 @@ func (m model) updateTokens(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		delete(m.tokens, tk.Key)
 		m.tokenInput = ""
 	default:
-		if len(key) >= 1 && key[0] >= 32 {
-			m.tokenInput += key
+		if ck := cleanKey(key); len(ck) >= 1 && ck[0] >= 32 {
+			m.tokenInput += ck
 		}
 	}
 	return m, nil
@@ -1230,8 +1237,8 @@ func (m model) updateGitHub(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.ghInput = m.ghInput[:len(m.ghInput)-1]
 			}
 		default:
-			if len(key) >= 1 && key[0] >= 32 {
-				m.ghInput += key
+			if ck := cleanKey(key); len(ck) >= 1 && ck[0] >= 32 {
+				m.ghInput += ck
 			}
 		}
 		return m, nil
