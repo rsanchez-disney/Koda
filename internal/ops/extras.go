@@ -28,6 +28,7 @@ type RuleInfo struct {
 
 // ListRulesAll returns all rules: global ones first, then workspace-specific ones.
 // Workspace rules with the same name as a global rule override (replace) the global entry.
+// Within a workspace, duplicate rule names (e.g. same name in workspace/rules/ and profiles/*/rules/) are deduplicated.
 func ListRulesAll(steerRoot string) []RuleInfo {
 	globalNames := listMDFiles(filepath.Join(steerRoot, "common", config.RulesDir))
 
@@ -36,20 +37,26 @@ func ListRulesAll(steerRoot string) []RuleInfo {
 
 	collectRules := func(dir, wsName string) {
 		for _, name := range listMDFiles(dir) {
+			key := wsName + "/" + name
+			if overridden[key] {
+				continue
+			}
+			overridden[key] = true
+			overridden[name] = true // also suppress global with same name
 			wsRules = append(wsRules, RuleInfo{Name: name, WorkspaceName: wsName})
-			overridden[name] = true
 		}
 	}
 
-	// Workspace-level rules: workspaces/*/rules/
-	for _, dir := range globDirs(filepath.Join(steerRoot, config.WorkspacesDir, "*", config.RulesDir)) {
-		collectRules(dir, filepath.Base(filepath.Dir(dir)))
+	// TODO: support nested workspaces (currently only matches one level deep)
+	// Profile-level rules inside workspaces first (higher priority): workspaces/*/profiles/*/rules/
+	for _, dir := range globDirs(filepath.Join(steerRoot, config.WorkspacesDir, "*", "profiles", "*", config.RulesDir)) {
+		wsName := filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(dir))))
+		collectRules(dir, wsName)
 	}
 
-	// Profile-level rules inside workspaces: workspaces/*/profiles/*/rules/
-	for _, dir := range globDirs(filepath.Join(steerRoot, config.WorkspacesDir, "*", "profiles", "*", config.RulesDir)) {
-		wsName := filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(dir)))) // workspaces/<ws>/profiles/<p>/rules
-		collectRules(dir, wsName)
+	// Workspace-level rules (lower priority, deduplicated against profile rules): workspaces/*/rules/
+	for _, dir := range globDirs(filepath.Join(steerRoot, config.WorkspacesDir, "*", config.RulesDir)) {
+		collectRules(dir, filepath.Base(filepath.Dir(dir)))
 	}
 
 	var result []RuleInfo

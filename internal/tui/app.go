@@ -649,7 +649,7 @@ func (m model) viewRules() string {
 			wsGroups[ws] = append(wsGroups[ws], i)
 		}
 		for _, ws := range wsOrder {
-			b.WriteString("\n" + warnStyle.Render("  ── "+ws+" ──") + "\n")
+			b.WriteString("\n" + activeStyle.Render("  ── "+ws+" ──") + "\n")
 			for _, i := range wsGroups[ws] {
 				b.WriteString(renderItem(i) + "\n")
 			}
