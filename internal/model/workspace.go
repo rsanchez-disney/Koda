@@ -63,4 +63,5 @@ var KnownEnvVars = []EnvVar{
 	{Key: "MYWIKI_URL", Default: "https://mywiki.disney.com", Description: "MyWiki Confluence URL"},
 	{Key: "JIRA_URL", Default: "https://jira.disney.com", Description: "Jira URL"},
 	{Key: "COMPASS_URL", Default: "https://compass.wdprapps.disney.com/api/mcp/mcp-60d5792b-5ce9-469b-9a6b-b08216eb267e", Description: "Compass MCP endpoint URL"},
+	{Key: "CONTAINER_RUNTIME", Default: "", Description: "Container runtime (docker, nerdctl, podman) — auto-detected if empty"},
 }

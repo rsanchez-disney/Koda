@@ -124,6 +124,18 @@ func MCPInstall(steerRoot, targetDir string) error {
 		}
 	}
 
+	// Memory: docker-type MCP (HTTP endpoint when running)
+	memStatus := MemoryStatus(targetDir)
+	if memStatus.Running {
+		servers["memory"] = mcpServer{
+			URL:  fmt.Sprintf("http://localhost:%d/mcp", memStatus.Port),
+			Type: "sse",
+		}
+		fmt.Println("  ✓ memory-mcp (running)")
+	} else if memStatus.Installed {
+		fmt.Println("  ⚠ memory-mcp (installed but not running — use koda memory start)")
+	}
+
 	mcpConfig := map[string]any{"mcpServers": servers}
 
 	settingsDir := filepath.Join(home, ".kiro", config.SettingsDir)
