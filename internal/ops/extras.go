@@ -20,6 +20,47 @@ func ListRules(steerRoot string) []string {
 	return listMDFiles(filepath.Join(steerRoot, "common", config.RulesDir))
 }
 
+// RuleInfo describes a rule and its origin (global or workspace-specific).
+type RuleInfo struct {
+	Name          string
+	WorkspaceName string // empty = global
+}
+
+// ListRulesAll returns all rules: global ones first, then workspace-specific ones.
+// Workspace rules with the same name as a global rule override (replace) the global entry.
+func ListRulesAll(steerRoot string) []RuleInfo {
+	globalNames := listMDFiles(filepath.Join(steerRoot, "common", config.RulesDir))
+
+	overridden := map[string]bool{}
+	var wsRules []RuleInfo
+
+	collectRules := func(dir, wsName string) {
+		for _, name := range listMDFiles(dir) {
+			wsRules = append(wsRules, RuleInfo{Name: name, WorkspaceName: wsName})
+			overridden[name] = true
+		}
+	}
+
+	// Workspace-level rules: workspaces/*/rules/
+	for _, dir := range globDirs(filepath.Join(steerRoot, config.WorkspacesDir, "*", config.RulesDir)) {
+		collectRules(dir, filepath.Base(filepath.Dir(dir)))
+	}
+
+	// Profile-level rules inside workspaces: workspaces/*/profiles/*/rules/
+	for _, dir := range globDirs(filepath.Join(steerRoot, config.WorkspacesDir, "*", "profiles", "*", config.RulesDir)) {
+		wsName := filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(dir)))) // workspaces/<ws>/profiles/<p>/rules
+		collectRules(dir, wsName)
+	}
+
+	var result []RuleInfo
+	for _, name := range globalNames {
+		if !overridden[name] {
+			result = append(result, RuleInfo{Name: name})
+		}
+	}
+	return append(result, wsRules...)
+}
+
 // InstallRules copies rules to targetDir/rules/.
 func InstallRules(steerRoot, targetDir string, names []string) int {
 	srcDir := filepath.Join(steerRoot, "common", config.RulesDir)
@@ -30,6 +71,39 @@ func InstallRules(steerRoot, targetDir string, names []string) int {
 		src := filepath.Join(srcDir, name+".md")
 		if _, err := os.Stat(src); err == nil {
 			copyFile(src, filepath.Join(dstDir, name+".md"))
+			count++
+		}
+	}
+	return count
+}
+
+// InstallRulesAll installs rules from their respective sources (global or workspace-specific).
+// Workspace rules take priority and are copied from their workspace directory.
+func InstallRulesAll(steerRoot, targetDir string, rules []RuleInfo) int {
+	dstDir := filepath.Join(targetDir, config.RulesDir)
+	os.MkdirAll(dstDir, 0755)
+	count := 0
+	for _, r := range rules {
+		var src string
+		if r.WorkspaceName != "" {
+			// Try workspace-level first, then profile-level inside workspace
+			wsBase := filepath.Join(steerRoot, config.WorkspacesDir, r.WorkspaceName)
+			src = filepath.Join(wsBase, config.RulesDir, r.Name+".md")
+			if _, err := os.Stat(src); err != nil {
+				// Search in profiles subdirs
+				for _, dir := range globDirs(filepath.Join(wsBase, "profiles", "*", config.RulesDir)) {
+					candidate := filepath.Join(dir, r.Name+".md")
+					if _, err := os.Stat(candidate); err == nil {
+						src = candidate
+						break
+					}
+				}
+			}
+		} else {
+			src = filepath.Join(steerRoot, "common", config.RulesDir, r.Name+".md")
+		}
+		if _, err := os.Stat(src); err == nil {
+			copyFile(src, filepath.Join(dstDir, r.Name+".md"))
 			count++
 		}
 	}
@@ -162,6 +236,17 @@ func listMDFiles(dir string) []string {
 		}
 	}
 	return names
+}
+
+func globDirs(pattern string) []string {
+	matches, _ := filepath.Glob(pattern)
+	var dirs []string
+	for _, m := range matches {
+		if info, err := os.Stat(m); err == nil && info.IsDir() {
+			dirs = append(dirs, m)
+		}
+	}
+	return dirs
 }
 
 // SyncAmazonQContext copies ~/.kiro/context/*.md to projectDir/.amazonq/rules/
