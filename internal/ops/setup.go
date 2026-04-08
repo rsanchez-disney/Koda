@@ -139,14 +139,14 @@ func installGit() error {
 
 func installKiroCLI() error {
 	fmt.Println("  Install kiro-cli:")
-	fmt.Println("    npm install -g @anthropic/kiro-cli")
-	fmt.Println("  Or download from your internal distribution channel.")
-	if _, err := exec.LookPath("npm"); err == nil {
-		fmt.Print("  Attempt npm install now? This may require sudo. [y/N]: ")
+	fmt.Println("    curl -fsSL https://cli.kiro.dev/install | bash")
+	fmt.Println("  Or download from: https://kiro.dev/downloads/")
+	if _, err := exec.LookPath("curl"); err == nil {
+		fmt.Print("  Attempt install now? [y/N]: ")
 		var answer string
 		fmt.Scanln(&answer)
 		if strings.ToLower(answer) == "y" {
-			return runVisible("npm", "install", "-g", "@anthropic/kiro-cli")
+			return runVisible("bash", "-c", "curl -fsSL https://cli.kiro.dev/install | bash")
 		}
 	}
 	return nil
