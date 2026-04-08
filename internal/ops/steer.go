@@ -73,7 +73,7 @@ func syncGit(steerRoot string) error {
 
 // ForkSteerRuntime replaces the tarball install with a git clone of the given fork.
 func ForkSteerRuntime(steerRoot, repo, branch string) error {
-	url := fmt.Sprintf("git@%s:%s.git", config.GHHost, repo)
+	url := GitCloneURL(repo)
 	os.RemoveAll(steerRoot)
 	cmd := exec.Command("git", "clone", "--depth", "1", "-b", branch, url, steerRoot)
 	if out, err := cmd.CombinedOutput(); err != nil {

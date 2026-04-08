@@ -69,7 +69,7 @@ func CloneWorkspaceRepos(ws model.Workspace) (cloned int, errors []string) {
 		if _, err := os.Stat(filepath.Join(dest, ".git")); err == nil {
 			continue // already cloned
 		}
-		url := fmt.Sprintf("git@%s:%s.git", config.GHHost, p.Repo)
+		url := GitCloneURL(p.Repo)
 		cmd := exec.Command("git", "clone", url, dest)
 		if err := cmd.Run(); err != nil {
 			errors = append(errors, fmt.Sprintf("%s: %v", p.Name, err))

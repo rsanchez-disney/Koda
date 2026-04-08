@@ -87,3 +87,18 @@ func ListForks() ([]string, string) {
 	}
 	return forks, ""
 }
+
+// GitCloneURL returns a clone URL respecting gh's configured git_protocol.
+// Falls back to SSH if gh is not installed or protocol is unset.
+func GitCloneURL(repo string) string {
+	cmd := exec.Command("gh", "config", "get", "git_protocol")
+	out, err := cmd.Output()
+	proto := strings.TrimSpace(string(out))
+	if err != nil || proto == "" {
+		proto = "ssh"
+	}
+	if proto == "https" {
+		return "https://" + config.GHHost + "/" + repo + ".git"
+	}
+	return "git@" + config.GHHost + ":" + repo + ".git"
+}

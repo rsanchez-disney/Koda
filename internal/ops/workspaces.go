@@ -215,7 +215,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 		if _, err := os.Stat(filepath.Join(projPath, ".git")); err != nil {
 			if p.Repo != "" && resolved.WorkspacePath != "" {
 				fmt.Printf("  Cloning %s...\n", p.Name)
-				url := fmt.Sprintf("git@%s:%s.git", config.GHHost, p.Repo)
+				url := GitCloneURL(p.Repo)
 				if err := exec.Command("git", "clone", url, projPath).Run(); err != nil {
 					fmt.Printf("  \u2717 %s (clone failed: %v)\n", p.Name, err)
 					continue
