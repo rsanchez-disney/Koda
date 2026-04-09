@@ -1199,6 +1199,12 @@ func (m model) viewWorkspaces() string {
 		if idx == m.cursor && ws.Description != "" {
 			b.WriteString(fmt.Sprintf("    %s%s\n", dimStyle.Render(prefix), dimStyle.Render(ws.Description)))
 		}
+		if idx == m.cursor && len(ws.Services) > 0 {
+			b.WriteString(fmt.Sprintf("    %s%s %s\n", dimStyle.Render(prefix), dimStyle.Render("services:"), dimStyle.Render(strings.Join(ws.Services, ", "))))
+		}
+		if idx == m.cursor && len(ws.Channels) > 0 {
+			b.WriteString(fmt.Sprintf("    %s%s %s\n", dimStyle.Render(prefix), dimStyle.Render("channels:"), dimStyle.Render(strings.Join(ws.Channels, ", "))))
+		}
 		kids := children[ws.Name]
 		childPrefix := prefix
 		if prefix != "" {
