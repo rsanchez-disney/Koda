@@ -15,6 +15,7 @@ type KiroIDEResult struct {
 	Steering int
 	Skills   int
 	Hooks    int
+	MCP      int
 }
 
 // InstallKiroIDE installs steering + skills (user-level) and hooks (workspace-level).
@@ -34,6 +35,10 @@ func InstallKiroIDE(steerRoot, workspaceDir string) (KiroIDEResult, error) {
 			return r, err
 		}
 	}
+
+	// MCP bundles + mcp.json
+	r.MCP = CopyMcpBundles(steerRoot)
+	GenerateMcpJson(FindNodeExe())
 
 	return r, nil
 }
@@ -152,6 +157,9 @@ func FindNodeExe() string {
 			versions := filepath.Join(appdata, "fnm", "node-versions")
 			if entries, err := os.ReadDir(versions); err == nil {
 				for i := len(entries) - 1; i >= 0; i-- {
+				if !strings.HasPrefix(entries[i].Name(), "v") {
+					continue
+				}
 					candidate := filepath.Join(versions, entries[i].Name(), "installation", "node.exe")
 					if _, err := os.Stat(candidate); err == nil {
 						return candidate
@@ -175,6 +183,22 @@ func FindNodeExe() string {
 		return p
 	}
 	return "node"
+}
+
+// FindUvxExe returns the absolute path to uvx, or empty string if not found.
+func FindUvxExe() string {
+	if p, err := exec.LookPath("uvx"); err == nil {
+		return p
+	}
+	home, _ := os.UserHomeDir()
+	local := filepath.Join(home, ".local", "bin", "uvx")
+	if runtime.GOOS == "windows" {
+		local += ".exe"
+	}
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return ""
 }
 
 // KiroIDEStatus checks if Kiro IDE files are installed.

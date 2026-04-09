@@ -231,7 +231,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case kiroIDEDoneMsg:
-		m.statusMsg = fmt.Sprintf("\u2705 Kiro IDE %s: %d steering, %d skills, %d hooks", msg.action, msg.result.Steering, msg.result.Skills, msg.result.Hooks)
+		m.statusMsg = fmt.Sprintf("\u2705 Kiro IDE %s: %d steering, %d skills, %d hooks, %d MCP", msg.action, msg.result.Steering, msg.result.Skills, msg.result.Hooks, msg.result.MCP)
 		return m, nil
 	case doctorFixDoneMsg:
 		m.envVars = ops.ReadEnvVars()

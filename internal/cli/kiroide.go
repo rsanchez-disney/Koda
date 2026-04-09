@@ -30,7 +30,7 @@ var kiroIDEInstallCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("\n\u2705 Installed: %d steering, %d skills, %d hooks\n", r.Steering, r.Skills, r.Hooks)
+		fmt.Printf("\n\u2705 Installed: %d steering, %d skills, %d hooks, %d MCP servers\n", r.Steering, r.Skills, r.Hooks, r.MCP)
 		if wsDir == "" {
 			fmt.Println("\n\U0001f4a1 To install hooks, pass a workspace directory:")
 			fmt.Println("   koda kiro-ide install /path/to/project")
