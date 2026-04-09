@@ -26,6 +26,9 @@ func CheckDeps() []Dep {
 		{Name: "kiro-cli", Binary: "kiro-cli", InstallFn: installKiroCLI},
 		{Name: "GitHub CLI", Binary: "gh", InstallFn: installGH},
 	}
+	// Container runtime (needed for memory-mcp)
+	deps = append(deps, Dep{Name: "Container Runtime", Binary: containerRuntimeBinary(), InstallFn: installContainerRuntime})
+
 	// On Windows, check for WSL
 	if runtime.GOOS == "windows" {
 		deps = append(deps, Dep{Name: "WSL", Binary: "wsl", InstallFn: installWSL})
@@ -215,4 +218,47 @@ func installWSL() error {
 	fmt.Println("  Installing koda inside WSL...")
 	return runVisible("wsl", "--", "bash", "-c",
 		"curl -fsSL https://github.disney.com/raw/SANCR225/steer-runtime/main/tools/install-koda.sh | bash")
+}
+
+
+func containerRuntimeBinary() string {
+	for _, cmd := range []string{"docker", "nerdctl", "podman"} {
+		if _, err := exec.LookPath(cmd); err == nil {
+			return cmd
+		}
+	}
+	return "podman" // default binary name for install check
+}
+
+func installContainerRuntime() error {
+	switch runtime.GOOS {
+	case "darwin":
+		if hasBrew() {
+			fmt.Println("  Installing Podman (open-source, no license required)...")
+			return runVisible("brew", "install", "podman")
+		}
+		fmt.Println("  Options (pick one):")
+		fmt.Println("    brew install podman          # Open-source, Apache 2.0")
+		fmt.Println("    brew install --cask rancher   # Open-source, Apache 2.0")
+		fmt.Println("    brew install --cask docker    # Docker Desktop (commercial license)")
+	case "linux":
+		if hasApt() {
+			fmt.Println("  Installing Podman...")
+			return runVisible("sudo", "apt-get", "install", "-y", "podman")
+		}
+		if hasBrew() {
+			return runVisible("brew", "install", "podman")
+		}
+		fmt.Println("  Install via: https://podman.io/docs/installation#linux")
+	case "windows":
+		if hasWinget() {
+			fmt.Println("  Installing Podman...")
+			return runVisible("winget", "install", "RedHat.Podman")
+		}
+		if hasChoco() {
+			return runVisible("choco", "install", "podman-cli", "-y")
+		}
+		fmt.Println("  Install via: https://podman.io/docs/installation#windows")
+	}
+	return nil
 }
