@@ -52,6 +52,7 @@ const (
 	screenCreateWorkspace
 	screenEnvVars
 	screenGitHub
+	screenKiroIDE
 )
 
 type model struct {
@@ -229,6 +230,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case kiroIDEDoneMsg:
+		m.statusMsg = fmt.Sprintf("\u2705 Kiro IDE %s: %d steering, %d skills, %d hooks, %d MCP", msg.action, msg.result.Steering, msg.result.Skills, msg.result.Hooks, msg.result.MCP)
+		return m, nil
 	case doctorFixDoneMsg:
 		m.envVars = ops.ReadEnvVars()
 	m.ghRemotes = ops.ReadGitHubRemotes()
@@ -271,6 +275,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateMCP(msg)
 		case screenFork:
 			return m.updateFork(msg)
+		case screenKiroIDE:
+			return m.updateKiroIDE(msg)
 		case screenEnvVars:
 			return m.updateEnvVars(msg)
 		case screenGitHub:
@@ -366,6 +372,8 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.screen = screenRules
 		m.cursor = 0
+	case "k":
+		m.screen = screenKiroIDE
 	case "e":
 		m.refreshEnvVarKeys()
 		m.screen = screenEnvVars
@@ -457,7 +465,8 @@ func (m model) viewDashboard() string {
 	b.WriteString(activeStyle.Render("[d]") + " Doctor    ")
 	b.WriteString(activeStyle.Render("[r]") + " Rules\n")
 	b.WriteString(activeStyle.Render("  [m]") + " MCP         ")
-	b.WriteString(activeStyle.Render("[e]") + " Env Vars\n")
+	b.WriteString(activeStyle.Render("[e]") + " Env Vars  ")
+	b.WriteString(activeStyle.Render("[k]") + " Kiro IDE\n")
 	b.WriteString(activeStyle.Render("  [g]") + fmt.Sprintf(" GitHub (%d) ", len(m.ghRemotes)))
 	b.WriteString(activeStyle.Render("  [s]") + " Sync        ")
 	b.WriteString(activeStyle.Render("[c]") + " Clean\n")
@@ -526,6 +535,11 @@ type syncDoneMsg struct{ err error }
 type forkDoneMsg struct {
 	err  error
 	repo string
+}
+
+type kiroIDEDoneMsg struct {
+	result ops.KiroIDEResult
+	action string
 }
 
 func (m model) viewDoctor() string {
@@ -1652,6 +1666,8 @@ func (m model) View() string {
 		return m.viewMCP()
 	case screenFork:
 		return m.viewFork()
+	case screenKiroIDE:
+		return m.viewKiroIDE()
 	case screenEnvVars:
 		return m.viewEnvVars()
 	case screenGitHub:
@@ -1661,4 +1677,77 @@ func (m model) View() string {
 	default:
 		return m.viewDashboard()
 	}
+}
+
+func (m model) updateKiroIDE(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.screen = screenDashboard
+	case "i":
+		steerRoot, targetDir := m.steerRoot, m.targetDir
+		// Use workspace_path if available
+		var wsDir string
+		for _, ws := range m.workspaces {
+			if ws.WorkspacePath != "" {
+				wsDir = ws.WorkspacePath
+				break
+			}
+		}
+		_ = targetDir
+		m.statusMsg = "\u23f3 Installing Kiro IDE..."
+		return m, func() tea.Msg {
+			r, err := ops.InstallKiroIDE(steerRoot, wsDir)
+			if err != nil {
+				return forkDoneMsg{err: err, repo: ""}
+			}
+			return kiroIDEDoneMsg{result: r, action: "install"}
+		}
+	case "s":
+		steerRoot := m.steerRoot
+		m.statusMsg = "\u23f3 Syncing Kiro IDE..."
+		return m, func() tea.Msg {
+			r := ops.SyncKiroIDE(steerRoot)
+			return kiroIDEDoneMsg{result: r, action: "sync"}
+		}
+	case "r":
+		var wsDir string
+		for _, ws := range m.workspaces {
+			if ws.WorkspacePath != "" {
+				wsDir = ws.WorkspacePath
+				break
+			}
+		}
+		if wsDir != "" {
+			ops.RemoveKiroIDE(wsDir)
+			m.statusMsg = "\u2705 Hooks removed"
+		} else {
+			m.statusMsg = "No workspace_path configured"
+		}
+	}
+	return m, nil
+}
+
+func (m model) viewKiroIDE() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Kiro IDE") + dimStyle.Render("  i=install  s=sync  r=remove hooks  esc=back"))
+	b.WriteString("\n\n")
+
+	status := ops.CheckKiroIDE("")
+	if status.SteeringCount > 0 {
+		b.WriteString(fmt.Sprintf("  \u2713 %d steering files\n", status.SteeringCount))
+	} else {
+		b.WriteString("  \u2717 No steering files\n")
+	}
+	if status.SkillsCount > 0 {
+		b.WriteString(fmt.Sprintf("  \u2713 %d skills\n", status.SkillsCount))
+	} else {
+		b.WriteString("  \u2717 No skills\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("  Steering + skills install to ~/.kiro/ (user-level)"))
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("  Hooks install to <workspace>/.kiro/hooks/"))
+
+	return boxStyle.Render(b.String())
 }

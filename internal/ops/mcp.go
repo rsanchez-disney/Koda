@@ -11,6 +11,132 @@ import (
 	"github.disney.com/SANCR225/koda/internal/config"
 )
 
+// CopyMcpBundles copies pre-built MCP server bundles from steerRoot to ~/.kiro/tools/mcp-servers/.
+// Returns the number of bundles copied.
+func CopyMcpBundles(steerRoot string) int {
+	home, _ := os.UserHomeDir()
+	srcDir := filepath.Join(steerRoot, "shared", config.ToolsDir, "mcp-servers")
+	dstBase := filepath.Join(home, ".kiro", config.ToolsDir, "mcp-servers")
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		bundle := filepath.Join(srcDir, e.Name(), "dist", "index.cjs")
+		if _, err := os.Stat(bundle); err == nil {
+			dst := filepath.Join(dstBase, e.Name(), "dist")
+			os.MkdirAll(dst, 0755)
+			copyFile(bundle, filepath.Join(dst, "index.cjs"))
+			count++
+		}
+	}
+	return count
+}
+
+// GenerateMcpJson writes ~/.kiro/settings/mcp.json.
+// If nodeExe is empty, "node" is used. Pass FindNodeExe() for absolute path resolution.
+func GenerateMcpJson(nodeExe string) error {
+	if nodeExe == "" {
+		nodeExe = "node"
+	}
+	tokens := ReadTokens()
+	envVars := ReadEnvVars()
+	home, _ := os.UserHomeDir()
+
+	type mcpServer struct {
+		Command string            `json:"command,omitempty"`
+		Args    []string          `json:"args,omitempty"`
+		Env     map[string]string `json:"env,omitempty"`
+		URL     string            `json:"url,omitempty"`
+		Type    string            `json:"type,omitempty"`
+		Headers map[string]string `json:"headers,omitempty"`
+	}
+
+	bundleDir := filepath.Join(home, ".kiro", "tools", "mcp-servers")
+
+	servers := map[string]mcpServer{
+		"jira": {
+			Command: nodeExe,
+			Args:    []string{filepath.Join(bundleDir, "jira-mcp", "dist", "index.cjs")},
+			Env:     map[string]string{"JIRA_PAT": tokens["JIRA_PAT"]},
+		},
+		"confluence": {
+			Command: nodeExe,
+			Args:    []string{filepath.Join(bundleDir, "confluence-mcp", "dist", "index.cjs")},
+			Env:     map[string]string{"CONFLUENCE_URL": envVars["CONFLUENCE_URL"], "CONFLUENCE_PAT": tokens["CONFLUENCE_PAT"]},
+		},
+		"mermaid": {
+			Command: nodeExe,
+			Args:    []string{filepath.Join(bundleDir, "mermaid-diagram-mcp", "dist", "index.cjs")},
+		},
+		"bruno": {
+			Command: nodeExe,
+			Args:    []string{filepath.Join(bundleDir, "bruno-mcp", "dist", "index.cjs")},
+		},
+		"mywiki": {
+			Command: nodeExe,
+			Args:    []string{filepath.Join(bundleDir, "mywiki-mcp", "dist", "index.cjs")},
+			Env:     map[string]string{"CONFLUENCE_URL": envVars["MYWIKI_URL"], "CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
+		},
+		"figma": {
+			Command: nodeExe,
+			Args:    []string{filepath.Join(bundleDir, "figma-mcp", "dist", "index.cjs")},
+			Env:     map[string]string{"FIGMA_TOKEN": tokens["FIGMA_TOKEN"]},
+		},
+		"context7": {
+			Command: "npx",
+			Args:    []string{"-y", "@upstash/context7-mcp"},
+		},
+	}
+
+	// fetch via uvx (optional)
+	if uvx := FindUvxExe(); uvx != "" {
+		servers["fetch"] = mcpServer{Command: uvx, Args: []string{"mcp-server-fetch"}}
+	}
+
+	// GitHub: per-remote entries
+	ghRemotes := ReadGitHubRemotes()
+	ghBundle := filepath.Join(bundleDir, "github-mcp", "dist", "index.cjs")
+	if len(ghRemotes) == 1 {
+		env := map[string]string{"GITHUB_REMOTE": ghRemotes[0].Name, "GITHUB_HOST": ghRemotes[0].Host, "GITHUB_TOKEN": ghRemotes[0].Token}
+		if ghRemotes[0].APIPath != "" {
+			env["GITHUB_API_PATH"] = ghRemotes[0].APIPath
+		}
+		servers["github"] = mcpServer{Command: nodeExe, Args: []string{ghBundle}, Env: env}
+	} else {
+		for _, r := range ghRemotes {
+			env := map[string]string{"GITHUB_REMOTE": r.Name, "GITHUB_HOST": r.Host, "GITHUB_TOKEN": r.Token}
+			if r.APIPath != "" {
+				env["GITHUB_API_PATH"] = r.APIPath
+			}
+			servers["github-"+r.Name] = mcpServer{Command: nodeExe, Args: []string{ghBundle}, Env: env}
+		}
+	}
+
+	// Compass: remote SSE MCP
+	if ct := tokens["COMPASS_TOKEN"]; ct != "" {
+		servers["compass"] = mcpServer{
+			URL:     envVars["COMPASS_URL"],
+			Type:    "sse",
+			Headers: map[string]string{"Authorization": "Bearer " + ct},
+		}
+	}
+
+	mcpConfig := map[string]any{"mcpServers": servers}
+	settingsDir := filepath.Join(home, ".kiro", config.SettingsDir)
+	os.MkdirAll(settingsDir, 0755)
+	mcpPath := filepath.Join(settingsDir, "mcp.json")
+	out, err := json.MarshalIndent(mcpConfig, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(mcpPath, append(out, '\n'), 0644)
+}
+
 // MCPInstall verifies MCP bundles, installs context7, and generates mcp.json.
 func MCPInstall(steerRoot, targetDir string) error {
 	// 1. Verify pre-built bundles
@@ -48,96 +174,11 @@ func MCPInstall(steerRoot, targetDir string) error {
 
 	// 3. Generate ~/.kiro/settings/mcp.json
 	fmt.Println("\n\U0001f527 Generating mcp.json...")
-	tokens := ReadTokens()
-	envVars := ReadEnvVars()
+	if err := GenerateMcpJson(""); err != nil {
+		return err
+	}
 	home, _ := os.UserHomeDir()
-
-	type mcpServer struct {
-		Command string            `json:"command,omitempty"`
-		Args    []string          `json:"args,omitempty"`
-		Env     map[string]string `json:"env,omitempty"`
-		URL     string            `json:"url,omitempty"`
-		Type    string            `json:"type,omitempty"`
-		Headers map[string]string `json:"headers,omitempty"`
-	}
-
-	servers := map[string]mcpServer{
-		"jira": {
-			Command: "node",
-			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "jira-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"JIRA_PAT": tokens["JIRA_PAT"]},
-		},
-		"confluence": {
-			Command: "node",
-			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "confluence-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"CONFLUENCE_URL": envVars["CONFLUENCE_URL"], "CONFLUENCE_PAT": tokens["CONFLUENCE_PAT"]},
-		},
-		"mermaid": {
-			Command: "node",
-			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "mermaid-diagram-mcp", "dist", "index.cjs")},
-		},
-		"bruno": {
-			Command: "node",
-			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "bruno-mcp", "dist", "index.cjs")},
-		},
-		"mywiki": {
-			Command: "node",
-			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "mywiki-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"CONFLUENCE_URL": envVars["MYWIKI_URL"], "CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
-		},
-		"figma": {
-			Command: "node",
-			Args:    []string{filepath.Join(home, ".kiro", "tools", "mcp-servers", "figma-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"FIGMA_TOKEN": tokens["FIGMA_TOKEN"]},
-		},
-		"context7": {
-			Command: "npx",
-			Args:    []string{"-y", "@upstash/context7-mcp"},
-		},
-	}
-
-	// GitHub: per-remote entries (single remote keeps "github" name for compat)
-	ghRemotes := ReadGitHubRemotes()
-	ghBundle := filepath.Join(home, ".kiro", "tools", "mcp-servers", "github-mcp", "dist", "index.cjs")
-	if len(ghRemotes) == 1 {
-		env := map[string]string{"GITHUB_REMOTE": ghRemotes[0].Name, "GITHUB_HOST": ghRemotes[0].Host, "GITHUB_TOKEN": ghRemotes[0].Token}
-		if ghRemotes[0].APIPath != "" {
-			env["GITHUB_API_PATH"] = ghRemotes[0].APIPath
-		}
-		servers["github"] = mcpServer{Command: "node", Args: []string{ghBundle}, Env: env}
-	} else {
-		for _, r := range ghRemotes {
-			env := map[string]string{"GITHUB_REMOTE": r.Name, "GITHUB_HOST": r.Host, "GITHUB_TOKEN": r.Token}
-			if r.APIPath != "" {
-				env["GITHUB_API_PATH"] = r.APIPath
-			}
-			servers["github-"+r.Name] = mcpServer{Command: "node", Args: []string{ghBundle}, Env: env}
-		}
-	}
-
-	// Compass: remote SSE MCP
-	if ct := tokens["COMPASS_TOKEN"]; ct != "" {
-		servers["compass"] = mcpServer{
-			URL:     envVars["COMPASS_URL"],
-			Type:    "sse",
-			Headers: map[string]string{"Authorization": "Bearer " + ct},
-		}
-	}
-
-	mcpConfig := map[string]any{"mcpServers": servers}
-
-	settingsDir := filepath.Join(home, ".kiro", config.SettingsDir)
-	os.MkdirAll(settingsDir, 0755)
-	mcpPath := filepath.Join(settingsDir, "mcp.json")
-
-	out, err := json.MarshalIndent(mcpConfig, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
-		return err
-	}
-	fmt.Printf("  \u2713 %s\n", mcpPath)
+	fmt.Printf("  \u2713 %s\n", filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json"))
 
 	// 4. Inject tokens into installed agents
 	InjectAgentTokens(targetDir)

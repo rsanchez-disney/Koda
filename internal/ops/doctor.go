@@ -127,6 +127,16 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		results = append(results, DoctorResult{Name: "mcp-servers", OK: false, Detail: "directory not found"})
 	}
 
+	// 6c. Kiro IDE status
+	kideStatus := CheckKiroIDE("")
+	if kideStatus.SteeringCount > 0 || kideStatus.SkillsCount > 0 {
+		results = append(results, DoctorResult{
+			Name:   "kiro-ide",
+			OK:     true,
+			Detail: fmt.Sprintf("%d steering, %d skills", kideStatus.SteeringCount, kideStatus.SkillsCount),
+		})
+	}
+
 	// 7. tokens
 	tokens := ReadTokens()
 	set := 0
