@@ -4,12 +4,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
+	"sort"
 
 	"github.disney.com/SANCR225/koda/internal/config"
+	"github.disney.com/SANCR225/koda/internal/model"
 )
+
+// MCPServer describes an available MCP server and its requirements.
+type MCPServer struct {
+	Name      string   // display name (e.g., "jira", "confluence")
+	BundleDir string   // directory name under mcp-servers/ (e.g., "jira-mcp")
+	TokenKeys []string // required token keys from KnownTokens (e.g., ["JIRA_PAT"])
+	EnvKeys   []string // required env var keys (e.g., ["CONFLUENCE_URL"])
+	IsNPM     bool     // true for context7 (npm install required)
+	IsSSE     bool     // true for compass (SSE transport)
+}
+
+// knownServers defines all MCP servers Koda can install.
+var knownServers = []MCPServer{
+	{Name: "jira", BundleDir: "jira-mcp", TokenKeys: []string{"JIRA_PAT"}},
+	{Name: "confluence", BundleDir: "confluence-mcp", TokenKeys: []string{"CONFLUENCE_PAT"}, EnvKeys: []string{"CONFLUENCE_URL"}},
+	{Name: "mermaid", BundleDir: "mermaid-diagram-mcp"},
+	{Name: "bruno", BundleDir: "bruno-mcp"},
+	{Name: "mywiki", BundleDir: "mywiki-mcp", TokenKeys: []string{"MYWIKI_PAT"}, EnvKeys: []string{"MYWIKI_URL"}},
+	{Name: "figma", BundleDir: "figma-mcp", TokenKeys: []string{"FIGMA_TOKEN"}},
+	{Name: "github", BundleDir: "github-mcp"},
+	{Name: "context7", BundleDir: "context7-mcp", IsNPM: true},
+	{Name: "compass", BundleDir: "", TokenKeys: []string{"COMPASS_TOKEN"}, EnvKeys: []string{"COMPASS_URL"}, IsSSE: true},
+}
 
 // CopyMcpBundles copies pre-built MCP server bundles from steerRoot to ~/.kiro/tools/mcp-servers/.
 // Returns the number of bundles copied.
@@ -39,6 +62,7 @@ func CopyMcpBundles(steerRoot string) int {
 
 // GenerateMcpJson writes ~/.kiro/settings/mcp.json.
 // If nodeExe is empty, "node" is used. Pass FindNodeExe() for absolute path resolution.
+// This is the legacy function used by kiroide.go for non-interactive config generation.
 func GenerateMcpJson(nodeExe string) error {
 	if nodeExe == "" {
 		nodeExe = "node"
@@ -128,63 +152,251 @@ func GenerateMcpJson(nodeExe string) error {
 
 	mcpConfig := map[string]any{"mcpServers": servers}
 	settingsDir := filepath.Join(home, ".kiro", config.SettingsDir)
-	os.MkdirAll(settingsDir, 0755)
+	if err := os.MkdirAll(settingsDir, 0755); err != nil {
+		return fmt.Errorf("cannot create settings directory: %w", err)
+	}
 	mcpPath := filepath.Join(settingsDir, "mcp.json")
 	out, err := json.MarshalIndent(mcpConfig, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot marshal config: %w", err)
 	}
 	return os.WriteFile(mcpPath, append(out, '\n'), 0644)
 }
 
-// MCPInstall verifies MCP bundles, installs context7, and generates mcp.json.
-func MCPInstall(steerRoot, targetDir string) error {
-	// 1. Verify pre-built bundles
-	fmt.Println("\U0001f50d Verifying MCP server bundles...")
+// DiscoverServers scans targetDir/tools/mcp-servers/ and returns all
+// available servers with their bundle verification status.
+func DiscoverServers(targetDir string) (available []MCPServer, verified map[string]bool) {
+	verified = make(map[string]bool)
 	mcpDir := filepath.Join(targetDir, config.ToolsDir, "mcp-servers")
+
+	// Build a set of directories present on disk.
+	dirSet := make(map[string]bool)
 	entries, err := os.ReadDir(mcpDir)
-	if err != nil {
-		return fmt.Errorf("no MCP servers found at %s", mcpDir)
+	if err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				dirSet[e.Name()] = true
+			}
+		}
 	}
-	var ready []string
-	for _, e := range entries {
-		if !e.IsDir() {
+
+	for _, srv := range knownServers {
+		if srv.IsSSE {
+			// SSE servers (compass) are always available and verified.
+			available = append(available, srv)
+			verified[srv.Name] = true
 			continue
 		}
-		bundle := filepath.Join(mcpDir, e.Name(), "dist", "index.cjs")
-		if _, err := os.Stat(bundle); err == nil {
-			ready = append(ready, e.Name())
-			fmt.Printf("  \u2713 %s\n", e.Name())
-		}
-	}
-	fmt.Printf("\n\u2705 %d MCP servers ready\n", len(ready))
 
-	// 2. Install context7-mcp from public npm
-	ctx7Dir := filepath.Join(mcpDir, "context7-mcp")
-	if _, err := os.Stat(filepath.Join(ctx7Dir, "package.json")); err == nil {
-		fmt.Println("\n\U0001f4e6 Installing context7-mcp from public registry...")
-		cmd := exec.Command("npm", "install", "--registry", "https://registry.npmjs.org", "--silent")
-		cmd.Dir = ctx7Dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			fmt.Printf("  \u26a0 context7: %s\n", strings.TrimSpace(string(out)))
+		if srv.BundleDir == "" {
+			continue
+		}
+
+		if !dirSet[srv.BundleDir] {
+			continue
+		}
+
+		available = append(available, srv)
+
+		// Verify the bundle.
+		if srv.IsNPM {
+			pkgPath := filepath.Join(mcpDir, srv.BundleDir, "package.json")
+			if _, err := os.Stat(pkgPath); err == nil {
+				verified[srv.Name] = true
+			}
 		} else {
-			fmt.Println("  \u2713 context7")
+			cjsPath := filepath.Join(mcpDir, srv.BundleDir, "dist", "index.cjs")
+			if _, err := os.Stat(cjsPath); err == nil {
+				verified[srv.Name] = true
+			}
 		}
 	}
 
-	// 3. Generate ~/.kiro/settings/mcp.json
-	fmt.Println("\n\U0001f527 Generating mcp.json...")
-	if err := GenerateMcpJson(""); err != nil {
-		return err
+	return available, verified
+}
+
+// RequiredTokens returns the deduplicated list of tokens required by the
+// selected servers, preserving first-appearance order.
+func RequiredTokens(selected []MCPServer) []model.Token {
+	knownMap := make(map[string]model.Token, len(model.KnownTokens))
+	for _, t := range model.KnownTokens {
+		knownMap[t.Key] = t
 	}
+
+	seen := make(map[string]bool)
+	var result []model.Token
+	for _, srv := range selected {
+		for _, k := range srv.TokenKeys {
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			if tok, ok := knownMap[k]; ok {
+				result = append(result, tok)
+			}
+		}
+	}
+	return result
+}
+
+// HasExistingMCPConfig returns true if ~/.kiro/settings/mcp.json already exists.
+func HasExistingMCPConfig() bool {
 	home, _ := os.UserHomeDir()
-	fmt.Printf("  \u2713 %s\n", filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json"))
+	mcpPath := filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+	_, err := os.Stat(mcpPath)
+	return err == nil
+}
 
-	// 4. Inject tokens into installed agents
-	InjectAgentTokens(targetDir)
+// GenerateMCPConfig builds and writes mcp.json for the given selected servers.
+// ghRemotes provides GitHub remote configs; tokens and envVars supply credentials.
+// Returns the path to the written file.
+func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
+	tokens map[string]string, envVars map[string]string) (string, error) {
 
-	fmt.Println("\n\u2705 MCP servers ready")
-	return nil
+	home, _ := os.UserHomeDir()
+	bundleDir := filepath.Join(home, ".kiro", "tools", "mcp-servers")
+
+	type mcpServer struct {
+		Command string            `json:"command,omitempty"`
+		Args    []string          `json:"args,omitempty"`
+		Env     map[string]string `json:"env,omitempty"`
+		URL     string            `json:"url,omitempty"`
+		Type    string            `json:"type,omitempty"`
+		Headers map[string]string `json:"headers,omitempty"`
+	}
+
+	servers := make(map[string]mcpServer)
+
+	for _, srv := range selected {
+		switch {
+		case srv.IsSSE:
+			// Compass: only include if token is non-empty.
+			ct := tokens["COMPASS_TOKEN"]
+			if ct == "" {
+				continue
+			}
+			servers[srv.Name] = mcpServer{
+				URL:     envVars["COMPASS_URL"],
+				Type:    "sse",
+				Headers: map[string]string{"Authorization": "Bearer " + ct},
+			}
+
+		case srv.IsNPM:
+			// context7: npx-based.
+			servers[srv.Name] = mcpServer{
+				Command: "npx",
+				Args:    []string{"-y", "@upstash/context7-mcp"},
+			}
+
+		case srv.Name == "github":
+			// GitHub: handled separately based on remote count.
+			ghBundle := filepath.Join(bundleDir, "github-mcp", "dist", "index.cjs")
+			if len(ghRemotes) == 1 {
+				env := map[string]string{
+					"GITHUB_REMOTE": ghRemotes[0].Name,
+					"GITHUB_HOST":   ghRemotes[0].Host,
+					"GITHUB_TOKEN":  ghRemotes[0].Token,
+				}
+				if ghRemotes[0].APIPath != "" {
+					env["GITHUB_API_PATH"] = ghRemotes[0].APIPath
+				}
+				servers["github"] = mcpServer{Command: "node", Args: []string{ghBundle}, Env: env}
+			} else {
+				for _, r := range ghRemotes {
+					env := map[string]string{
+						"GITHUB_REMOTE": r.Name,
+						"GITHUB_HOST":   r.Host,
+						"GITHUB_TOKEN":  r.Token,
+					}
+					if r.APIPath != "" {
+						env["GITHUB_API_PATH"] = r.APIPath
+					}
+					servers["github-"+r.Name] = mcpServer{Command: "node", Args: []string{ghBundle}, Env: env}
+				}
+			}
+
+		default:
+			// Regular node-based server.
+			entry := mcpServer{
+				Command: "node",
+				Args:    []string{filepath.Join(bundleDir, srv.BundleDir, "dist", "index.cjs")},
+			}
+			// Build env from TokenKeys and EnvKeys.
+			if len(srv.TokenKeys) > 0 || len(srv.EnvKeys) > 0 {
+				env := make(map[string]string)
+				for _, tk := range srv.TokenKeys {
+					env[tk] = tokens[tk]
+				}
+				for _, ek := range srv.EnvKeys {
+					env[ek] = envVars[ek]
+				}
+				entry.Env = env
+			}
+			servers[srv.Name] = entry
+		}
+	}
+
+	// Use sorted keys for deterministic output (idempotence).
+	sortedKeys := make([]string, 0, len(servers))
+	for k := range servers {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Strings(sortedKeys)
+
+	orderedServers := make([]orderedEntry, 0, len(servers))
+	for _, k := range sortedKeys {
+		orderedServers = append(orderedServers, orderedEntry{Key: k, Value: servers[k]})
+	}
+
+	mcpConfig := orderedMCPConfig{MCPServers: orderedServers}
+
+	settingsDir := filepath.Join(home, ".kiro", config.SettingsDir)
+	if err := os.MkdirAll(settingsDir, 0755); err != nil {
+		return "", fmt.Errorf("cannot create settings directory: %w", err)
+	}
+	mcpPath := filepath.Join(settingsDir, "mcp.json")
+	out, err := json.MarshalIndent(mcpConfig, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("cannot marshal config: %w", err)
+	}
+	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
+		return "", fmt.Errorf("cannot write mcp.json: %w", err)
+	}
+	return mcpPath, nil
+}
+
+// orderedEntry holds a key-value pair for deterministic JSON output.
+type orderedEntry struct {
+	Key   string
+	Value interface{}
+}
+
+// orderedMCPConfig wraps the mcpServers map for deterministic JSON marshalling.
+type orderedMCPConfig struct {
+	MCPServers []orderedEntry
+}
+
+// MarshalJSON produces {"mcpServers": {...}} with keys in sorted order.
+func (c orderedMCPConfig) MarshalJSON() ([]byte, error) {
+	inner := make([]byte, 0, 256)
+	inner = append(inner, '{')
+	for i, e := range c.MCPServers {
+		if i > 0 {
+			inner = append(inner, ',')
+		}
+		keyBytes, _ := json.Marshal(e.Key)
+		valBytes, err := json.Marshal(e.Value)
+		if err != nil {
+			return nil, err
+		}
+		inner = append(inner, keyBytes...)
+		inner = append(inner, ':')
+		inner = append(inner, valBytes...)
+	}
+	inner = append(inner, '}')
+
+	wrapper := map[string]json.RawMessage{"mcpServers": inner}
+	return json.Marshal(wrapper)
 }
 
 // WriteProfilesManifest writes settings/profiles.json to targetDir.

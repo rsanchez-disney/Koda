@@ -24,7 +24,7 @@ Orchestrate multiple Kiro agents working in parallel on a single goal. Each work
 12-screen dashboard: main dashboard, profiles, tokens, env vars, workspaces, agents (fuzzy search), doctor, rules, MCP servers, fork, create/edit workspace, and clean confirmation. Sync runs inline from the dashboard. Chat launches a separate session. Navigate with single keystrokes.
 
 ### 🔧 Setup & Configuration
-One-command dependency installer (`koda setup`). Cross-platform: detects brew/apt/winget/choco. MCP server verification and `mcp.json` generation. Masked token input with paste support and PAT URL hints. Profile manifest for kiro-cli.
+One-command dependency installer (`koda setup`). Cross-platform: detects brew/apt/winget/choco. Interactive MCP server selection, inline token configuration, and multi-instance GitHub remote management — see [MCP Setup Guide](docs/MCP_INSTALL.md) for the full walkthrough. Profile manifest for kiro-cli.
 
 ### 🚀 Profile Management
 Install, remove, sync, and list agent profiles. `dev` alias expands to dev-core + dev-web + dev-mobile. Profiles manifest written after every install/sync.
@@ -275,6 +275,7 @@ koda                              # Launch
 # Setup
 koda setup                          # Install dependencies (node, git, kiro-cli, gh)
 koda mcp-install                    # MCP bundles + mcp.json
+koda mcp-install --assistant        # Interactive MCP server selection + token setup
 koda configure                      # Token setup (masked)
 koda enable-tools                   # Enable thinking/todo/knowledge
 
