@@ -174,6 +174,14 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	// Resolve inheritance
 	resolved, wsNames := ResolveWorkspace(steerRoot, ws)
 
+	// Fetch latest steer-runtime before installing so profiles use updated source
+	fmt.Println("  Syncing steer-runtime...")
+	s := config.ReadSteerSettings()
+	if s.Source == "git" {
+		syncGit(steerRoot)
+	}
+	config.MarkSynced()
+
 	// Build workspace override map: last workspace in chain wins for each profile ID
 	profiles := ExpandAliases(resolved.Profiles)
 	wsOverrides := map[string]string{} // profileID -> wsProfileDir
@@ -224,12 +232,12 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 				fmt.Printf("  Cloning %s...\n", p.Name)
 				url := GitCloneURL(p.Repo)
 				if err := exec.Command("git", "clone", url, projPath).Run(); err != nil {
-					fmt.Printf("  \u2717 %s (clone failed: %v)\n", p.Name, err)
+					fmt.Printf("  ✗ %s (clone failed: %v)\n", p.Name, err)
 					continue
 				}
-				fmt.Printf("  \u2713 %s cloned\n", p.Name)
+				fmt.Printf("  ✓ %s cloned\n", p.Name)
 			} else {
-				fmt.Printf("  \u23ed %s (not cloned)\n", p.Name)
+				fmt.Printf("  ⏭ %s (not cloned)\n", p.Name)
 				continue
 			}
 		}
@@ -245,13 +253,8 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	}
 
 	// Save active workspace
-	s := config.ReadSteerSettings()
 	s.ActiveWorkspace = ws.Name
 	config.SaveSteerSettings(s)
-
-	// Sync steer-runtime to ensure profiles are up to date
-	fmt.Println("  Syncing steer-runtime...")
-	SyncSteerRuntime(steerRoot, targetDir)
 
 	return nil
 }

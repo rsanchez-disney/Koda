@@ -120,7 +120,7 @@ func InstallProfile(steerRoot, profileID, targetDir string) (int, error) {
 	}
 
 	// Copy supporting directories
-	for _, sub := range []string{config.PromptsDir, config.ContextDir, "powers", "skills", "steering"} {
+	for _, sub := range []string{config.PromptsDir, config.ContextDir, config.PowersDir, config.SkillsDir, config.SteeringDir} {
 		copyDirContents(filepath.Join(srcDir, sub), filepath.Join(targetDir, sub))
 	}
 
@@ -153,7 +153,7 @@ func InstallProfileFrom(srcDir, targetDir string) (int, error) {
 		count++
 	}
 
-	for _, sub := range []string{config.PromptsDir, config.ContextDir, config.RulesDir, "powers", "skills", "steering"} {
+	for _, sub := range []string{config.PromptsDir, config.ContextDir, config.RulesDir, config.PowersDir, config.SkillsDir, config.SteeringDir} {
 		copyDirContents(filepath.Join(srcDir, sub), filepath.Join(targetDir, sub))
 	}
 
@@ -186,7 +186,10 @@ func ResolveProfileSource(steerRoot, profileID string) (string, string) {
 // RemoveProfile can always resolve the correct agent list regardless of active workspace state.
 // This requires a manifest schema change and is considered a major breaking change.
 func RemoveProfile(steerRoot, profileID, targetDir string) (int, error) {
-	srcDir, _ := ResolveProfileSource(steerRoot, profileID)
+	srcDir, wsName := ResolveProfileSource(steerRoot, profileID)
+	if wsName != "" {
+		fmt.Printf("  ℹ Resolving %s from workspace '%s'\n", profileID, wsName)
+	}
 	agentNames, err := agentNames(srcDir)
 	if err != nil {
 		return 0, fmt.Errorf("no agents found for profile: %s", profileID)
@@ -203,7 +206,7 @@ func RemoveProfile(steerRoot, profileID, targetDir string) (int, error) {
 
 	// Remove all files that were installed by this profile from supporting dirs.
 	// Files present in steer-runtime/shared/ or steer-runtime/common/ are preserved.
-	for _, sub := range []string{config.ContextDir, config.RulesDir, "powers", "skills", "steering"} {
+	for _, sub := range []string{config.ContextDir, config.RulesDir, config.PowersDir, config.SkillsDir, config.SteeringDir} {
 		entries, err := os.ReadDir(filepath.Join(srcDir, sub))
 		if err != nil {
 			continue
