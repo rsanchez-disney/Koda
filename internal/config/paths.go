@@ -15,6 +15,9 @@ const (
 	SettingsDir   = "settings"
 	RulesDir      = "rules"
 	WorkspacesDir = "workspaces"
+	PowersDir     = "powers"
+	SkillsDir     = "skills"
+	SteeringDir   = "steering"
 	TokensFile    = "tokens.env"
 	EnvVarsFile   = "env.vars"
 )

@@ -22,17 +22,22 @@ var installCmd = &cobra.Command{
 			return fmt.Errorf("steer-runtime not found")
 		}
 		target := config.TargetDir(projectDir)
-		fmt.Printf("\U0001f3af Target: %s\n", target)
+		fmt.Printf("🎯 Target: %s\n", target)
 		ops.InstallShared(steerRoot, target)
 		profiles := ops.ExpandAliases(args)
 		for _, p := range profiles {
-			fmt.Printf("\U0001f4e6 Installing %s...\n", p)
-			count, err := ops.InstallProfile(steerRoot, p, target)
+			srcDir, wsName := ops.ResolveProfileSource(steerRoot, p)
+			if wsName != "" {
+				fmt.Printf("📦 Installing %s... (workspace: %s)\n", p, wsName)
+			} else {
+				fmt.Printf("📦 Installing %s...\n", p)
+			}
+			count, err := ops.InstallProfileFrom(srcDir, target)
 			if err != nil {
-				fmt.Printf("  \u2717 %s: %v\n", p, err)
+				fmt.Printf("  ✗ %s: %v\n", p, err)
 				continue
 			}
-			fmt.Printf("  \u2713 %s (%d agents)\n", p, count)
+			fmt.Printf("  ✓ %s (%d agents)\n", p, count)
 		}
 		ops.InjectAgentTokens(target)
 		ops.WriteProfilesManifest(steerRoot, target)
@@ -86,15 +91,20 @@ var syncCmd = &cobra.Command{
 			fmt.Println("\u26a0 No profiles detected. Use 'koda install' first.")
 			return nil
 		}
-		fmt.Printf("\U0001f504 Syncing: %s\n", strings.Join(installed, ", "))
+		fmt.Printf("🔄 Syncing: %s\n", strings.Join(installed, ", "))
 		ops.InstallShared(steerRoot, target)
 		for _, p := range installed {
-			count, err := ops.InstallProfile(steerRoot, p, target)
+			srcDir, wsName := ops.ResolveProfileSource(steerRoot, p)
+			label := p
+			if wsName != "" {
+				label = fmt.Sprintf("%s (workspace: %s)", p, wsName)
+			}
+			count, err := ops.InstallProfileFrom(srcDir, target)
 			if err != nil {
-				fmt.Printf("  \u2717 %s: %v\n", p, err)
+				fmt.Printf("  ✗ %s: %v\n", label, err)
 				continue
 			}
-			fmt.Printf("  \u2713 %s (%d agents)\n", p, count)
+			fmt.Printf("  ✓ %s (%d agents)\n", label, count)
 		}
 		ops.InjectAgentTokens(target)
 		fmt.Printf("\n\u2705 Sync complete (%d agents total)\n", countAgents(target))
@@ -118,7 +128,7 @@ var listCmd = &cobra.Command{
 		if jsonOutput {
 			return json.NewEncoder(os.Stdout).Encode(profiles)
 		}
-		fmt.Println("\U0001f4cb Available profiles:")
+		fmt.Println("📋 Available profiles:")
 		fmt.Println()
 		fmt.Println("  \u2022 dev (alias \u2192 dev-core + dev-web + dev-mobile)")
 		for _, p := range profiles {
@@ -152,7 +162,7 @@ var cleanCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		target := config.TargetDir(projectDir)
 		total := countAgents(target)
-		fmt.Printf("\U0001f9f9 Cleaning %s (%d agents)...\n", target, total)
+		fmt.Printf("🧹 Cleaning %s (%d agents)...\n", target, total)
 		for _, sub := range []string{"agents", "prompts", "context", "powers", "skills", "steering"} {
 			os.RemoveAll(filepath.Join(target, sub))
 		}
