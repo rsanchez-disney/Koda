@@ -92,8 +92,14 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		}
 		results = append(results, DoctorResult{Name: "mcp-servers", OK: len(missing) == 0, Detail: detail})
 
-		// Per-server diagnostics: try to start each and capture errors
+		// Per-server diagnostics: try to start each and capture errors.
+		// Skip servers that require runtime env vars (e.g. github-mcp needs GITHUB_HOST).
+		skipDiag := map[string]bool{"github-mcp": true}
 		for _, name := range ready {
+			if skipDiag[name] {
+				results = append(results, DoctorResult{Name: "  " + name, OK: true, Detail: "bundle ok (env checked separately)"})
+				continue
+			}
 			var cmd *exec.Cmd
 			bundle := filepath.Join(mcpDir, name, "dist", "index.cjs")
 			npmBin := filepath.Join(mcpDir, name, "node_modules", ".bin", name)
@@ -147,7 +153,28 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 	}
 	results = append(results, DoctorResult{Name: "tokens", OK: set > 0, Detail: fmt.Sprintf("%d configured", set)})
 
-	// 8. git status of steer-runtime
+	// 8. GitHub remotes configuration
+	ghRemotes := ReadGitHubRemotes()
+	if len(ghRemotes) == 0 {
+		results = append(results, DoctorResult{
+			Name:   "github-mcp",
+			OK:     false,
+			Detail: "no GitHub remotes configured",
+			Fix:    "koda mcp-install --assistant",
+		})
+	} else {
+		var names []string
+		for _, r := range ghRemotes {
+			names = append(names, r.Name+"("+r.Host+")")
+		}
+		results = append(results, DoctorResult{
+			Name:   "github-mcp",
+			OK:     true,
+			Detail: fmt.Sprintf("%d remote(s): %s", len(ghRemotes), strings.Join(names, ", ")),
+		})
+	}
+
+	// 9. git status of steer-runtime
 	if steerRoot != "" {
 		out, err := exec.Command("git", "-C", steerRoot, "status", "--short").Output()
 		if err == nil {
@@ -161,25 +188,49 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		}
 	}
 
-	// 9. gh auth status
-	ghCmd := exec.Command("gh", "auth", "status", "--hostname", config.GHHost)
-	if out, err := ghCmd.CombinedOutput(); err != nil {
-		results = append(results, DoctorResult{
-			Name:   "gh-auth",
-			OK:     false,
-			Detail: "not authenticated to " + config.GHHost,
-			Fix:    "gh auth login --hostname " + config.GHHost,
-		})
+	// 10. gh auth status — check each configured remote host
+	if len(ghRemotes) == 0 {
+		// Fallback: check default host when no remotes configured
+		ghCmd := exec.Command("gh", "auth", "status", "--hostname", config.GHHost)
+		if out, err := ghCmd.CombinedOutput(); err != nil {
+			results = append(results, DoctorResult{
+				Name:   "gh-auth",
+				OK:     false,
+				Detail: "not authenticated to " + config.GHHost,
+				Fix:    "gh auth login --hostname " + config.GHHost,
+			})
+		} else {
+			detail := "authenticated"
+			for _, line := range strings.Split(string(out), "\n") {
+				if strings.Contains(line, "Logged in to") {
+					detail = strings.TrimSpace(line)
+					break
+				}
+			}
+			results = append(results, DoctorResult{Name: "gh-auth", OK: true, Detail: detail})
+		}
 	} else {
-		// Extract logged-in user from output
-		detail := "authenticated"
-		for _, line := range strings.Split(string(out), "\n") {
-			if strings.Contains(line, "Logged in to") {
-				detail = strings.TrimSpace(line)
-				break
+		for _, r := range ghRemotes {
+			name := "gh-auth-" + r.Name
+			ghCmd := exec.Command("gh", "auth", "status", "--hostname", r.Host)
+			if out, err := ghCmd.CombinedOutput(); err != nil {
+				results = append(results, DoctorResult{
+					Name:   name,
+					OK:     false,
+					Detail: "not authenticated to " + r.Host,
+					Fix:    "gh auth login --hostname " + r.Host,
+				})
+			} else {
+				detail := "authenticated to " + r.Host
+				for _, line := range strings.Split(string(out), "\n") {
+					if strings.Contains(line, "Logged in to") {
+						detail = strings.TrimSpace(line)
+						break
+					}
+				}
+				results = append(results, DoctorResult{Name: name, OK: true, Detail: detail})
 			}
 		}
-		results = append(results, DoctorResult{Name: "gh-auth", OK: true, Detail: detail})
 	}
 
 	return results
