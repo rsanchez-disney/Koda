@@ -174,19 +174,26 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	// Resolve inheritance
 	resolved, wsNames := ResolveWorkspace(steerRoot, ws)
 
-	// Install profiles (global first, then workspace overrides win)
+	// Build workspace override map: last workspace in chain wins for each profile ID
 	profiles := ExpandAliases(resolved.Profiles)
-	InstallShared(steerRoot, targetDir)
-	for _, p := range profiles {
-		InstallProfile(steerRoot, p, targetDir)
-	}
+	wsOverrides := map[string]string{} // profileID -> wsProfileDir
 	for _, wsName := range wsNames {
 		wsProfilesDir := filepath.Join(findWorkspaceDir(steerRoot, wsName), "profiles")
 		for _, p := range profiles {
 			wsProfile := filepath.Join(wsProfilesDir, p)
 			if _, err := os.Stat(wsProfile); err == nil {
-				InstallProfileFrom(wsProfile, targetDir)
+				wsOverrides[p] = wsProfile
 			}
+		}
+	}
+
+	// Install profiles: workspace override replaces global entirely
+	InstallShared(steerRoot, targetDir)
+	for _, p := range profiles {
+		if wsDir, ok := wsOverrides[p]; ok {
+			InstallProfileFrom(wsDir, targetDir)
+		} else {
+			InstallProfile(steerRoot, p, targetDir)
 		}
 	}
 
@@ -241,6 +248,10 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	s := config.ReadSteerSettings()
 	s.ActiveWorkspace = ws.Name
 	config.SaveSteerSettings(s)
+
+	// Sync steer-runtime to ensure profiles are up to date
+	fmt.Println("  Syncing steer-runtime...")
+	SyncSteerRuntime(steerRoot, targetDir)
 
 	return nil
 }

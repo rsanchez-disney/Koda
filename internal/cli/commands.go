@@ -26,13 +26,18 @@ var installCmd = &cobra.Command{
 		ops.InstallShared(steerRoot, target)
 		profiles := ops.ExpandAliases(args)
 		for _, p := range profiles {
-			fmt.Printf("\U0001f4e6 Installing %s...\n", p)
-			count, err := ops.InstallProfile(steerRoot, p, target)
+			srcDir, wsName := ops.ResolveProfileSource(steerRoot, p)
+			if wsName != "" {
+				fmt.Printf("📦 Installing %s... (workspace: %s)\n", p, wsName)
+			} else {
+				fmt.Printf("📦 Installing %s...\n", p)
+			}
+			count, err := ops.InstallProfileFrom(srcDir, target)
 			if err != nil {
-				fmt.Printf("  \u2717 %s: %v\n", p, err)
+				fmt.Printf("  ✗ %s: %v\n", p, err)
 				continue
 			}
-			fmt.Printf("  \u2713 %s (%d agents)\n", p, count)
+			fmt.Printf("  ✓ %s (%d agents)\n", p, count)
 		}
 		ops.InjectAgentTokens(target)
 		ops.WriteProfilesManifest(steerRoot, target)
@@ -86,15 +91,20 @@ var syncCmd = &cobra.Command{
 			fmt.Println("\u26a0 No profiles detected. Use 'koda install' first.")
 			return nil
 		}
-		fmt.Printf("\U0001f504 Syncing: %s\n", strings.Join(installed, ", "))
+		fmt.Printf("🔄 Syncing: %s\n", strings.Join(installed, ", "))
 		ops.InstallShared(steerRoot, target)
 		for _, p := range installed {
-			count, err := ops.InstallProfile(steerRoot, p, target)
+			srcDir, wsName := ops.ResolveProfileSource(steerRoot, p)
+			label := p
+			if wsName != "" {
+				label = fmt.Sprintf("%s (workspace: %s)", p, wsName)
+			}
+			count, err := ops.InstallProfileFrom(srcDir, target)
 			if err != nil {
-				fmt.Printf("  \u2717 %s: %v\n", p, err)
+				fmt.Printf("  ✗ %s: %v\n", label, err)
 				continue
 			}
-			fmt.Printf("  \u2713 %s (%d agents)\n", p, count)
+			fmt.Printf("  ✓ %s (%d agents)\n", label, count)
 		}
 		ops.InjectAgentTokens(target)
 		fmt.Printf("\n\u2705 Sync complete (%d agents total)\n", countAgents(target))

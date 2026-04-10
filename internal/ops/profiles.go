@@ -160,9 +160,33 @@ func InstallProfileFrom(srcDir, targetDir string) (int, error) {
 	return count, nil
 }
 
-// RemoveProfile removes a profile's agents and prompts from targetDir.
+// ResolveProfileSource returns the workspace-specific profile directory if the active
+// workspace overrides profileID, otherwise returns the global profile directory.
+// The second return value is the workspace name if an override was found, empty otherwise.
+func ResolveProfileSource(steerRoot, profileID string) (string, string) {
+	s := config.ReadSteerSettings()
+	if s.ActiveWorkspace != "" {
+		wsDir := filepath.Join(findWorkspaceDir(steerRoot, s.ActiveWorkspace), "profiles", profileID)
+		if _, err := os.Stat(wsDir); err == nil {
+			return wsDir, s.ActiveWorkspace
+		}
+	}
+	return filepath.Join(steerRoot, config.ProfilePrefix+profileID), ""
+}
+
+// RemoveProfile removes a profile's agents, prompts, and all profile-owned files
+// (powers, context, rules, skills, steering) from targetDir.
+// Files installed by InstallShared (from steer-runtime/shared/) are not touched.
+// NOTE: Agent resolution uses the currently active workspace at the time of removal.
+// If the active workspace changed since installation (or is no longer active), the resolved
+// agent list may differ from what was installed, leaving orphaned agent files in targetDir.
+// The recommended path for profile removal is the TUI (koda → p), which always operates
+// with the correct workspace context.
+// TODO: Persist the install source (global vs workspace) in the profiles manifest so that
+// RemoveProfile can always resolve the correct agent list regardless of active workspace state.
+// This requires a manifest schema change and is considered a major breaking change.
 func RemoveProfile(steerRoot, profileID, targetDir string) (int, error) {
-	srcDir := filepath.Join(steerRoot, config.ProfilePrefix+profileID)
+	srcDir, _ := ResolveProfileSource(steerRoot, profileID)
 	agentNames, err := agentNames(srcDir)
 	if err != nil {
 		return 0, fmt.Errorf("no agents found for profile: %s", profileID)
@@ -176,6 +200,29 @@ func RemoveProfile(steerRoot, profileID, targetDir string) (int, error) {
 		}
 		os.Remove(filepath.Join(targetDir, config.PromptsDir, name+".md"))
 	}
+
+	// Remove all files that were installed by this profile from supporting dirs.
+	// Files present in steer-runtime/shared/ or steer-runtime/common/ are preserved.
+	for _, sub := range []string{config.ContextDir, config.RulesDir, "powers", "skills", "steering"} {
+		entries, err := os.ReadDir(filepath.Join(srcDir, sub))
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			// Preserve files that come from shared/ or common/
+			if _, err := os.Stat(filepath.Join(steerRoot, "shared", sub, e.Name())); err == nil {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(steerRoot, "common", sub, e.Name())); err == nil {
+				continue
+			}
+			os.Remove(filepath.Join(targetDir, sub, e.Name()))
+		}
+	}
+
 	return removed, nil
 }
 
