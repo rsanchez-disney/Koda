@@ -24,7 +24,7 @@ Orchestrate multiple Kiro agents working in parallel on a single goal. Each work
 12-screen dashboard: main dashboard, profiles, tokens, env vars, workspaces, agents (fuzzy search), doctor, rules, MCP servers, fork, create/edit workspace, and clean confirmation. Sync runs inline from the dashboard. Chat launches a separate session. Navigate with single keystrokes.
 
 ### 🔧 Setup & Configuration
-One-command dependency installer (`koda setup`). Cross-platform: detects brew/apt/winget/choco. MCP server verification and `mcp.json` generation. Masked token input with paste support and PAT URL hints. Profile manifest for kiro-cli.
+One-command dependency installer (`koda setup`). Cross-platform: detects brew/apt/winget/choco. Interactive MCP server selection, inline token configuration, and multi-instance GitHub remote management — see [MCP Setup Guide](docs/MCP_INSTALL.md) for the full walkthrough. Profile manifest for kiro-cli.
 
 ### 🚀 Profile Management
 Install, remove, sync, and list agent profiles. `dev` alias expands to dev-core + dev-web + dev-mobile. Profiles manifest written after every install/sync.
@@ -154,6 +154,34 @@ On save (`ctrl+s`):
 3. Opens a PR on the fork targeting main
 4. Returns to main branch
 
+### Profile install / uninstall behavior
+
+When a profile is installed, it copies agents, prompts, and supporting files (context, rules, powers, skills, steering) into `~/.kiro/`.
+
+When a profile is removed, only the files that profile installed are deleted. The following are always preserved regardless of profile state:
+
+- **`shared/`** — hooks, shared context, MCP server bundles. Installed once by `InstallShared` and never removed by profile operations.
+- **`common/`** — baseline rules, skills, and templates shared across all profiles. Preserved on removal even if a profile ships a file with the same name.
+
+This means `~/.kiro/` always retains the mandatory runtime baseline. A full wipe requires `koda clean` (or `[c]` in the TUI).
+
+### Profile precedence
+
+When a workspace is active, workspace-level profiles take **full precedence** over global profiles with the same ID. The global profile is not installed — the workspace version replaces it entirely.
+
+This applies to all profile operations while the workspace is active:
+- `koda install dev-web` — installs the workspace version, not the global template
+- `koda sync` — re-installs from the workspace source
+- `koda workspace apply` — workspace profiles replace globals, then steer-runtime is synced automatically
+
+The CLI indicates when a workspace override is in use:
+```
+📦 Installing dev-web... (workspace: payments-core)
+  ✓ dev-web (3 agents)
+```
+
+Global profiles are used only when no workspace is active or when the active workspace does not define an override for that profile ID.
+
 ### Apply a workspace
 
 ```
@@ -275,6 +303,7 @@ koda                              # Launch
 # Setup
 koda setup                          # Install dependencies (node, git, kiro-cli, gh)
 koda mcp-install                    # MCP bundles + mcp.json
+koda mcp-install --assistant        # Interactive MCP server selection + token setup
 koda configure                      # Token setup (masked)
 koda enable-tools                   # Enable thinking/todo/knowledge
 

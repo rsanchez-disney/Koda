@@ -54,11 +54,12 @@ func SyncSteerRuntime(steerRoot, targetDir string) error {
 
 	config.MarkSynced()
 
-	// Re-install profiles
+	// Re-install profiles, respecting active workspace overrides
 	installed := DetectInstalled(steerRoot, targetDir)
 	InstallShared(steerRoot, targetDir)
 	for _, p := range installed {
-		InstallProfile(steerRoot, p, targetDir)
+		srcDir, _ := ResolveProfileSource(steerRoot, p)
+		InstallProfileFrom(srcDir, targetDir)
 	}
 	InjectAgentTokens(targetDir)
 	return nil

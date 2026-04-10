@@ -65,6 +65,8 @@ func WriteGitHubRemote(r model.GitHubRemote) {
 	tokens["GITHUB_HOST_"+r.Name] = r.Host
 	if r.APIPath != "" {
 		tokens["GITHUB_API_PATH_"+r.Name] = r.APIPath
+	} else {
+		delete(tokens, "GITHUB_API_PATH_"+r.Name)
 	}
 	WriteTokens(tokens)
 }

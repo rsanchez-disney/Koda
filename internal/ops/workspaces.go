@@ -176,19 +176,34 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	// Resolve inheritance
 	resolved, wsNames := ResolveWorkspace(steerRoot, ws)
 
-	// Install profiles (global first, then workspace overrides win)
-	profiles := ExpandAliases(resolved.Profiles)
-	InstallShared(steerRoot, targetDir)
-	for _, p := range profiles {
-		InstallProfile(steerRoot, p, targetDir)
+	// Fetch latest steer-runtime before installing so profiles use updated source
+	fmt.Println("  Syncing steer-runtime...")
+	s := config.ReadSteerSettings()
+	if s.Source == "git" {
+		syncGit(steerRoot)
 	}
+	config.MarkSynced()
+
+	// Build workspace override map: last workspace in chain wins for each profile ID
+	profiles := ExpandAliases(resolved.Profiles)
+	wsOverrides := map[string]string{} // profileID -> wsProfileDir
 	for _, wsName := range wsNames {
 		wsProfilesDir := filepath.Join(findWorkspaceDir(steerRoot, wsName), "profiles")
 		for _, p := range profiles {
 			wsProfile := filepath.Join(wsProfilesDir, p)
 			if _, err := os.Stat(wsProfile); err == nil {
-				InstallProfileFrom(wsProfile, targetDir)
+				wsOverrides[p] = wsProfile
 			}
+		}
+	}
+
+	// Install profiles: workspace override replaces global entirely
+	InstallShared(steerRoot, targetDir)
+	for _, p := range profiles {
+		if wsDir, ok := wsOverrides[p]; ok {
+			InstallProfileFrom(wsDir, targetDir)
+		} else {
+			InstallProfile(steerRoot, p, targetDir)
 		}
 	}
 
@@ -227,12 +242,12 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 				fmt.Printf("  Cloning %s...\n", p.Name)
 				url := GitCloneURL(p.Repo)
 				if err := exec.Command("git", "clone", url, projPath).Run(); err != nil {
-					fmt.Printf("  \u2717 %s (clone failed: %v)\n", p.Name, err)
+					fmt.Printf("  ✗ %s (clone failed: %v)\n", p.Name, err)
 					continue
 				}
-				fmt.Printf("  \u2713 %s cloned\n", p.Name)
+				fmt.Printf("  ✓ %s cloned\n", p.Name)
 			} else {
-				fmt.Printf("  \u23ed %s (not cloned)\n", p.Name)
+				fmt.Printf("  ⏭ %s (not cloned)\n", p.Name)
 				continue
 			}
 		}
@@ -248,7 +263,6 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	}
 
 	// Save active workspace
-	s := config.ReadSteerSettings()
 	s.ActiveWorkspace = ws.Name
 	config.SaveSteerSettings(s)
 
