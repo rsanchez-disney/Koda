@@ -149,5 +149,6 @@ func init() {
 	rootCmd.AddCommand(slackCmd)
 	rootCmd.AddCommand(teamCmd)
 	rootCmd.AddCommand(evalCmd)
+	rootCmd.AddCommand(memoryCmd)
 	rootCmd.AddCommand(kiroIDECmd)
 }

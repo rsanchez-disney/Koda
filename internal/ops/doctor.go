@@ -294,6 +294,23 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		}
 	}
 
+	// 10. memory-mcp
+	memStatus := MemoryStatus(targetDir)
+	if memStatus.Installed {
+		if memStatus.Running {
+			results = append(results, DoctorResult{Name: "memory-mcp", OK: true, Detail: fmt.Sprintf("running (port %d, health: %s)", memStatus.Port, memStatus.Health)})
+		} else {
+			results = append(results, DoctorResult{Name: "memory-mcp", OK: false, Detail: "installed but not running", Fix: "koda memory start"})
+		}
+	}
+
+	// 11. container runtime
+	if rt := ContainerRuntime(); rt != "" {
+		results = append(results, DoctorResult{Name: "container-runtime", OK: true, Detail: rt})
+	} else if memStatus.Installed {
+		results = append(results, DoctorResult{Name: "container-runtime", OK: false, Detail: "not found (needed for memory-mcp)", Fix: "Install docker, podman, or nerdctl"})
+	}
+
 	return results
 }
 

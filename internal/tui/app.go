@@ -94,6 +94,7 @@ type model struct {
 	cw            cwState
 	ghIdentity    ops.GHIdentity
 	kodaVersion   string
+	memoryStatus  ops.MemoryStatusInfo
 }
 
 type profileItem struct {
@@ -162,6 +163,7 @@ func (m *model) refresh() {
 	m.envVars = ops.ReadEnvVars()
 	m.ghRemotes = ops.ReadGitHubRemotes()
 	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
+	m.memoryStatus = ops.MemoryStatus(m.targetDir)
 	availRules := ops.ListRulesAll(m.steerRoot)
 	m.rules = nil
 	for _, r := range availRules {
@@ -237,6 +239,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.envVars = ops.ReadEnvVars()
 	m.ghRemotes = ops.ReadGitHubRemotes()
 	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
+	m.memoryStatus = ops.MemoryStatus(m.targetDir)
 		if msg.err != nil {
 			m.statusMsg = "Fix failed: " + msg.err.Error()
 		} else {
@@ -338,6 +341,24 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "Tray auto-start enabled — launches on login"
 			} else {
 				m.statusMsg = "Tray: " + err.Error()
+			}
+		}
+	case "M":
+		if m.memoryStatus.Installed {
+			if m.memoryStatus.Running {
+				m.statusMsg = "⏳ Stopping memory-mcp..."
+				targetDir := m.targetDir
+				return m, func() tea.Msg {
+					ops.MemoryStop(targetDir)
+					return syncDoneMsg{}
+				}
+			} else {
+				m.statusMsg = "⏳ Starting memory-mcp..."
+				targetDir := m.targetDir
+				return m, func() tea.Msg {
+					ops.MemoryStart(targetDir)
+					return syncDoneMsg{}
+				}
 			}
 		}
 	case "f":
@@ -449,6 +470,15 @@ func (m model) viewDashboard() string {
 	if m.kodaVersion != "" {
 		b.WriteString(fmt.Sprintf("  Koda:      %s\n", dimStyle.Render(m.kodaVersion)))
 	}
+	// Memory status
+	if m.memoryStatus.Installed {
+		if m.memoryStatus.Running {
+			b.WriteString(fmt.Sprintf("  Memory:    %s\n", checkStyle.Render(fmt.Sprintf("running (port %d)", m.memoryStatus.Port))))
+		} else {
+			b.WriteString("  Memory:    " + warnStyle.Render("stopped") + "\n")
+		}
+	}
+
 	if m.ghIdentity.Login != "" {
 		userStr := m.ghIdentity.Login
 		if m.ghIdentity.Name != "" {
@@ -479,6 +509,13 @@ func (m model) viewDashboard() string {
 		b.WriteString(activeStyle.Render("[y]") + " Tray \u2713\n")
 	} else {
 		b.WriteString(activeStyle.Render("[y]") + " Tray\n")
+	}
+	if m.memoryStatus.Installed {
+		if m.memoryStatus.Running {
+			b.WriteString(activeStyle.Render("  [M]") + " Memory ✓   ")
+		} else {
+			b.WriteString(activeStyle.Render("  [M]") + " Memory     ")
+		}
 	}
 	b.WriteString(activeStyle.Render("  [enter]") + " Chat       ")
 	b.WriteString(activeStyle.Render("[q]") + " Quit\n")

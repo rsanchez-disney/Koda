@@ -47,6 +47,9 @@ Run a Slack support bot powered by a read-only agent. Responds to @mentions in t
 ### 🧪 Agent Evals
 Score agent output quality with fixtures and rubrics. Structural checks (regex, fast, free) catch broken outputs. LLM-as-judge (`--deep`) scores quality dimensions. Results saved as JSON for trend tracking.
 
+### 🧠 Memory MCP
+Manage persistent semantic memory for agents. `koda memory start` launches the memory-mcp Docker containers (FastAPI + Redis Stack). Agents get long-term recall via vector search — decisions, patterns, and bugfixes survive across sessions. No external API calls; embeddings run locally.
+
 ### 📦 Distribution
 One-liner install via curl/PowerShell. Self-update via `koda upgrade`. Auto-update enabled by default — daily upgrade + sync at 9 AM (LaunchAgent/cron/Task Scheduler). Cross-compile for macOS (arm64/amd64), Linux, Windows. Publish to GitHub releases.
 
@@ -289,6 +292,7 @@ koda                              # Launch
 | `r` | Rules — toggle and install |
 | `w` | Workspaces — browse, apply, `e` to edit, `n` to create |
 | `m` | MCP — server bundle status |
+| `M` | Memory — start/stop memory-mcp containers |
 | `f` | Fork/Unfork — switch steer-runtime source |
 | `s` | Sync — fetch latest + re-install profiles (inline action) |
 | `c` | Clean — y/n confirmation |
@@ -345,6 +349,11 @@ koda workspace sync NAME [--push]   # Git pull/push across workspace repos
 koda env list                       # Show all env vars
 koda env get KEY                    # Get value
 koda env set KEY=VALUE              # Set value
+
+# Memory
+koda memory start                   # Start memory-mcp containers
+koda memory stop                    # Stop memory-mcp containers
+koda memory status                  # Check container health
 
 # Rules & Prompts
 koda rules list | install [--all]
