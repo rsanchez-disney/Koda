@@ -346,6 +346,8 @@ func (m model) cwBuildWorkspace() mdl.Workspace {
 		DefaultAgent:  cw.agent,
 		EnableTools:   cw.tools,
 		WorkspacePath: cw.reposPath,
+		Services:      []string{},
+		Channels:      []string{},
 	}
 	for _, p := range cw.profiles {
 		if p.selected {

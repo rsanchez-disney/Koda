@@ -133,6 +133,67 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		results = append(results, DoctorResult{Name: "mcp-servers", OK: false, Detail: "directory not found"})
 	}
 
+	// 6b. Service/channel bank staleness
+	if steerRoot != "" {
+		ctxDir := filepath.Join(targetDir, config.ContextDir)
+		var stale []string
+		// Check svc-*.md files
+		entries, _ := os.ReadDir(ctxDir)
+		for _, e := range entries {
+			name := e.Name()
+			var srcDir string
+			if strings.HasPrefix(name, "svc-") && strings.HasSuffix(name, ".md") {
+				svc := strings.TrimSuffix(strings.TrimPrefix(name, "svc-"), ".md")
+				srcDir = filepath.Join(steerRoot, "shared", "services", svc)
+			} else if strings.HasPrefix(name, "ch-") && strings.HasSuffix(name, ".md") {
+				ch := strings.TrimSuffix(strings.TrimPrefix(name, "ch-"), ".md")
+				srcDir = filepath.Join(steerRoot, "channels", ch)
+			} else {
+				continue
+			}
+			installed, _ := e.Info()
+			if installed == nil {
+				continue
+			}
+			// Check if any source file is newer than the installed merged file
+			srcEntries, err := os.ReadDir(srcDir)
+			if err != nil {
+				stale = append(stale, name+" (source missing)")
+				continue
+			}
+			for _, se := range srcEntries {
+				if se.IsDir() || !strings.HasSuffix(se.Name(), ".md") {
+					continue
+				}
+				si, _ := se.Info()
+				if si != nil && si.ModTime().After(installed.ModTime()) {
+					stale = append(stale, name)
+					break
+				}
+			}
+		}
+		if len(stale) > 0 {
+			results = append(results, DoctorResult{
+				Name:   "banks",
+				OK:     false,
+				Detail: fmt.Sprintf("%d stale: %s", len(stale), strings.Join(stale, ", ")),
+				Fix:    "koda workspace apply <name>",
+			})
+		} else if len(entries) > 0 {
+			// Count how many bank files exist
+			bankCount := 0
+			for _, e := range entries {
+				n := e.Name()
+				if (strings.HasPrefix(n, "svc-") || strings.HasPrefix(n, "ch-")) && strings.HasSuffix(n, ".md") {
+					bankCount++
+				}
+			}
+			if bankCount > 0 {
+				results = append(results, DoctorResult{Name: "banks", OK: true, Detail: fmt.Sprintf("%d banks up to date", bankCount)})
+			}
+		}
+	}
+
 	// 6c. Kiro IDE status
 	kideStatus := CheckKiroIDE("")
 	if kideStatus.SteeringCount > 0 || kideStatus.SkillsCount > 0 {

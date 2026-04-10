@@ -355,3 +355,56 @@ func chmodExec(dir string) {
 		}
 	}
 }
+
+// InstallBanks copies service and channel bank markdown files into the target context directory.
+// Each service's .md files are merged into a single svc-{name}.md file.
+// Each channel's .md files are merged into a single ch-{name}.md file.
+func InstallBanks(steerRoot, targetDir string, services, channels []string) (int, int) {
+	ctxDir := filepath.Join(targetDir, config.ContextDir)
+	os.MkdirAll(ctxDir, 0755)
+
+	svcCount := 0
+	for _, svc := range services {
+		srcDir := filepath.Join(steerRoot, "shared", "services", svc)
+		if merged := mergeBank(srcDir, filepath.Join(ctxDir, "svc-"+svc+".md")); merged {
+			svcCount++
+		}
+	}
+
+	chCount := 0
+	for _, ch := range channels {
+		srcDir := filepath.Join(steerRoot, "channels", ch)
+		if merged := mergeBank(srcDir, filepath.Join(ctxDir, "ch-"+ch+".md")); merged {
+			chCount++
+		}
+	}
+
+	return svcCount, chCount
+}
+
+// mergeBank reads all .md files from srcDir and writes them concatenated into dstFile.
+func mergeBank(srcDir, dstFile string) bool {
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return false
+	}
+	var buf strings.Builder
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || e.Name() == "README.md" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(srcDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		if buf.Len() > 0 {
+			buf.WriteString("\n\n---\n\n")
+		}
+		buf.Write(data)
+	}
+	if buf.Len() == 0 {
+		return false
+	}
+	os.WriteFile(dstFile, []byte(buf.String()), 0644)
+	return true
+}
