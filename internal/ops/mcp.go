@@ -17,6 +17,7 @@ type MCPServer struct {
 	BundleDir string   // directory name under mcp-servers/ (e.g., "jira-mcp")
 	TokenKeys []string // required token keys from KnownTokens (e.g., ["JIRA_PAT"])
 	EnvKeys   []string // required env var keys (e.g., ["CONFLUENCE_URL"])
+	Command   string   // override command (default: "node"); set from mcp-meta.json
 	IsNPM     bool     // true for context7 (npm install required)
 	IsSSE     bool     // true for compass (SSE transport)
 }
@@ -224,14 +225,8 @@ func DiscoverServers(targetDir string) (available []MCPServer, verified map[stri
 		}
 	}
 
-
 	// Workspace MCP servers (discovered via mcp-meta.json)
-	knownDirs := make(map[string]bool, len(knownServers))
-	for _, srv := range knownServers {
-		if srv.BundleDir != "" {
-			knownDirs[srv.BundleDir] = true
-		}
-	}
+	knownDirs := knownBundleDirs()
 	if entries, err := os.ReadDir(mcpDir); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() || knownDirs[e.Name()] {
@@ -246,7 +241,7 @@ func DiscoverServers(targetDir string) (available []MCPServer, verified map[stri
 				tokenKeys = append(tokenKeys, k)
 			}
 			cjsPath := filepath.Join(mcpDir, e.Name(), "dist", "index.cjs")
-			srv := MCPServer{Name: meta.Name, BundleDir: e.Name(), TokenKeys: tokenKeys}
+			srv := MCPServer{Name: meta.Name, BundleDir: e.Name(), TokenKeys: tokenKeys, Command: meta.Command}
 			available = append(available, srv)
 			if _, err := os.Stat(cjsPath); err == nil {
 				verified[meta.Name] = true
@@ -255,7 +250,6 @@ func DiscoverServers(targetDir string) (available []MCPServer, verified map[stri
 	}
 	return available, verified
 }
-
 
 // WorkspaceMCPTokens returns token definitions for workspace MCP servers
 // discovered via mcp-meta.json, suitable for the configure command.
@@ -266,12 +260,7 @@ func WorkspaceMCPTokens(targetDir string) []model.Token {
 		return nil
 	}
 
-	knownDirs := make(map[string]bool, len(knownServers))
-	for _, srv := range knownServers {
-		if srv.BundleDir != "" {
-			knownDirs[srv.BundleDir] = true
-		}
-	}
+	knownDirs := knownBundleDirs()
 
 	var tokens []model.Token
 	for _, e := range entries {
@@ -282,7 +271,12 @@ func WorkspaceMCPTokens(targetDir string) []model.Token {
 		if err != nil {
 			continue
 		}
+		envKeys := make([]string, 0, len(meta.Env))
 		for k := range meta.Env {
+			envKeys = append(envKeys, k)
+		}
+		sort.Strings(envKeys)
+		for _, k := range envKeys {
 			tokens = append(tokens, model.Token{
 				Key:   k,
 				Label: fmt.Sprintf("%s (%s)", k, meta.Name),
@@ -291,6 +285,18 @@ func WorkspaceMCPTokens(targetDir string) []model.Token {
 	}
 	return tokens
 }
+
+// knownBundleDirs returns a set of bundle directory names from the built-in server registry.
+func knownBundleDirs() map[string]bool {
+	dirs := make(map[string]bool, len(knownServers))
+	for _, srv := range knownServers {
+		if srv.BundleDir != "" {
+			dirs[srv.BundleDir] = true
+		}
+	}
+	return dirs
+}
+
 // RequiredTokens returns the deduplicated list of tokens required by the
 // selected servers, preserving first-appearance order.
 func RequiredTokens(selected []MCPServer) []model.Token {
@@ -393,8 +399,12 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 
 		default:
 			// Regular node-based server.
+			cmd := "node"
+			if srv.Command != "" {
+				cmd = srv.Command
+			}
 			entry := mcpServer{
-				Command: "node",
+				Command: cmd,
 				Args:    []string{filepath.Join(bundleDir, srv.BundleDir, "dist", "index.cjs")},
 			}
 			// Build env from TokenKeys and EnvKeys.
