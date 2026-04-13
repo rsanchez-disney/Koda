@@ -200,7 +200,11 @@ var mcpInstallCmd = &cobra.Command{
 		available, verified := ops.DiscoverServers(target)
 		for _, srv := range available {
 			if verified[srv.Name] {
-				fmt.Printf("  ✓ %s\n", srv.BundleDir)
+				label := srv.BundleDir
+				if label == "" {
+					label = srv.Name
+				}
+				fmt.Printf("  ✓ %s\n", label)
 			}
 		}
 		verifiedCount := 0

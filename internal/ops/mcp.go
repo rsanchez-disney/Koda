@@ -224,9 +224,73 @@ func DiscoverServers(targetDir string) (available []MCPServer, verified map[stri
 		}
 	}
 
+
+	// Workspace MCP servers (discovered via mcp-meta.json)
+	knownDirs := make(map[string]bool, len(knownServers))
+	for _, srv := range knownServers {
+		if srv.BundleDir != "" {
+			knownDirs[srv.BundleDir] = true
+		}
+	}
+	if entries, err := os.ReadDir(mcpDir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() || knownDirs[e.Name()] {
+				continue
+			}
+			meta, err := ReadWorkspaceMCPMeta(filepath.Join(mcpDir, e.Name()))
+			if err != nil {
+				continue
+			}
+			var tokenKeys []string
+			for k := range meta.Env {
+				tokenKeys = append(tokenKeys, k)
+			}
+			cjsPath := filepath.Join(mcpDir, e.Name(), "dist", "index.cjs")
+			srv := MCPServer{Name: meta.Name, BundleDir: e.Name(), TokenKeys: tokenKeys}
+			available = append(available, srv)
+			if _, err := os.Stat(cjsPath); err == nil {
+				verified[meta.Name] = true
+			}
+		}
+	}
 	return available, verified
 }
 
+
+// WorkspaceMCPTokens returns token definitions for workspace MCP servers
+// discovered via mcp-meta.json, suitable for the configure command.
+func WorkspaceMCPTokens(targetDir string) []model.Token {
+	mcpDir := filepath.Join(targetDir, config.ToolsDir, "mcp-servers")
+	entries, err := os.ReadDir(mcpDir)
+	if err != nil {
+		return nil
+	}
+
+	knownDirs := make(map[string]bool, len(knownServers))
+	for _, srv := range knownServers {
+		if srv.BundleDir != "" {
+			knownDirs[srv.BundleDir] = true
+		}
+	}
+
+	var tokens []model.Token
+	for _, e := range entries {
+		if !e.IsDir() || knownDirs[e.Name()] {
+			continue
+		}
+		meta, err := ReadWorkspaceMCPMeta(filepath.Join(mcpDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		for k := range meta.Env {
+			tokens = append(tokens, model.Token{
+				Key:   k,
+				Label: fmt.Sprintf("%s (%s)", k, meta.Name),
+			})
+		}
+	}
+	return tokens
+}
 // RequiredTokens returns the deduplicated list of tokens required by the
 // selected servers, preserving first-appearance order.
 func RequiredTokens(selected []MCPServer) []model.Token {

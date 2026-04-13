@@ -224,6 +224,11 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 		copyDirContents(filepath.Join(wsPath, config.ContextDir), filepath.Join(targetDir, config.ContextDir))
 	}
 
+
+	// Copy workspace steering and MCP server bundles (chain order: parent first)
+	InstallWorkspaceSteering(steerRoot, targetDir, wsNames)
+	InstallWorkspaceMCPBundles(steerRoot, targetDir, wsNames)
+
 	InjectAgentTokens(targetDir)
 
 	// Install service and channel banks
@@ -285,6 +290,50 @@ func resolveProjectPath(workspacePath, projPath, steerRoot string) string {
 	return projPath
 }
 
+
+// InstallWorkspaceSteering copies workspace-level steering files into targetDir.
+// Walks the inheritance chain (parent first, child wins).
+func InstallWorkspaceSteering(steerRoot, targetDir string, wsNames []string) {
+	for _, wsName := range wsNames {
+		wsPath := findWorkspaceDir(steerRoot, wsName)
+		copyDirContents(
+			filepath.Join(wsPath, config.SteeringDir),
+			filepath.Join(targetDir, config.SteeringDir),
+		)
+	}
+}
+
+// InstallWorkspaceMCPBundles copies workspace MCP server bundles and their
+// mcp-meta.json descriptors into targetDir. Walks the inheritance chain.
+func InstallWorkspaceMCPBundles(steerRoot, targetDir string, wsNames []string) {
+	for _, wsName := range wsNames {
+		wsPath := findWorkspaceDir(steerRoot, wsName)
+		mcpSrc := filepath.Join(wsPath, config.ToolsDir, "mcp-servers")
+		entries, err := os.ReadDir(mcpSrc)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			srcDir := filepath.Join(mcpSrc, e.Name())
+			dstDir := filepath.Join(targetDir, config.ToolsDir, "mcp-servers", e.Name())
+
+			bundle := filepath.Join(srcDir, "dist", "index.cjs")
+			if _, err := os.Stat(bundle); err == nil {
+				os.MkdirAll(filepath.Join(dstDir, "dist"), 0755)
+				copyFile(bundle, filepath.Join(dstDir, "dist", "index.cjs"))
+			}
+
+			meta := filepath.Join(srcDir, "mcp-meta.json")
+			if _, err := os.Stat(meta); err == nil {
+				os.MkdirAll(dstDir, 0755)
+				copyFile(meta, filepath.Join(dstDir, "mcp-meta.json"))
+			}
+		}
+	}
+}
 // PrintWorkspace prints workspace details.
 func PrintWorkspace(ws model.Workspace) {
 	fmt.Printf("\n  Name:        %s\n", ws.Name)

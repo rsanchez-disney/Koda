@@ -97,6 +97,41 @@ var configureCmd = &cobra.Command{
 			fmt.Printf("  \u2713 Added remote '%s'\n", name)
 		}
 
+
+		// Workspace MCP server tokens
+		target := config.TargetDir(projectDir)
+		wsMCPTokens := ops.WorkspaceMCPTokens(target)
+		if len(wsMCPTokens) > 0 {
+			fmt.Println("\n\U0001f527 Workspace MCP Servers")
+			for _, tk := range wsMCPTokens {
+				current := tokens[tk.Key]
+				status := ops.MaskToken(current)
+				fmt.Printf("%s [%s]: ", tk.Label, status)
+
+				var input string
+				if isTerminal() {
+					raw, err := term.ReadPassword(int(syscall.Stdin))
+					fmt.Println()
+					if err == nil {
+						input = strings.TrimSpace(string(raw))
+					}
+				} else {
+					line, _ := reader.ReadString('\n')
+					input = strings.TrimSpace(line)
+				}
+
+				if input != "" {
+					tokens[tk.Key] = input
+					fmt.Println("  \u2713 Updated")
+				} else {
+					fmt.Println("  \u23ed Kept")
+				}
+			}
+			if err := ops.WriteTokens(tokens); err != nil {
+				return err
+			}
+		}
+
 		ops.InjectAgentTokens(config.TargetDir(projectDir))
 		fmt.Println("\n\u2705 Tokens saved")
 		return nil

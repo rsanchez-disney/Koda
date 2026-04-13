@@ -48,6 +48,29 @@ func ReadMCPMeta(dir string) (*MCPMeta, error) {
 	return &meta, nil
 }
 
+// WorkspaceMCPMeta describes a workspace-provided MCP server bundle.
+type WorkspaceMCPMeta struct {
+	Name    string            `json:"name"`
+	Command string            `json:"command,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+}
+
+// ReadWorkspaceMCPMeta reads mcp-meta.json from a workspace MCP server directory.
+func ReadWorkspaceMCPMeta(dir string) (*WorkspaceMCPMeta, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "mcp-meta.json"))
+	if err != nil {
+		return nil, err
+	}
+	var meta WorkspaceMCPMeta
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return nil, err
+	}
+	if meta.Command == "" {
+		meta.Command = "node"
+	}
+	return &meta, nil
+}
+
 // MemoryMCPDir returns the path to the memory-mcp bundle.
 func MemoryMCPDir(targetDir string) string {
 	return filepath.Join(targetDir, config.ToolsDir, "mcp-servers", "memory-mcp")

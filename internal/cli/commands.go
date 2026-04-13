@@ -107,6 +107,16 @@ var syncCmd = &cobra.Command{
 			fmt.Printf("  ✓ %s (%d agents)\n", label, count)
 		}
 		ops.InjectAgentTokens(target)
+
+		// Sync workspace steering and MCP bundles if a workspace is active
+		if s := config.ReadSteerSettings(); s.ActiveWorkspace != "" {
+			ws, err := ops.GetWorkspace(steerRoot, s.ActiveWorkspace)
+			if err == nil {
+				_, wsNames := ops.ResolveWorkspace(steerRoot, ws)
+				ops.InstallWorkspaceSteering(steerRoot, target, wsNames)
+				ops.InstallWorkspaceMCPBundles(steerRoot, target, wsNames)
+			}
+		}
 		fmt.Printf("\n\u2705 Sync complete (%d agents total)\n", countAgents(target))
 		ops.WriteProfilesManifest(steerRoot, target)
 		return nil
