@@ -30,7 +30,8 @@ type SteerSettings struct {
 	Source          string `json:"source"` // "tarball" (default) or "git"
 	LastSync        string `json:"lastSync"`
 	AutoSync        bool   `json:"autoSync"`
-	ActiveWorkspace string `json:"activeWorkspace"`
+	ActiveWorkspace     string `json:"activeWorkspace"`
+	KiroSettingsApplied bool   `json:"kiroSettingsApplied,omitempty"`
 }
 
 func ReadSteerSettings() SteerSettings {

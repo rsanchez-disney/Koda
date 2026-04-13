@@ -133,7 +133,8 @@ var configureCmd = &cobra.Command{
 		}
 
 		ops.InjectAgentTokens(config.TargetDir(projectDir))
-		fmt.Println("\n\u2705 Tokens saved")
+		ops.GenerateMcpJson(ops.FindNodeExe())
+		fmt.Println("\n\u2705 Tokens saved + mcp.json updated")
 		return nil
 	},
 }

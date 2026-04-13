@@ -230,6 +230,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	InstallWorkspaceMCPBundles(steerRoot, targetDir, wsNames)
 
 	InjectAgentTokens(targetDir)
+	GenerateMcpJson(FindNodeExe())
 
 	// Install service and channel banks
 	if len(resolved.Services) > 0 || len(resolved.Channels) > 0 {
@@ -270,6 +271,12 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	// Save active workspace
 	s.ActiveWorkspace = ws.Name
 	config.SaveSteerSettings(s)
+
+	// Update default agent for this workspace
+	if agent := SuggestDefaultAgent(steerRoot, targetDir); agent != "" {
+		SetKiroSetting("chat.defaultAgent", agent)
+		fmt.Printf("  ✓ kiro: chat.defaultAgent = %s\n", agent)
+	}
 
 	return nil
 }

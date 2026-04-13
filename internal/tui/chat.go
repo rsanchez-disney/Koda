@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.disney.com/SANCR225/koda/internal/acp"
@@ -22,6 +24,12 @@ var (
 	inputStyle  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 	headerStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7C3AED"))
 	completionStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Bold(true)
+	branchStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA"))
+	workspaceStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#34D399"))
+	toolCountStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B"))
+	turnStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#60A5FA"))
+	sepStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#4B5563"))
+	agentBarStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#22D3EE")).Bold(true)
 )
 
 var slashCommands = []string{"/quit", "/clear", "/agent", "/profile", "/save"}
@@ -47,7 +55,7 @@ type chatModel struct {
 	messages  []chatMsg
 	streaming string // current streaming buffer
 	input     string
-	scroll    int
+	scroll     int // -1 = follow bottom
 	width     int
 	height    int
 	ready     bool
@@ -62,17 +70,23 @@ type chatModel struct {
 	history       []string
 	historyIdx    int
 	historyDraft  string
+	mdRenderer    *glamour.TermRenderer
+	contextUsage  float64
+	toolCalls     int
+	turnCount     int
+	gitBranch     string
+	workspaceName string
 }
 
 // RunChat launches the chat TUI.
 func RunChat(agent string) error {
-	p := tea.NewProgram(initialChatModel(agent), tea.WithAltScreen())
+	p := tea.NewProgram(initialChatModel(agent), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
 }
 
 func initialChatModel(agent string) chatModel {
-	return chatModel{agent: agent}
+	return chatModel{agent: agent, scroll: -1}
 }
 
 func (m chatModel) Init() tea.Cmd {
@@ -129,6 +143,12 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.allAgents = ops.AllAgents("", filepath.Join(home, ".kiro"))
 		m.profileNames = loadProfileNames()
 		m.filterAgentsByProfile()
+		m.mdRenderer, _ = glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(0),
+		)
+		m.gitBranch = detectGitBranch()
+		m.workspaceName = detectWorkspace()
 		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Connected to %s", agentLabel(m.agent))})
 		if welcome := loadWelcomeMessage(m.agent); welcome != "" {
 			m.messages = append(m.messages, chatMsg{role: "assistant", content: welcome})
@@ -143,9 +163,13 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ToolCall":
 			m.toolName = msg.Name
 		case "ToolResult":
+			m.toolCalls++
 			m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("✓ %s done", msg.Name)})
 			m.toolName = ""
+		case "Metadata":
+			m.contextUsage = msg.Usage
 		case "Complete":
+			m.turnCount++
 			if m.streaming != "" {
 				completed := m.streaming
 				m.messages = append(m.messages, chatMsg{role: "assistant", content: completed})
@@ -175,6 +199,20 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.scrollToBottom()
 		return m, nil
 
+	case tea.MouseMsg:
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			if m.scroll < 0 {
+				m.scroll = len(m.messages) * 4
+			}
+			m.scroll -= 3
+			if m.scroll < 0 { m.scroll = 0 }
+		case tea.MouseButtonWheelDown:
+			if m.scroll >= 0 {
+				m.scroll += 3
+			}
+		}
+		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -428,23 +466,37 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.input = m.history[m.historyIdx]
 			}
 		}
-	case "pgup":
-		if m.scroll > 0 {
-			m.scroll -= 5
-			if m.scroll < 0 {
-				m.scroll = 0
-			}
+	case "pgup", "ctrl+b":
+		if m.scroll < 0 {
+			// Was following bottom — estimate position from message count
+			m.scroll = len(m.messages) * 4 // rough line estimate
 		}
-	case "pgdown":
-		m.scroll += 5
+		m.scroll -= 10
+		if m.scroll < 0 { m.scroll = 0 }
+	case "pgdown", "ctrl+f":
+		if m.scroll >= 0 {
+			m.scroll += 10
+		}
+	case "ctrl+d":
+		if m.scroll >= 0 {
+			m.scroll += 5
+		}
+	case "home":
+		m.scroll = 0
+	case "end":
+		m.scrollToBottom()
 	case "tab":
 		if len(m.suggestions) > 0 {
 			m.suggestIdx = (m.suggestIdx + 1) % len(m.suggestions)
 		}
 	default:
-		key := msg.String()
-		if len(key) == 1 && key[0] >= 32 {
-			m.input += cleanKey(msg)
+		if msg.Paste {
+			m.input += string(msg.Runes)
+		} else {
+			key := msg.String()
+			if len(key) == 1 && key[0] >= 32 {
+				m.input += key
+			}
 		}
 	}
 	m.updateSuggestions()
@@ -512,7 +564,7 @@ func (m chatModel) handleSlash(text string) (tea.Model, tea.Cmd) {
 }
 
 func (m *chatModel) scrollToBottom() {
-	m.scroll = len(m.messages)
+	m.scroll = -1
 }
 
 func (m chatModel) View() string {
@@ -543,7 +595,7 @@ func (m chatModel) View() string {
 		case "user":
 			lines = append(lines, userStyle.Render("You: ")+msg.content)
 		case "assistant":
-			lines = append(lines, botStyle.Render("\U0001f916 ")+msg.content)
+			lines = append(lines, botStyle.Render("\U0001f916 ")+m.renderMD(msg.content))
 		case "system":
 			lines = append(lines, toolStyle.Render("\u2022 "+msg.content))
 		}
@@ -561,18 +613,29 @@ func (m chatModel) View() string {
 		lines = append(lines, toolStyle.Render(fmt.Sprintf("\u2699 %s...", m.toolName)))
 	}
 
-	// Scroll
+	// Scroll viewport
 	msgArea := strings.Join(lines, "\n")
 	msgLines := strings.Split(msgArea, "\n")
 	available := h - 5 // header + input + borders
 	if available < 3 {
 		available = 3
 	}
-	start := 0
-	if len(msgLines) > available {
-		start = len(msgLines) - available
+	totalLines := len(msgLines)
+	maxScroll := totalLines - available
+	if maxScroll < 0 { maxScroll = 0 }
+	scroll := m.scroll
+	if scroll < 0 { scroll = maxScroll }
+	if scroll > maxScroll { scroll = maxScroll }
+	end := scroll + available
+	if end > totalLines { end = totalLines }
+	visible := strings.Join(msgLines[scroll:end], "\n")
+	// Scroll indicator
+	if scroll < maxScroll {
+		visible += "\n" + toolStyle.Render(fmt.Sprintf("  ↓ %d more lines (pgdn/end)", maxScroll-scroll))
 	}
-	visible := strings.Join(msgLines[start:], "\n")
+	if scroll > 0 {
+		visible = toolStyle.Render(fmt.Sprintf("  ↑ %d lines above (pgup/home)", scroll)) + "\n" + visible
+	}
 
 	// Suggestions
 	var suggestLine string
@@ -599,10 +662,36 @@ func (m chatModel) View() string {
 	}
 	inputLine := inputStyle.Width(w - 4).Render(prompt + m.input + "\u2588")
 
-	// Status bar
-	status := toolStyle.Render("/quit \u00b7 /clear \u00b7 /agent \u00b7 /profile \u00b7 \u2191\u2193=history \u00b7 pgup/pgdn")
+	// Status bar with colored live indicators
+	sep := sepStyle.Render(" · ")
+	var statusParts []string
+	statusParts = append(statusParts, agentBarStyle.Render(agentLabel(m.agent)))
+	if m.gitBranch != "" {
+		statusParts = append(statusParts, branchStyle.Render("⎇ "+m.gitBranch))
+	}
+	if m.workspaceName != "" {
+		statusParts = append(statusParts, workspaceStyle.Render("⬡ "+m.workspaceName))
+	}
+	if m.toolCalls > 0 {
+		statusParts = append(statusParts, toolCountStyle.Render(fmt.Sprintf("⚙ %d tools", m.toolCalls)))
+	}
+	if m.contextUsage > 0 {
+		usageColor := "#34D399"
+		if m.contextUsage > 75 {
+			usageColor = "#EF4444"
+		} else if m.contextUsage > 50 {
+			usageColor = "#F59E0B"
+		}
+		usageStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(usageColor))
+		statusParts = append(statusParts, usageStyle.Render(fmt.Sprintf("ctx %.0f%%", m.contextUsage)))
+	}
+	if m.turnCount > 0 {
+		statusParts = append(statusParts, turnStyle.Render(fmt.Sprintf("↻ %d", m.turnCount)))
+	}
+	status := strings.Join(statusParts, sep)
 
-	return fmt.Sprintf("%s\n%s\n%s%s\n%s", header, visible, suggestLine, inputLine, status)
+	help := sepStyle.Render("ctrl+b/f=scroll  ctrl+d=½page  end=bottom  @=agent  /quit /clear /agent /profile")
+	return fmt.Sprintf("%s\n%s\n%s%s\n%s\n%s", header, visible, suggestLine, inputLine, status, help)
 }
 
 func agentLabel(agent string) string {
@@ -610,4 +699,32 @@ func agentLabel(agent string) string {
 		return "kiro (default)"
 	}
 	return agent
+}
+
+
+func (m chatModel) renderMD(content string) string {
+	if m.mdRenderer == nil {
+		return content
+	}
+	out, err := m.mdRenderer.Render(content)
+	if err != nil {
+		return content
+	}
+	return strings.TrimSpace(out)
+}
+
+func detectGitBranch() string {
+	out, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func detectWorkspace() string {
+	s := ops.LoadSettings()
+	if s.SteerRuntime != nil && s.SteerRuntime.ActiveWorkspace != "" {
+		return s.SteerRuntime.ActiveWorkspace
+	}
+	return ""
 }

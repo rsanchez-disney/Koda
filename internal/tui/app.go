@@ -79,6 +79,10 @@ type model struct {
 	ghInput       string
 	ghField       int // 0=name, 1=host, 2=token
 	ghAdding      bool
+	kiroSettings  map[string]string
+	kiroAgents    []string
+	kiroAgentPick   bool
+	kiroAgentFilter string
 	envVarKeys    []string
 	envInput      string
 	envNewKey     string
@@ -164,6 +168,14 @@ func (m *model) refresh() {
 	m.ghRemotes = ops.ReadGitHubRemotes()
 	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
 	m.memoryStatus = ops.MemoryStatus(m.targetDir)
+
+	// First-run: apply recommended kiro settings
+	s := config.ReadSteerSettings()
+	if !s.KiroSettingsApplied && len(m.report.Profiles) > 0 {
+		ops.ConfigureKiroSettings(m.steerRoot, m.targetDir)
+		s.KiroSettingsApplied = true
+		config.SaveSteerSettings(s)
+	}
 	availRules := ops.ListRulesAll(m.steerRoot)
 	m.rules = nil
 	for _, r := range availRules {
@@ -394,6 +406,19 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenRules
 		m.cursor = 0
 	case "k":
+		m.kiroSettings = ops.ReadKiroSettings()
+		m.kiroAgentPick = false
+		agents := ops.AllAgents(m.steerRoot, m.targetDir)
+		var orch, rest []string
+		for _, a := range agents {
+			if a.Name == "orchestrator" || strings.HasSuffix(a.Name, "_orchestrator_agent") {
+				orch = append(orch, a.Name)
+			} else {
+				rest = append(rest, a.Name)
+			}
+		}
+		m.kiroAgents = append(orch, rest...)
+		m.cursor = 0
 		m.screen = screenKiroIDE
 	case "e":
 		m.refreshEnvVarKeys()
@@ -466,6 +491,9 @@ func (m model) viewDashboard() string {
 	if ws := config.ReadSteerSettings().ActiveWorkspace; ws != "" {
 		b.WriteString(fmt.Sprintf("  Workspace: %s\n", checkStyle.Render(ws)))
 	}
+	if agent := ops.SuggestDefaultAgent(m.steerRoot, m.targetDir); agent != "" {
+		b.WriteString(fmt.Sprintf("  Agent:     %s\n", checkStyle.Render(agent)))
+	}
 
 	if m.kodaVersion != "" {
 		b.WriteString(fmt.Sprintf("  Koda:      %s\n", dimStyle.Render(m.kodaVersion)))
@@ -496,8 +524,9 @@ func (m model) viewDashboard() string {
 	b.WriteString(activeStyle.Render("[r]") + " Rules\n")
 	b.WriteString(activeStyle.Render("  [m]") + " MCP         ")
 	b.WriteString(activeStyle.Render("[e]") + " Env Vars  ")
-	b.WriteString(activeStyle.Render("[k]") + " Kiro IDE\n")
+	b.WriteString(activeStyle.Render("[k]") + " Kiro\n")
 	b.WriteString(activeStyle.Render("  [g]") + fmt.Sprintf(" GitHub (%d) ", len(m.ghRemotes)))
+
 	b.WriteString(activeStyle.Render("  [s]") + " Sync        ")
 	b.WriteString(activeStyle.Render("[c]") + " Clean\n")
 	if settings.Source == "git" {
@@ -1324,6 +1353,7 @@ func (m model) updateGitHub(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					r := &m.ghRemotes[len(m.ghRemotes)-1]
 					r.Token = val
 					ops.WriteGitHubRemote(*r)
+					ops.GenerateMcpJson(ops.FindNodeExe())
 					m.ghAdding = false
 					m.ghField = 0
 					m.statusMsg = fmt.Sprintf("Added remote '%s'", r.Name)
@@ -1361,6 +1391,7 @@ func (m model) updateGitHub(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(m.ghRemotes) {
 			name := m.ghRemotes[m.cursor].Name
 			ops.RemoveGitHubRemote(name)
+			ops.GenerateMcpJson(ops.FindNodeExe())
 			m.ghRemotes = ops.ReadGitHubRemotes()
 			if m.cursor >= len(m.ghRemotes) {
 				m.cursor = len(m.ghRemotes) - 1
@@ -1723,27 +1754,73 @@ func (m model) View() string {
 }
 
 func (m model) updateKiroIDE(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+
+	if m.kiroAgentPick {
+		filtered := m.filteredKiroAgents()
+		switch key {
+		case "esc":
+			if m.kiroAgentFilter != "" {
+				m.kiroAgentFilter = ""
+				m.cursor = 0
+			} else {
+				m.kiroAgentPick = false
+				m.kiroAgentFilter = ""
+				m.cursor = 2
+			}
+		case "up":
+			if m.cursor > 0 { m.cursor-- }
+		case "down":
+			if m.cursor < len(filtered)-1 { m.cursor++ }
+		case "enter":
+			if m.cursor < len(filtered) {
+				agent := filtered[m.cursor]
+				ops.SetKiroSetting("chat.defaultAgent", agent)
+				m.kiroSettings["chat.defaultAgent"] = agent
+				m.kiroAgentPick = false
+				m.kiroAgentFilter = ""
+				m.cursor = 2
+				m.statusMsg = fmt.Sprintf("Default agent: %s", agent)
+			}
+		case "backspace":
+			if len(m.kiroAgentFilter) > 0 {
+				m.kiroAgentFilter = m.kiroAgentFilter[:len(m.kiroAgentFilter)-1]
+				m.cursor = 0
+			}
+		default:
+			if len(key) == 1 && key[0] >= 32 {
+				m.kiroAgentFilter += key
+				m.cursor = 0
+			}
+		}
+		return m, nil
+	}
+
+	ideItems := 2
+	maxItem := ideItems + len(ops.ManagedKiroSettings) - 1
+
+	switch key {
 	case "esc":
 		m.screen = screenDashboard
 	case "i":
-		steerRoot, targetDir := m.steerRoot, m.targetDir
-		// Use workspace_path if available
+		steerRoot := m.steerRoot
+		// Resolve workspace dir from active workspace
 		var wsDir string
+		active := config.ReadSteerSettings().ActiveWorkspace
 		for _, ws := range m.workspaces {
-			if ws.WorkspacePath != "" {
+			if ws.Name == active && ws.WorkspacePath != "" {
 				wsDir = ws.WorkspacePath
 				break
 			}
 		}
-		_ = targetDir
-		m.statusMsg = "\u23f3 Installing Kiro IDE..."
+		m.statusMsg = "⏳ Installing Kiro IDE..."
 		return m, func() tea.Msg {
 			r, err := ops.InstallKiroIDE(steerRoot, wsDir)
+			action := "install"
 			if err != nil {
-				return forkDoneMsg{err: err, repo: ""}
+				return kiroIDEDoneMsg{result: r, action: action + " (error: " + err.Error() + ")"}
 			}
-			return kiroIDEDoneMsg{result: r, action: "install"}
+			return kiroIDEDoneMsg{result: r, action: action}
 		}
 	case "s":
 		steerRoot := m.steerRoot
@@ -1762,35 +1839,160 @@ func (m model) updateKiroIDE(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if wsDir != "" {
 			ops.RemoveKiroIDE(wsDir)
-			m.statusMsg = "\u2705 Hooks removed"
+			m.statusMsg = "✅ Hooks removed"
 		} else {
 			m.statusMsg = "No workspace_path configured"
+		}
+	case "up":
+		if m.cursor > ideItems { m.cursor-- }
+	case "down":
+		if m.cursor < maxItem { m.cursor++ }
+	case " ":
+		if m.cursor >= ideItems {
+			si := m.cursor - ideItems
+			s := ops.ManagedKiroSettings[si]
+			if s.Type == "bool" {
+				newVal := "true"
+				if m.kiroSettings[s.Key] == "true" { newVal = "false" }
+				ops.SetKiroSetting(s.Key, newVal)
+				m.kiroSettings[s.Key] = newVal
+			}
+		}
+	case "enter":
+		if m.cursor >= ideItems {
+			si := m.cursor - ideItems
+			s := ops.ManagedKiroSettings[si]
+			if s.Type == "agent" {
+				m.kiroAgentPick = true
+				m.kiroAgentFilter = ""
+				m.cursor = 0
+			}
 		}
 	}
 	return m, nil
 }
 
 func (m model) viewKiroIDE() string {
+	if m.kiroAgentPick {
+		return m.viewKiroAgentPicker()
+	}
+
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Kiro IDE") + dimStyle.Render("  i=install  s=sync  r=remove hooks  esc=back"))
+	b.WriteString(titleStyle.Render("Kiro") + dimStyle.Render("  i=install  s=sync  r=remove hooks  esc=back"))
 	b.WriteString("\n\n")
 
+	// IDE section
+	b.WriteString(dimStyle.Render("  IDE") + "\n")
 	status := ops.CheckKiroIDE("")
 	if status.SteeringCount > 0 {
-		b.WriteString(fmt.Sprintf("  \u2713 %d steering files\n", status.SteeringCount))
+		b.WriteString(fmt.Sprintf("  ✓ %d steering files\n", status.SteeringCount))
 	} else {
-		b.WriteString("  \u2717 No steering files\n")
+		b.WriteString("  ✗ No steering files\n")
 	}
 	if status.SkillsCount > 0 {
-		b.WriteString(fmt.Sprintf("  \u2713 %d skills\n", status.SkillsCount))
+		b.WriteString(fmt.Sprintf("  ✓ %d skills\n", status.SkillsCount))
 	} else {
-		b.WriteString("  \u2717 No skills\n")
+		b.WriteString("  ✗ No skills\n")
 	}
 
+	// Settings section
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("  Steering + skills install to ~/.kiro/ (user-level)"))
+	b.WriteString(dimStyle.Render("  Preferences") + dimStyle.Render("  space=toggle  enter=select agent") + "\n\n")
+	ideItems := 2 // offset for IDE section (not selectable)
+	for i, s := range ops.ManagedKiroSettings {
+		cursor := "  "
+		if m.cursor == i+ideItems {
+			cursor = activeStyle.Render("▸ ")
+		}
+		if s.Type == "agent" {
+			val := m.kiroSettings[s.Key]
+			if val == "" {
+				val = dimStyle.Render("not set")
+			}
+			b.WriteString(fmt.Sprintf("%s%s: %s\n", cursor, s.Label, val))
+		} else {
+			val := m.kiroSettings[s.Key]
+			check := "☐"
+			if val == "true" {
+				check = checkStyle.Render("☑")
+			}
+			rec := ""
+			if s.Recommended {
+				rec = dimStyle.Render("  ★ recommended")
+			}
+			b.WriteString(fmt.Sprintf("%s%s %s%s\n", cursor, check, s.Label, rec))
+		}
+	}
+
+	return boxStyle.Render(b.String())
+}
+
+func (m model) filteredKiroAgents() []string {
+	if m.kiroAgentFilter == "" {
+		return m.kiroAgents
+	}
+	f := strings.ToLower(m.kiroAgentFilter)
+	var out []string
+	for _, name := range m.kiroAgents {
+		if strings.Contains(strings.ToLower(name), f) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func (m model) viewKiroAgentPicker() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Select Default Agent") + dimStyle.Render("  type to filter  enter=select  esc=back"))
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("  Hooks install to <workspace>/.kiro/hooks/"))
+
+	// Filter input
+	if m.kiroAgentFilter != "" {
+		b.WriteString(fmt.Sprintf("  🔍 %s", activeStyle.Render(m.kiroAgentFilter)))
+	}
+	b.WriteString("\n")
+
+	filtered := m.filteredKiroAgents()
+	current := m.kiroSettings["chat.defaultAgent"]
+
+	// Viewport: show max 15 items around cursor
+	viewSize := 15
+	start := 0
+	if m.cursor >= viewSize {
+		start = m.cursor - viewSize/2
+	}
+	end := start + viewSize
+	if end > len(filtered) {
+		end = len(filtered)
+		start = end - viewSize
+		if start < 0 { start = 0 }
+	}
+
+	if start > 0 {
+		b.WriteString(dimStyle.Render(fmt.Sprintf("  ↑ %d more\n", start)))
+	}
+	for i := start; i < end; i++ {
+		name := filtered[i]
+		cursor := "  "
+		if i == m.cursor {
+			cursor = activeStyle.Render("▸ ")
+		}
+		label := name
+		if name == "orchestrator" || strings.HasSuffix(name, "_orchestrator_agent") {
+			label = "★ " + label
+		}
+		if name == current {
+			label = checkStyle.Render(label) + dimStyle.Render(" (current)")
+		}
+		b.WriteString(fmt.Sprintf("%s%s\n", cursor, label))
+	}
+	if end < len(filtered) {
+		b.WriteString(dimStyle.Render(fmt.Sprintf("  ↓ %d more\n", len(filtered)-end)))
+	}
+
+	if len(filtered) == 0 {
+		b.WriteString(dimStyle.Render("  No agents match filter\n"))
+	}
 
 	return boxStyle.Render(b.String())
 }

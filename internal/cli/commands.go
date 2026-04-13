@@ -41,6 +41,17 @@ var installCmd = &cobra.Command{
 		}
 		ops.InjectAgentTokens(target)
 		ops.WriteProfilesManifest(steerRoot, target)
+		ops.GenerateMcpJson(ops.FindNodeExe())
+		// Kiro settings: full configure on first run, just default agent after
+		s := config.ReadSteerSettings()
+		if !s.KiroSettingsApplied {
+			ops.ConfigureKiroSettings(steerRoot, target)
+			s.KiroSettingsApplied = true
+			config.SaveSteerSettings(s)
+		} else if agent := ops.SuggestDefaultAgent(steerRoot, target); agent != "" {
+			ops.SetKiroSetting("chat.defaultAgent", agent)
+			fmt.Printf("  ✓ kiro: chat.defaultAgent = %s\n", agent)
+		}
 		fmt.Printf("\n\u2705 Installation complete (%d agents total)\n", countAgents(target))
 		return nil
 	},
