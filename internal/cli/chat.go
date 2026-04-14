@@ -36,7 +36,7 @@ var chatCmd = &cobra.Command{
 			}
 			cliArgs = append(cliArgs, args...)
 
-			c := exec.Command("kiro-cli", cliArgs...)
+			c := exec.Command(ops.FindKiroCLI(), cliArgs...)
 			c.Stdin = os.Stdin
 			c.Stdout = os.Stdout
 			c.Stderr = os.Stderr

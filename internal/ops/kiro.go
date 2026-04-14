@@ -3,12 +3,45 @@ package ops
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.disney.com/SANCR225/koda/internal/config"
 )
+
+var (
+	kiroCLIPath string
+	kiroCLIOnce sync.Once
+)
+
+// FindKiroCLI returns the absolute path to kiro-cli, checking PATH first
+// then common Windows install locations. Result is cached.
+func FindKiroCLI() string {
+	kiroCLIOnce.Do(func() {
+		if p, err := exec.LookPath("kiro-cli"); err == nil {
+			kiroCLIPath = p
+			return
+		}
+		if runtime.GOOS == "windows" {
+			for _, base := range []string{
+				filepath.Join(os.Getenv("LOCALAPPDATA"), "kiro-cli"),
+				filepath.Join(os.Getenv("PROGRAMFILES"), "Kiro CLI"),
+				filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "kiro-cli"),
+			} {
+				candidate := filepath.Join(base, "kiro-cli.exe")
+				if _, err := os.Stat(candidate); err == nil {
+					kiroCLIPath = candidate
+					return
+				}
+			}
+		}
+		kiroCLIPath = "kiro-cli"
+	})
+	return kiroCLIPath
+}
 
 // KiroSetting represents a kiro-cli setting Koda can manage.
 type KiroSetting struct {
@@ -31,12 +64,12 @@ var ManagedKiroSettings = []KiroSetting{
 
 // SetKiroSetting sets a kiro-cli setting.
 func SetKiroSetting(key, value string) error {
-	return exec.Command("kiro-cli", "settings", key, value).Run()
+	return exec.Command(FindKiroCLI(), "settings", key, value).Run()
 }
 
 // ReadKiroSettings reads current values from kiro-cli settings list.
 func ReadKiroSettings() map[string]string {
-	out, err := exec.Command("kiro-cli", "settings", "list").Output()
+	out, err := exec.Command(FindKiroCLI(), "settings", "list").Output()
 	if err != nil {
 		return map[string]string{}
 	}

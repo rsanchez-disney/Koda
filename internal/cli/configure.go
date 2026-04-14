@@ -154,7 +154,7 @@ var enableToolsCmd = &cobra.Command{
 		}
 
 		for _, s := range settings {
-			out, err := exec.Command("kiro-cli", "settings", s, "true").CombinedOutput()
+			out, err := exec.Command(ops.FindKiroCLI(), "settings", s, "true").CombinedOutput()
 			if err != nil {
 				fmt.Printf("  \u26a0 %s \u2014 %s\n", s, strings.TrimSpace(string(out)))
 			} else {

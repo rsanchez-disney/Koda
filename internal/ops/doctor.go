@@ -23,11 +23,11 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 	var results []DoctorResult
 
 	// 1. kiro-cli installed
-	if path, err := exec.LookPath("kiro-cli"); err == nil {
-		out, _ := exec.Command("kiro-cli", "--version").Output()
-		results = append(results, DoctorResult{Name: "kiro-cli", OK: true, Detail: strings.TrimSpace(string(out)) + " (" + path + ")"})
+	kiroPath := FindKiroCLI()
+	if out, err := exec.Command(kiroPath, "--version").Output(); err == nil {
+		results = append(results, DoctorResult{Name: "kiro-cli", OK: true, Detail: strings.TrimSpace(string(out)) + " (" + kiroPath + ")"})
 	} else {
-		results = append(results, DoctorResult{Name: "kiro-cli", OK: false, Detail: "not found in PATH"})
+		results = append(results, DoctorResult{Name: "kiro-cli", OK: false, Detail: "not found in PATH or common install locations"})
 	}
 
 	// 2. node installed

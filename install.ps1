@@ -47,3 +47,20 @@ if (Test-Path $dest) {
     Write-Host '   Installation failed.'
     exit 1
 }
+
+# Check for kiro-cli
+Write-Host ''
+if (Get-Command kiro-cli -ErrorAction SilentlyContinue) {
+    $kiroVer = & kiro-cli --version 2>&1
+    Write-Host "   kiro-cli: $kiroVer"
+} else {
+    Write-Host '   kiro-cli not found. Installing from https://kiro.dev/cli/...'
+    try {
+        irm https://cli.kiro.dev/install.ps1 | iex
+        Write-Host '   kiro-cli installed.'
+    } catch {
+        Write-Host '   kiro-cli auto-install failed. Install manually:'
+        Write-Host '     irm https://cli.kiro.dev/install.ps1 | iex'
+        Write-Host '     Or: winget install Kiro.CLI'
+    }
+}
