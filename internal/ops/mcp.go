@@ -163,6 +163,46 @@ func GenerateMcpJson(nodeExe string) error {
 		fmt.Println("  ⚠ memory-mcp (installed but not running — use koda memory start)")
 	}
 
+	// Workspace MCP servers (from steer-runtime mcp-meta.json)
+	steerRoot := filepath.Join(home, ".kiro", "steer-runtime")
+	wsMcpKeys := WorkspaceMCPEnvVarKeys(steerRoot)
+	if len(wsMcpKeys) > 0 {
+		knDirs := knownBundleDirs()
+		wsDir := filepath.Join(steerRoot, config.WorkspacesDir)
+		filepath.Walk(wsDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() || info.Name() != "mcp-meta.json" {
+				return nil
+			}
+			dir := filepath.Dir(path)
+			dirName := filepath.Base(dir)
+			if knDirs[dirName] {
+				return nil
+			}
+			meta, err := ReadWorkspaceMCPMeta(dir)
+			if err != nil {
+				return nil
+			}
+			bundle := filepath.Join(bundleDir, dirName, "dist", "index.cjs")
+			if _, err := os.Stat(bundle); err != nil {
+				return nil
+			}
+			cmd := nodeExe
+			if meta.Command != "" {
+				cmd = meta.Command
+			}
+			entry := mcpServer{Command: cmd, Args: []string{bundle}}
+			if len(meta.Env) > 0 {
+				env := make(map[string]string, len(meta.Env))
+				for k := range meta.Env {
+					env[k] = tokens[k]
+				}
+				entry.Env = env
+			}
+			servers[meta.Name] = entry
+			return nil
+		})
+	}
+
 	mcpConfig := map[string]any{"mcpServers": servers}
 	settingsDir := filepath.Join(home, ".kiro", config.SettingsDir)
 	if err := os.MkdirAll(settingsDir, 0755); err != nil {
@@ -284,6 +324,32 @@ func WorkspaceMCPTokens(targetDir string) []model.Token {
 		}
 	}
 	return tokens
+}
+
+// WorkspaceMCPEnvVarKeys returns env var keys defined by workspace MCP servers.
+// Reads mcp-meta.json from steer-runtime workspace dirs (not ~/.kiro/tools/).
+func WorkspaceMCPEnvVarKeys(steerRoot string) []string {
+	wsDir := filepath.Join(steerRoot, config.WorkspacesDir)
+	seen := make(map[string]bool)
+	var keys []string
+	filepath.Walk(wsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || info.Name() != "mcp-meta.json" {
+			return nil
+		}
+		meta, err := ReadWorkspaceMCPMeta(filepath.Dir(path))
+		if err != nil {
+			return nil
+		}
+		for k := range meta.Env {
+			if !seen[k] {
+				seen[k] = true
+				keys = append(keys, k)
+			}
+		}
+		return nil
+	})
+	sort.Strings(keys)
+	return keys
 }
 
 // knownBundleDirs returns a set of bundle directory names from the built-in server registry.

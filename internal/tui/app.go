@@ -84,6 +84,7 @@ type model struct {
 	kiroAgentPick   bool
 	kiroAgentFilter string
 	envVarKeys    []string
+	wsMCPKeys     []string
 	envInput      string
 	envNewKey     string
 	ruleInput     string
@@ -813,6 +814,17 @@ func (m *model) refreshEnvVarKeys() {
 		m.envVarKeys = append(m.envVarKeys, e.Key)
 		known[e.Key] = true
 	}
+	// Workspace MCP env keys (from mcp-meta.json) — values live in tokens.env
+	m.wsMCPKeys = ops.WorkspaceMCPEnvVarKeys(m.steerRoot)
+	for _, k := range m.wsMCPKeys {
+		if !known[k] {
+			m.envVarKeys = append(m.envVarKeys, k)
+			known[k] = true
+			if v := m.tokens[k]; v != "" {
+				m.envVars[k] = v
+			}
+		}
+	}
 	for k := range m.envVars {
 		if !known[k] {
 			m.envVarKeys = append(m.envVarKeys, k)
@@ -882,8 +894,23 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		} else {
-			// Save all and return
-			ops.WriteEnvVars(m.envVars)
+			// Save workspace MCP keys to tokens.env
+			wsMCP := make(map[string]bool, len(m.wsMCPKeys))
+			for _, k := range m.wsMCPKeys {
+				wsMCP[k] = true
+				if v := m.envVars[k]; v != "" {
+					m.tokens[k] = v
+				}
+			}
+			ops.WriteTokens(m.tokens)
+			// Save the rest to env.vars (without workspace MCP keys)
+			envOnly := make(map[string]string, len(m.envVars))
+			for k, v := range m.envVars {
+				if !wsMCP[k] {
+					envOnly[k] = v
+				}
+			}
+			ops.WriteEnvVars(envOnly)
 			m.refresh()
 			m.screen = screenDashboard
 			m.statusMsg = "Env vars saved!"
