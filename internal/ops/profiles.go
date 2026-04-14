@@ -104,6 +104,8 @@ func InstallProfile(steerRoot, profileID, targetDir string) (int, error) {
 	os.MkdirAll(agentsDst, 0755)
 
 	home, _ := os.UserHomeDir()
+	// Use forward slashes in JSON — backslashes are escape characters
+	jsonHome := strings.ReplaceAll(home, "\\", "/")
 	count := 0
 	entries, _ := os.ReadDir(agentsSrc)
 	for _, e := range entries {
@@ -114,7 +116,7 @@ func InstallProfile(steerRoot, profileID, targetDir string) (int, error) {
 		if err != nil {
 			continue
 		}
-		expanded := strings.ReplaceAll(string(data), "$HOME", home)
+		expanded := strings.ReplaceAll(string(data), "$HOME", jsonHome)
 		os.WriteFile(filepath.Join(agentsDst, e.Name()), []byte(expanded), 0644)
 		count++
 	}
@@ -138,6 +140,7 @@ func InstallProfileFrom(srcDir, targetDir string) (int, error) {
 	os.MkdirAll(agentsDst, 0755)
 
 	home, _ := os.UserHomeDir()
+	jsonHome := strings.ReplaceAll(home, "\\", "/")
 	count := 0
 	entries, _ := os.ReadDir(agentsSrc)
 	for _, e := range entries {
@@ -148,7 +151,7 @@ func InstallProfileFrom(srcDir, targetDir string) (int, error) {
 		if err != nil {
 			continue
 		}
-		expanded := strings.ReplaceAll(string(data), "$HOME", home)
+		expanded := strings.ReplaceAll(string(data), "$HOME", jsonHome)
 		os.WriteFile(filepath.Join(agentsDst, e.Name()), []byte(expanded), 0644)
 		count++
 	}
