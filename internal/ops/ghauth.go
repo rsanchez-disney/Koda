@@ -91,9 +91,15 @@ func ListForks() ([]string, string) {
 // GitCloneURL returns a clone URL respecting gh's configured git_protocol.
 // Falls back to SSH if gh is not installed or protocol is unset.
 func GitCloneURL(repo string) string {
-	cmd := exec.Command("gh", "config", "get", "git_protocol")
+	// Try host-specific protocol first, then global
+	cmd := exec.Command("gh", "config", "get", "git_protocol", "--host", config.GHHost)
 	out, err := cmd.Output()
 	proto := strings.TrimSpace(string(out))
+	if err != nil || proto == "" {
+		cmd = exec.Command("gh", "config", "get", "git_protocol")
+		out, err = cmd.Output()
+		proto = strings.TrimSpace(string(out))
+	}
 	if err != nil || proto == "" {
 		proto = "ssh"
 	}
