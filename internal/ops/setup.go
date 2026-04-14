@@ -82,6 +82,23 @@ func runVisible(name string, args ...string) error {
 	return cmd.Run()
 }
 
+// runWinget runs a winget install command, treating "already installed" as success.
+func runWinget(pkg string) error {
+	cmd := exec.Command("winget", "install", pkg)
+	out, err := cmd.CombinedOutput()
+	fmt.Printf("  \u25b8 winget install %s\n", pkg)
+	if err == nil {
+		return nil
+	}
+	s := string(out)
+	if strings.Contains(s, "already installed") || strings.Contains(s, "No available upgrade") {
+		fmt.Printf("  \u2713 %s already installed\n", pkg)
+		return nil
+	}
+	fmt.Print(s)
+	return err
+}
+
 func installNode() error {
 	switch runtime.GOOS {
 	case "darwin":
@@ -103,7 +120,7 @@ func installNode() error {
 		fmt.Println("  Install via: https://nodejs.org/en/download")
 	case "windows":
 		if hasWinget() {
-			return runVisible("winget", "install", "OpenJS.NodeJS.LTS")
+			return runWinget("OpenJS.NodeJS.LTS")
 		}
 		if hasChoco() {
 			return runVisible("choco", "install", "nodejs-lts", "-y")
@@ -130,7 +147,7 @@ func installGit() error {
 		fmt.Println("  Install via: https://git-scm.com/downloads")
 	case "windows":
 		if hasWinget() {
-			return runVisible("winget", "install", "Git.Git")
+			return runWinget("Git.Git")
 		}
 		if hasChoco() {
 			return runVisible("choco", "install", "git", "-y")
@@ -143,9 +160,6 @@ func installGit() error {
 func installKiroCLI() error {
 	switch runtime.GOOS {
 	case "windows":
-		if hasWinget() {
-			return runVisible("winget", "install", "Kiro.CLI")
-		}
 		fmt.Println("  Install kiro-cli:")
 		fmt.Println("    curl.exe -fsSL https://cli.kiro.dev/install.ps1 | powershell -NoProfile -Command -")
 		fmt.Print("  Attempt install now? [y/N]: ")
@@ -185,7 +199,7 @@ func installGH() error {
 		fmt.Println("  Install via: https://github.com/cli/cli/blob/trunk/docs/install_linux.md")
 	case "windows":
 		if hasWinget() {
-			return runVisible("winget", "install", "GitHub.cli")
+			return runWinget("GitHub.cli")
 		}
 		if hasChoco() {
 			return runVisible("choco", "install", "gh", "-y")
@@ -269,7 +283,7 @@ func installContainerRuntime() error {
 	case "windows":
 		if hasWinget() {
 			fmt.Println("  Installing Podman...")
-			return runVisible("winget", "install", "RedHat.Podman")
+			return runWinget("RedHat.Podman")
 		}
 		if hasChoco() {
 			return runVisible("choco", "install", "podman-cli", "-y")
