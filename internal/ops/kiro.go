@@ -75,11 +75,15 @@ func ReadKiroSettings() map[string]string {
 	}
 	result := map[string]string{}
 	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
 		parts := strings.SplitN(line, " = ", 2)
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
 			val := strings.TrimSpace(parts[1])
-			val = strings.TrimSuffix(val, " (global)")
+			// Strip scope suffixes: (global), (workspace), (default)
+			for _, suffix := range []string{" (global)", " (workspace)", " (default)"} {
+				val = strings.TrimSuffix(val, suffix)
+			}
 			val = strings.Trim(val, "\"")
 			result[key] = val
 		}
