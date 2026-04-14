@@ -57,11 +57,12 @@ if (Get-Command kiro-cli -ErrorAction SilentlyContinue) {
 } else {
     Write-Host '   kiro-cli not found. Installing from https://kiro.dev/cli/...'
     try {
-        irm https://cli.kiro.dev/install.ps1 | iex
+        # Use curl.exe to avoid corporate proxy TLS issues with PowerShell irm
+        curl.exe -fsSL https://cli.kiro.dev/install.ps1 | powershell -NoProfile -Command -
         Write-Host '   kiro-cli installed.'
     } catch {
         Write-Host '   kiro-cli auto-install failed. Install manually:'
-        Write-Host '     irm https://cli.kiro.dev/install.ps1 | iex'
+        Write-Host '     curl.exe -fsSL https://cli.kiro.dev/install.ps1 | powershell -NoProfile -Command -'
         Write-Host '     Or: winget install Kiro.CLI'
     }
 }
