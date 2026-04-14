@@ -2,6 +2,7 @@
 # One-liner: irm https://raw.githubusercontent.com/rsanchez-disney/Koda/main/install.ps1 | iex
 
 $ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $repo = 'rsanchez-disney/Koda'
 $installDir = if ($env:KODA_INSTALL_DIR) { $env:KODA_INSTALL_DIR } else { "$env:LOCALAPPDATA\koda" }
