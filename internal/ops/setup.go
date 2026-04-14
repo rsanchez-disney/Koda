@@ -147,13 +147,13 @@ func installKiroCLI() error {
 			return runVisible("winget", "install", "Kiro.CLI")
 		}
 		fmt.Println("  Install kiro-cli:")
-		fmt.Println("    irm https://cli.kiro.dev/install.ps1 | iex")
+		fmt.Println("    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; irm https://cli.kiro.dev/install.ps1 | iex")
 		fmt.Print("  Attempt install now? [y/N]: ")
 		var answer string
 		fmt.Scanln(&answer)
 		if strings.ToLower(answer) == "y" {
 			return runVisible("powershell", "-NoProfile", "-Command",
-				"irm https://cli.kiro.dev/install.ps1 | iex")
+				"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; irm https://cli.kiro.dev/install.ps1 | iex")
 		}
 	default:
 		fmt.Println("  Install kiro-cli:")
