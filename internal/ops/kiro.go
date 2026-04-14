@@ -92,13 +92,9 @@ func ReadKiroSettings() map[string]string {
 }
 
 // SuggestDefaultAgent returns the best agent for chat.
-// Priority: kiro-cli chat.defaultAgent > workspace default > auto-detect orchestrator.
+// Priority: workspace default > auto-detect orchestrator from installed agents.
 func SuggestDefaultAgent(steerRoot, targetDir string) string {
-	// 1. Check kiro-cli setting
-	if settings := ReadKiroSettings(); settings["chat.defaultAgent"] != "" {
-		return settings["chat.defaultAgent"]
-	}
-	// 2. Check workspace default
+	// 1. Check workspace default
 	s := config.ReadSteerSettings()
 	if s.ActiveWorkspace != "" {
 		ws, err := GetWorkspace(steerRoot, s.ActiveWorkspace)
