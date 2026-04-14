@@ -165,42 +165,31 @@ func GenerateMcpJson(nodeExe string) error {
 
 	// Workspace MCP servers (from steer-runtime mcp-meta.json)
 	steerRoot := filepath.Join(home, ".kiro", "steer-runtime")
-	wsMcpKeys := WorkspaceMCPEnvVarKeys(steerRoot)
-	if len(wsMcpKeys) > 0 {
-		knDirs := knownBundleDirs()
-		wsDir := filepath.Join(steerRoot, config.WorkspacesDir)
-		filepath.Walk(wsDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() || info.Name() != "mcp-meta.json" {
-				return nil
-			}
-			dir := filepath.Dir(path)
-			dirName := filepath.Base(dir)
-			if knDirs[dirName] {
-				return nil
-			}
-			meta, err := ReadWorkspaceMCPMeta(dir)
-			if err != nil {
-				return nil
-			}
-			bundle := filepath.Join(bundleDir, dirName, "dist", "index.cjs")
-			if _, err := os.Stat(bundle); err != nil {
-				return nil
-			}
-			cmd := nodeExe
-			if meta.Command != "" {
-				cmd = meta.Command
-			}
-			entry := mcpServer{Command: cmd, Args: []string{bundle}}
-			if len(meta.Env) > 0 {
-				env := make(map[string]string, len(meta.Env))
-				for k := range meta.Env {
-					env[k] = tokens[k]
+	for _, wm := range walkWorkspaceMCPMetas(steerRoot) {
+		bundle := filepath.Join(bundleDir, wm.DirName, "dist", "index.cjs")
+		if _, err := os.Stat(bundle); err != nil {
+			continue
+		}
+		cmd := nodeExe
+		if wm.Meta.Command != "" {
+			cmd = wm.Meta.Command
+		}
+		entry := mcpServer{Command: cmd, Args: []string{bundle}}
+		if len(wm.Meta.Env) > 0 {
+			env := make(map[string]string, len(wm.Meta.Env))
+			hasValue := false
+			for k := range wm.Meta.Env {
+				if v := tokens[k]; v != "" {
+					env[k] = v
+					hasValue = true
 				}
-				entry.Env = env
 			}
-			servers[meta.Name] = entry
-			return nil
-		})
+			if !hasValue {
+				continue // skip server when no tokens are configured
+			}
+			entry.Env = env
+		}
+		servers[wm.Meta.Name] = entry
 	}
 
 	mcpConfig := map[string]any{"mcpServers": servers}
@@ -326,28 +315,53 @@ func WorkspaceMCPTokens(targetDir string) []model.Token {
 	return tokens
 }
 
-// WorkspaceMCPEnvVarKeys returns env var keys defined by workspace MCP servers.
-// Reads mcp-meta.json from steer-runtime workspace dirs (not ~/.kiro/tools/).
-func WorkspaceMCPEnvVarKeys(steerRoot string) []string {
+// workspaceMCPMeta pairs a parsed mcp-meta.json with its directory name.
+type workspaceMCPMeta struct {
+	DirName string
+	Meta    *WorkspaceMCPMeta
+}
+
+// walkWorkspaceMCPMetas returns all workspace MCP metas from steer-runtime.
+// Skips built-in server dirs. Returns nil if the workspaces dir doesn't exist.
+func walkWorkspaceMCPMetas(steerRoot string) []workspaceMCPMeta {
 	wsDir := filepath.Join(steerRoot, config.WorkspacesDir)
-	seen := make(map[string]bool)
-	var keys []string
-	filepath.Walk(wsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || info.Name() != "mcp-meta.json" {
+	if _, err := os.Stat(wsDir); err != nil {
+		return nil
+	}
+	knDirs := knownBundleDirs()
+	var results []workspaceMCPMeta
+	filepath.WalkDir(wsDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || d.Name() != "mcp-meta.json" {
 			return nil
 		}
-		meta, err := ReadWorkspaceMCPMeta(filepath.Dir(path))
+		dir := filepath.Dir(path)
+		dirName := filepath.Base(dir)
+		if knDirs[dirName] {
+			return nil
+		}
+		meta, err := ReadWorkspaceMCPMeta(dir)
 		if err != nil {
 			return nil
 		}
-		for k := range meta.Env {
+		results = append(results, workspaceMCPMeta{DirName: dirName, Meta: meta})
+		return nil
+	})
+	return results
+}
+
+// WorkspaceMCPEnvVarKeys returns env var keys defined by workspace MCP servers.
+// Reads mcp-meta.json from steer-runtime workspace dirs (not ~/.kiro/tools/).
+func WorkspaceMCPEnvVarKeys(steerRoot string) []string {
+	seen := make(map[string]bool)
+	var keys []string
+	for _, wm := range walkWorkspaceMCPMetas(steerRoot) {
+		for k := range wm.Meta.Env {
 			if !seen[k] {
 				seen[k] = true
 				keys = append(keys, k)
 			}
 		}
-		return nil
-	})
+	}
 	sort.Strings(keys)
 	return keys
 }
