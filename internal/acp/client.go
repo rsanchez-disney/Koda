@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+
+	"github.disney.com/SANCR225/koda/internal/ops"
 )
 
 var debugLog *log.Logger
@@ -78,8 +80,7 @@ func Spawn(agent string) (*Client, error) {
 }
 
 func spawnInternal(agent, cwd string) (*Client, error) {
-	home, _ := os.UserHomeDir()
-	kiroPath := home + "/.local/bin/kiro-cli"
+	kiroPath := ops.FindKiroCLI()
 
 	args := []string{"acp", "-a"}
 	if agent != "" {
