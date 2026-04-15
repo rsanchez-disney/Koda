@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -205,6 +206,24 @@ func (m *model) refresh() {
 			bundle := filepath.Join(mcpDir, e.Name(), "dist", "index.cjs")
 			_, err := os.Stat(bundle)
 			m.mcpServers = append(m.mcpServers, mcpItem{name: e.Name(), hasBundle: err == nil})
+		}
+	}
+	// Include SSE/remote servers from mcp.json (e.g., compass)
+	mcpJSON := filepath.Join(m.targetDir, config.SettingsDir, "mcp.json")
+	if data, err := os.ReadFile(mcpJSON); err == nil {
+		var cfg struct {
+			Servers map[string]struct{ Type string `json:"type"` } `json:"mcpServers"`
+		}
+		if json.Unmarshal(data, &cfg) == nil {
+			bundleSet := map[string]bool{}
+			for _, s := range m.mcpServers {
+				bundleSet[s.name] = true
+			}
+			for name, srv := range cfg.Servers {
+				if srv.Type == "sse" && !bundleSet[name] {
+					m.mcpServers = append(m.mcpServers, mcpItem{name: name + " (sse)", hasBundle: true})
+				}
+			}
 		}
 	}
 }

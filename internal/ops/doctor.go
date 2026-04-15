@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -131,6 +132,24 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		}
 	} else {
 		results = append(results, DoctorResult{Name: "mcp-servers", OK: false, Detail: "directory not found"})
+	}
+
+	// 6a. SSE/remote servers from mcp.json (e.g., compass)
+	mcpJSON := filepath.Join(targetDir, config.SettingsDir, "mcp.json")
+	if data, err := os.ReadFile(mcpJSON); err == nil {
+		var cfg struct {
+			Servers map[string]struct {
+				URL  string `json:"url"`
+				Type string `json:"type"`
+			} `json:"mcpServers"`
+		}
+		if json.Unmarshal(data, &cfg) == nil {
+			for name, srv := range cfg.Servers {
+				if srv.Type == "sse" {
+					results = append(results, DoctorResult{Name: "  " + name + " (sse)", OK: true, Detail: srv.URL})
+				}
+			}
+		}
 	}
 
 	// 6b. Service/channel bank staleness
