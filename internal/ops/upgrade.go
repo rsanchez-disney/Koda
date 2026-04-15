@@ -95,5 +95,13 @@ func Upgrade(currentVersion string) error {
 	os.Remove(oldFile)
 
 	fmt.Printf("\u2705 Upgraded: %s \u2192 %s\n", currentVersion, rel.TagName)
+
+	// Install yax if not present
+	if !YaxInstalled() {
+		if err := YaxInstall(); err != nil {
+			fmt.Printf("  ⚠ yax: %v\n", err)
+		}
+	}
+
 	return nil
 }
