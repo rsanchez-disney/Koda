@@ -975,6 +975,35 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.mcpRow < 0 {
 			m.mcpRow = 0
 		}
+	case "ctrl+d":
+		// Clear token on selected instance (keeps the row for defaults)
+		if m.mcpSection >= 3 {
+			break
+		}
+		switch m.mcpSection {
+		case 0:
+			r := m.mcpGHRow(m.mcpRow)
+			if r.Token != "" {
+				ops.RemoveGitHubRemote(r.Name)
+				m.ghRemotes = ops.ReadGitHubRemotes()
+				m.statusMsg = fmt.Sprintf("Cleared token for '%s'", r.Name)
+			}
+		case 1:
+			inst := m.mcpJiraRow(m.mcpRow)
+			if inst.Token != "" {
+				ops.RemoveJiraInstance(inst.Name)
+				m.jiraInstances = ops.ReadJiraInstances()
+				m.statusMsg = fmt.Sprintf("Cleared token for '%s'", inst.Name)
+			}
+		case 2:
+			inst := m.mcpConfRow(m.mcpRow)
+			if inst.Token != "" {
+				ops.RemoveConfluenceInstance(inst.Name)
+				m.confInstances = ops.ReadConfluenceInstances()
+				m.statusMsg = fmt.Sprintf("Cleared token for '%s'", inst.Name)
+			}
+		}
+		ops.GenerateMcpJson(ops.FindNodeExe())
 	}
 	return m, nil
 }
@@ -1109,7 +1138,7 @@ func (m model) mcpConfRow(row int) mdl.ConfluenceInstance {
 
 func (m model) viewMCP() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("MCP Instances") + dimStyle.Render("  enter=edit  n=add  d=delete  tab=section  esc=back"))
+	b.WriteString(titleStyle.Render("MCP Instances") + dimStyle.Render("  enter=edit  n=add  d=delete  ctrl+d=clear  tab=section  esc=back"))
 	b.WriteString("\n\n")
 
 	sections := []struct {
