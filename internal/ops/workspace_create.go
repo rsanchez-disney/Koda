@@ -45,8 +45,15 @@ func ScanRepos(dir string) []RepoInfo {
 }
 
 // CreateWorkspace scaffolds a workspace directory and writes workspace.json.
+// If ws.Extends is set, the child is created inside the parent's directory.
 func CreateWorkspace(steerRoot string, ws model.Workspace) error {
 	wsDir := filepath.Join(steerRoot, config.WorkspacesDir, ws.Name)
+	if ws.Extends != "" {
+		parentDir := findWorkspaceDir(steerRoot, ws.Extends)
+		if parentDir != "" {
+			wsDir = filepath.Join(parentDir, ws.Name)
+		}
+	}
 	for _, sub := range []string{"rules", "context"} {
 		os.MkdirAll(filepath.Join(wsDir, sub), 0755)
 	}
@@ -150,7 +157,14 @@ func PublishWorkspace(steerRoot, wsName string, isEdit bool) (string, error) {
 		verb = "update"
 	}
 	msg := "feat: " + verb + " " + wsName + " workspace"
-	wsPath := "workspaces/" + wsName + "/"
+
+	// Resolve actual workspace path (may be nested under parent)
+	wsAbsDir := findWorkspaceDir(steerRoot, wsName)
+	wsPath, _ := filepath.Rel(steerRoot, wsAbsDir)
+	if wsPath == "" {
+		wsPath = "workspaces/" + wsName
+	}
+	wsPath += "/"
 
 	// Create branch from current HEAD
 	if err := exec.Command("git", "-C", steerRoot, "checkout", "-b", branch).Run(); err != nil {
