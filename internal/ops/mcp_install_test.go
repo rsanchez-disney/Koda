@@ -109,11 +109,12 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 	}
 
 	tokens := map[string]string{
-		"JIRA_PAT":       "tok-jira",
-		"CONFLUENCE_PAT": "tok-confluence",
-		"MYWIKI_PAT":     "tok-mywiki",
-		"FIGMA_TOKEN":    "tok-figma",
-		"COMPASS_TOKEN":  "tok-compass",
+		"JIRA_PAT":           "tok-jira",
+		"CONFLUENCE_PAT":     "tok-confluence",
+		"MYWIKI_PAT":         "tok-mywiki",
+		"FIGMA_TOKEN":        "tok-figma",
+		"COMPASS_TOKEN":      "tok-compass",
+		"QTEST_BEARER_TOKEN": "tok-qtest",
 	}
 	envVars := map[string]string{
 		"CONFLUENCE_URL": "https://confluence.example.com",
@@ -143,7 +144,7 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 	// With 1 remote, github should appear as "github".
 	expectedNames := map[string]bool{
 		"jira": true, "confluence": true, "mermaid": true, "bruno": true,
-		"figma": true, "compass": true,
+		"figma": true, "compass": true, "qtest": true,
 		"github": true,
 	}
 

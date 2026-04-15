@@ -32,6 +32,7 @@ var knownServers = []MCPServer{
 	{Name: "figma", BundleDir: "figma-mcp", TokenKeys: []string{"FIGMA_TOKEN"}},
 	{Name: "github", BundleDir: "github-mcp"},
 	{Name: "compass", BundleDir: "", TokenKeys: []string{"COMPASS_TOKEN"}, EnvKeys: []string{"COMPASS_URL"}, IsSSE: true},
+	{Name: "qtest", BundleDir: "qtest-mcp", TokenKeys: []string{"QTEST_BEARER_TOKEN"}, EnvKeys: []string{"QTEST_BASE_URL", "QTEST_PROJECT_ID"}},
 }
 
 // CopyMcpBundles copies pre-built MCP server bundles from steerRoot to ~/.kiro/tools/mcp-servers/.
@@ -164,6 +165,21 @@ func GenerateMcpJson(nodeExe string) error {
 			URL:     envVars["COMPASS_URL"],
 			Type:    "sse",
 			Headers: map[string]string{"Authorization": "Bearer " + ct},
+		}
+	}
+
+	// qTest: test management MCP
+	if qt := tokens["QTEST_BEARER_TOKEN"]; qt != "" {
+		qtestBundle := filepath.Join(bundleDir, "qtest-mcp", "dist", "index.cjs")
+		if _, err := os.Stat(qtestBundle); err == nil {
+			env := map[string]string{"QTEST_BEARER_TOKEN": qt}
+			if u := envVars["QTEST_BASE_URL"]; u != "" {
+				env["QTEST_BASE_URL"] = u
+			}
+			if p := envVars["QTEST_PROJECT_ID"]; p != "" {
+				env["QTEST_PROJECT_ID"] = p
+			}
+			servers["qtest"] = mcpServer{Command: nodeExe, Args: []string{qtestBundle}, Env: env}
 		}
 	}
 
