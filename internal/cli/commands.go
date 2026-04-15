@@ -130,6 +130,7 @@ var syncCmd = &cobra.Command{
 		}
 		fmt.Printf("\n\u2705 Sync complete (%d agents total)\n", countAgents(target))
 		ops.WriteProfilesManifest(steerRoot, target)
+		ops.GenerateMcpJson(ops.FindNodeExe())
 		return nil
 	},
 }
