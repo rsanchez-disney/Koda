@@ -2,6 +2,7 @@ package ops
 
 import (
 	"encoding/json"
+	"os/exec"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -156,16 +157,10 @@ func GenerateMcpJson(nodeExe string) error {
 		}
 	}
 
-	// Memory: docker-type MCP (HTTP endpoint when running)
-	memStatus := MemoryStatus(config.TargetDir(""))
-	if memStatus.Running {
-		servers["memory"] = mcpServer{
-			URL:  fmt.Sprintf("http://localhost:%d/mcp", memStatus.Port),
-			Type: "sse",
-		}
-		fmt.Println("  ✓ memory-mcp (running)")
-	} else if memStatus.Installed {
-		fmt.Println("  ⚠ memory-mcp (installed but not running — use koda memory start)")
+	// yax: persistent memory via stdio MCP
+	if yaxBin, err := exec.LookPath("yax"); err == nil {
+		servers["yax"] = mcpServer{Command: yaxBin, Args: []string{"mcp", "--tools=agent"}}
+		fmt.Println("  ✓ yax (persistent memory)")
 	}
 
 	// Workspace MCP servers (from steer-runtime mcp-meta.json)
