@@ -71,6 +71,24 @@ type ConfluenceInstance struct {
 	Token string // Confluence PAT
 }
 
+// DefaultGitHubRemotes defines the pre-populated GitHub instances.
+var DefaultGitHubRemotes = []GitHubRemote{
+	{Name: "disney", Host: "github.disney.com"},
+	{Name: "public", Host: "github.com"},
+}
+
+// DefaultJiraInstances defines the pre-populated Jira instances.
+var DefaultJiraInstances = []JiraInstance{
+	{Name: "myjira", URL: "https://myjira.disney.com"},
+	{Name: "jira", URL: "https://jira.disney.com"},
+}
+
+// DefaultConfluenceInstances defines the pre-populated Confluence instances.
+var DefaultConfluenceInstances = []ConfluenceInstance{
+	{Name: "confluence", URL: "https://confluence.disney.com"},
+	{Name: "mywiki", URL: "https://mywiki.disney.com"},
+}
+
 // KnownEnvVars defines the env vars Koda manages with their defaults.
 var KnownEnvVars = []EnvVar{
 	{Key: "COMPASS_URL", Default: "https://compass.wdprapps.disney.com/api/mcp/mcp-60d5792b-5ce9-469b-9a6b-b08216eb267e", Description: "Compass MCP endpoint URL"},
