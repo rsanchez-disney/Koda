@@ -278,7 +278,9 @@ var mcpInstallCmd = &cobra.Command{
 
 		// Generate mcp.json
 		fmt.Println("\n🔧 Generating mcp.json...")
-		mcpPath, err := ops.GenerateMCPConfig(selected, ghRemotes, tokens, envVars)
+		jiraInstances := ops.ReadJiraInstances()
+		confInstances := ops.ReadConfluenceInstances()
+		mcpPath, err := ops.GenerateMCPConfig(selected, ghRemotes, jiraInstances, confInstances, tokens, envVars)
 		if err != nil {
 			return err
 		}
