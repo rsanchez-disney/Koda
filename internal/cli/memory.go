@@ -1,80 +1,29 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
+	"os/exec"
 
 	"github.com/spf13/cobra"
-
-	"github.disney.com/SANCR225/koda/internal/config"
-	"github.disney.com/SANCR225/koda/internal/ops"
 )
 
 var memoryCmd = &cobra.Command{
-	Use:   "memory",
-	Short: "Manage memory-mcp persistent memory server",
+	Use:        "memory",
+	Short:      "Persistent memory powered by yax",
+	Deprecated: "use 'yax' directly. Run 'yax help' for usage.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return memoryStatusCmd.RunE(cmd, args)
-	},
-}
-
-var memoryStartCmd = &cobra.Command{
-	Use:   "start",
-	Short: "Start the memory-mcp Docker stack",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("🧠 Starting memory-mcp...")
-		if err := ops.MemoryStart(config.TargetDir(projectDir)); err != nil {
-			return err
-		}
-		fmt.Println("✅ memory-mcp running on http://localhost:9377")
-		fmt.Println("   Run 'koda mcp-install' to add it to mcp.json")
-		return nil
-	},
-}
-
-var memoryStopCmd = &cobra.Command{
-	Use:   "stop",
-	Short: "Stop the memory-mcp Docker stack",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("Stopping memory-mcp...")
-		return ops.MemoryStop(config.TargetDir(projectDir))
-	},
-}
-
-var memoryStatusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show memory-mcp status",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		status := ops.MemoryStatus(config.TargetDir(projectDir))
-		if jsonOutput {
-			out, _ := json.MarshalIndent(status, "", "  ")
-			fmt.Println(string(out))
+		if _, err := exec.LookPath("yax"); err != nil {
+			fmt.Println("yax is not installed. Install it with:")
+			fmt.Println("  curl -sSL https://github.disney.com/QUINJ327/yax/raw/main/install.sh | sh")
 			return nil
 		}
-		fmt.Println("🧠 Memory MCP Status")
+		fmt.Println("Memory is powered by yax. Use 'yax' directly:")
 		fmt.Println()
-		if !status.Installed {
-			fmt.Println("  ✗ Not installed (install a profile with memory-mcp first)")
-			return nil
-		}
-		fmt.Println("  ✓ Installed")
-		if status.Runtime == "" {
-			fmt.Println("  ✗ No container runtime found (need docker, nerdctl, or podman)")
-			return nil
-		}
-		fmt.Printf("  ✓ Runtime: %s\n", status.Runtime)
-		if status.Running {
-			fmt.Printf("  ✓ Running on port %d\n", status.Port)
-			fmt.Printf("  ✓ Health: %s\n", status.Health)
-		} else {
-			fmt.Println("  ✗ Not running — use 'koda memory start'")
-		}
+		fmt.Println("  yax save <title> <content>   Save a memory")
+		fmt.Println("  yax search <query>           Search memories")
+		fmt.Println("  yax context [project]        Recent context")
+		fmt.Println("  yax stats                    Statistics")
+		fmt.Println("  yax help                     Full help")
 		return nil
 	},
-}
-
-func init() {
-	memoryCmd.AddCommand(memoryStartCmd)
-	memoryCmd.AddCommand(memoryStopCmd)
-	memoryCmd.AddCommand(memoryStatusCmd)
 }
