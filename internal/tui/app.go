@@ -79,6 +79,13 @@ type model struct {
 	ghInput       string
 	ghField       int // 0=name, 1=host, 2=token
 	ghAdding      bool
+	jiraInstances []mdl.JiraInstance
+	confInstances []mdl.ConfluenceInstance
+	mcpSection    int  // 0=github, 1=jira, 2=confluence, 3=other
+	mcpRow        int  // row within current section
+	mcpAdding     bool
+	mcpInput      string
+	mcpField      int  // field index during add (0=name, 1=url/host, 2=token)
 	kiroSettings  map[string]string
 	kiroAgents    []string
 	kiroAgentPick   bool
@@ -167,6 +174,8 @@ func (m *model) refresh() {
 	m.agents = ops.AllAgents(m.steerRoot, m.targetDir)
 	m.envVars = ops.ReadEnvVars()
 	m.ghRemotes = ops.ReadGitHubRemotes()
+	m.jiraInstances = ops.ReadJiraInstances()
+	m.confInstances = ops.ReadConfluenceInstances()
 	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
 	m.memoryStatus = ops.MemoryStatus(m.targetDir)
 
@@ -250,8 +259,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case doctorFixDoneMsg:
 		m.envVars = ops.ReadEnvVars()
-	m.ghRemotes = ops.ReadGitHubRemotes()
-	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
+		m.ghRemotes = ops.ReadGitHubRemotes()
+		m.jiraInstances = ops.ReadJiraInstances()
+		m.confInstances = ops.ReadConfluenceInstances()
+		m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
 	m.memoryStatus = ops.MemoryStatus(m.targetDir)
 		if msg.err != nil {
 			m.statusMsg = "Fix failed: " + msg.err.Error()
@@ -340,11 +351,12 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "g":
 		m.ghRemotes = ops.ReadGitHubRemotes()
-		m.ghAdding = false
-		m.ghInput = ""
-		m.ghField = 0
-		m.cursor = 0
-		m.screen = screenGitHub
+		m.jiraInstances = ops.ReadJiraInstances()
+		m.confInstances = ops.ReadConfluenceInstances()
+		m.mcpSection = 0 // GitHub section
+		m.mcpRow = 0
+		m.mcpAdding = false
+		m.screen = screenMCP
 	case "y":
 		if tray.AutoStartEnabled() {
 			tray.DisableAutoStart()
@@ -523,7 +535,8 @@ func (m model) viewDashboard() string {
 	b.WriteString(activeStyle.Render("  [a]") + " Agents      ")
 	b.WriteString(activeStyle.Render("[d]") + " Doctor    ")
 	b.WriteString(activeStyle.Render("[r]") + " Rules\n")
-	b.WriteString(activeStyle.Render("  [m]") + " MCP         ")
+	mcpCount := len(m.ghRemotes) + len(m.jiraInstances) + len(m.confInstances)
+	b.WriteString(activeStyle.Render("  [m]") + fmt.Sprintf(" MCP (%d)     ", mcpCount))
 	b.WriteString(activeStyle.Render("[e]") + " Env Vars  ")
 	b.WriteString(activeStyle.Render("[k]") + " Kiro\n")
 	b.WriteString(activeStyle.Render("  [g]") + fmt.Sprintf(" GitHub (%d) ", len(m.ghRemotes)))
@@ -771,36 +784,271 @@ func (m model) viewRules() string {
 // --- MCP ---
 
 func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q", "m":
+	key := msg.String()
+
+	if m.mcpAdding {
+		switch key {
+		case "esc":
+			m.mcpAdding = false
+			m.mcpInput = ""
+			m.mcpField = 0
+		case "enter":
+			val := strings.TrimSpace(m.mcpInput)
+			m.mcpInput = ""
+			if val == "" {
+				break
+			}
+			switch m.mcpField {
+			case 0: // name
+				switch m.mcpSection {
+				case 0:
+					m.ghRemotes = append(m.ghRemotes, mdl.GitHubRemote{Name: val})
+				case 1:
+					m.jiraInstances = append(m.jiraInstances, mdl.JiraInstance{Name: val})
+				case 2:
+					m.confInstances = append(m.confInstances, mdl.ConfluenceInstance{Name: val})
+				}
+				m.mcpField = 1
+			case 1: // url/host
+				switch m.mcpSection {
+				case 0:
+					m.ghRemotes[len(m.ghRemotes)-1].Host = val
+				case 1:
+					m.jiraInstances[len(m.jiraInstances)-1].URL = val
+				case 2:
+					m.confInstances[len(m.confInstances)-1].URL = val
+				}
+				m.mcpField = 2
+			case 2: // token
+				switch m.mcpSection {
+				case 0:
+					r := &m.ghRemotes[len(m.ghRemotes)-1]
+					r.Token = val
+					ops.WriteGitHubRemote(*r)
+				case 1:
+					inst := &m.jiraInstances[len(m.jiraInstances)-1]
+					inst.Token = val
+					ops.WriteJiraInstance(*inst)
+				case 2:
+					inst := &m.confInstances[len(m.confInstances)-1]
+					inst.Token = val
+					ops.WriteConfluenceInstance(*inst)
+				}
+				ops.GenerateMcpJson(ops.FindNodeExe())
+				m.mcpAdding = false
+				m.mcpField = 0
+				m.statusMsg = "Instance added"
+			}
+		case "backspace":
+			if len(m.mcpInput) > 0 {
+				m.mcpInput = m.mcpInput[:len(m.mcpInput)-1]
+			}
+		default:
+			if ck := cleanKey(msg); len(ck) >= 1 && ck[0] >= 32 {
+				m.mcpInput += ck
+			}
+		}
+		return m, nil
+	}
+
+	switch key {
+	case "esc", "q":
 		m.screen = screenDashboard
 		m.statusMsg = ""
+	case "tab":
+		m.mcpSection = (m.mcpSection + 1) % 4
+		m.mcpRow = 0
+	case "shift+tab":
+		m.mcpSection = (m.mcpSection + 3) % 4
+		m.mcpRow = 0
+	case "up", "k":
+		if m.mcpRow > 0 {
+			m.mcpRow--
+		}
+	case "down", "j":
+		max := m.mcpSectionLen() - 1
+		if m.mcpRow < max {
+			m.mcpRow++
+		}
+	case "n":
+		if m.mcpSection < 3 { // can't add bundles
+			m.mcpAdding = true
+			m.mcpField = 0
+			m.mcpInput = ""
+		}
+	case "d":
+		switch m.mcpSection {
+		case 0:
+			if m.mcpRow < len(m.ghRemotes) {
+				name := m.ghRemotes[m.mcpRow].Name
+				ops.RemoveGitHubRemote(name)
+				m.ghRemotes = ops.ReadGitHubRemotes()
+				m.jiraInstances = ops.ReadJiraInstances()
+				m.confInstances = ops.ReadConfluenceInstances()
+				m.statusMsg = fmt.Sprintf("Removed '%s'", name)
+			}
+		case 1:
+			if m.mcpRow < len(m.jiraInstances) {
+				name := m.jiraInstances[m.mcpRow].Name
+				ops.RemoveJiraInstance(name)
+				m.jiraInstances = ops.ReadJiraInstances()
+				m.statusMsg = fmt.Sprintf("Removed '%s'", name)
+			}
+		case 2:
+			if m.mcpRow < len(m.confInstances) {
+				name := m.confInstances[m.mcpRow].Name
+				ops.RemoveConfluenceInstance(name)
+				m.confInstances = ops.ReadConfluenceInstances()
+				m.statusMsg = fmt.Sprintf("Removed '%s'", name)
+			}
+		}
+		ops.GenerateMcpJson(ops.FindNodeExe())
+		if m.mcpRow >= m.mcpSectionLen() {
+			m.mcpRow = m.mcpSectionLen() - 1
+		}
+		if m.mcpRow < 0 {
+			m.mcpRow = 0
+		}
 	}
 	return m, nil
 }
 
+func (m model) mcpSectionLen() int {
+	switch m.mcpSection {
+	case 0:
+		return len(m.ghRemotes)
+	case 1:
+		return len(m.jiraInstances)
+	case 2:
+		return len(m.confInstances)
+	case 3:
+		return len(m.mcpServers)
+	}
+	return 0
+}
+
 func (m model) viewMCP() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("MCP Servers") + dimStyle.Render("  esc=back"))
+	b.WriteString(titleStyle.Render("MCP Instances") + dimStyle.Render("  n=add  d=delete  tab=section  esc=back"))
 	b.WriteString("\n\n")
-	if len(m.mcpServers) == 0 {
-		b.WriteString(dimStyle.Render("  No MCP servers found"))
-		return boxStyle.Render(b.String())
+
+	sections := []struct {
+		title string
+		idx   int
+	}{
+		{"GitHub", 0}, {"Jira", 1}, {"Confluence", 2}, {"Bundles", 3},
 	}
-	for _, s := range m.mcpServers {
-		icon := checkStyle.Render("\u2713")
-		if !s.hasBundle {
-			icon = errStyle.Render("\u2717")
+
+	for _, sec := range sections {
+		isActive := m.mcpSection == sec.idx
+		header := sec.title
+		if isActive {
+			header = activeStyle.Render("▸ " + sec.title)
+		} else {
+			header = dimStyle.Render("  " + sec.title)
 		}
-		b.WriteString(fmt.Sprintf("  %s %s\n", icon, s.name))
+		b.WriteString(header + "\n")
+
+		switch sec.idx {
+		case 0: // GitHub
+			for i, r := range m.ghRemotes {
+				cur := "    "
+				if isActive && m.mcpRow == i && !m.mcpAdding {
+					cur = activeStyle.Render("  ▸ ")
+				}
+				tok := errStyle.Render("not set")
+				if r.Token != "" {
+					tok = checkStyle.Render(ops.MaskToken(r.Token))
+				}
+				b.WriteString(fmt.Sprintf("%s%-12s %s  %s\n", cur, r.Name, dimStyle.Render(r.Host), tok))
+			}
+			// Show defaults without tokens
+			for _, d := range mdl.DefaultGitHubRemotes {
+				found := false
+				for _, r := range m.ghRemotes {
+					if r.Name == d.Name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					b.WriteString(fmt.Sprintf("    %-12s %s  %s\n", d.Name, dimStyle.Render(d.Host), errStyle.Render("not set")))
+				}
+			}
+		case 1: // Jira
+			for i, inst := range m.jiraInstances {
+				cur := "    "
+				if isActive && m.mcpRow == i && !m.mcpAdding {
+					cur = activeStyle.Render("  ▸ ")
+				}
+				tok := errStyle.Render("not set")
+				if inst.Token != "" {
+					tok = checkStyle.Render(ops.MaskToken(inst.Token))
+				}
+				b.WriteString(fmt.Sprintf("%s%-12s %s  %s\n", cur, inst.Name, dimStyle.Render(inst.URL), tok))
+			}
+			for _, d := range mdl.DefaultJiraInstances {
+				found := false
+				for _, inst := range m.jiraInstances {
+					if inst.Name == d.Name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					b.WriteString(fmt.Sprintf("    %-12s %s  %s\n", d.Name, dimStyle.Render(d.URL), errStyle.Render("not set")))
+				}
+			}
+		case 2: // Confluence
+			for i, inst := range m.confInstances {
+				cur := "    "
+				if isActive && m.mcpRow == i && !m.mcpAdding {
+					cur = activeStyle.Render("  ▸ ")
+				}
+				tok := errStyle.Render("not set")
+				if inst.Token != "" {
+					tok = checkStyle.Render(ops.MaskToken(inst.Token))
+				}
+				b.WriteString(fmt.Sprintf("%s%-12s %s  %s\n", cur, inst.Name, dimStyle.Render(inst.URL), tok))
+			}
+			for _, d := range mdl.DefaultConfluenceInstances {
+				found := false
+				for _, inst := range m.confInstances {
+					if inst.Name == d.Name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					b.WriteString(fmt.Sprintf("    %-12s %s  %s\n", d.Name, dimStyle.Render(d.URL), errStyle.Render("not set")))
+				}
+			}
+		case 3: // Bundles
+			for _, s := range m.mcpServers {
+				icon := checkStyle.Render("✓")
+				if !s.hasBundle {
+					icon = errStyle.Render("✗")
+				}
+				b.WriteString(fmt.Sprintf("    %s %s\n", icon, s.name))
+			}
+		}
+		b.WriteString("\n")
 	}
-	ready := 0
-	for _, s := range m.mcpServers {
-		if s.hasBundle {
-			ready++
+
+	if m.mcpAdding {
+		labels := []string{"  Name:  ", "  URL:   ", "  Token: "}
+		if m.mcpSection == 0 {
+			labels[1] = "  Host:  "
+		}
+		for i, label := range labels {
+			if i == m.mcpField {
+				b.WriteString(activeStyle.Render("▸ "+label) + activeStyle.Render(m.mcpInput+"█") + "\n")
+			} else if i < m.mcpField {
+				b.WriteString("  " + label + checkStyle.Render("✓") + "\n")
+			}
 		}
 	}
-	b.WriteString(fmt.Sprintf("\n  %s", dimStyle.Render(fmt.Sprintf("%d/%d ready", ready, len(m.mcpServers)))))
+
 	return boxStyle.Render(b.String())
 }
 
@@ -1420,6 +1668,8 @@ func (m model) updateGitHub(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			ops.RemoveGitHubRemote(name)
 			ops.GenerateMcpJson(ops.FindNodeExe())
 			m.ghRemotes = ops.ReadGitHubRemotes()
+			m.jiraInstances = ops.ReadJiraInstances()
+			m.confInstances = ops.ReadConfluenceInstances()
 			if m.cursor >= len(m.ghRemotes) {
 				m.cursor = len(m.ghRemotes) - 1
 			}
