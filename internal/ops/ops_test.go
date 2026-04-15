@@ -200,10 +200,11 @@ func TestDiffSync(t *testing.T) {
 	os.WriteFile(filepath.Join(srcAgents, "a.json"), []byte(`{"name":"a","description":"v2"}`), 0644)
 	os.WriteFile(filepath.Join(srcAgents, "b.json"), []byte(`{"name":"b","description":"new"}`), 0644)
 
-	// Target with outdated a.json, no b.json, orphan c.json
+	// Target with outdated a.json, b.json present, orphan c.json
 	target := filepath.Join(tmp, "target")
 	os.MkdirAll(filepath.Join(target, "agents"), 0755)
 	os.WriteFile(filepath.Join(target, "agents", "a.json"), []byte(`{"name":"a","description":"v1"}`), 0644)
+	os.WriteFile(filepath.Join(target, "agents", "b.json"), []byte(`{"name":"b","description":"old"}`), 0644)
 	os.WriteFile(filepath.Join(target, "agents", "c.json"), []byte(`{"name":"c","description":"orphan"}`), 0644)
 
 	entries := DiffSync(tmp, target)
@@ -214,8 +215,8 @@ func TestDiffSync(t *testing.T) {
 	if actions["agents/a.json"] != "update" {
 		t.Errorf("a.json should be 'update', got %q", actions["agents/a.json"])
 	}
-	if actions["agents/b.json"] != "add" {
-		t.Errorf("b.json should be 'add', got %q", actions["agents/b.json"])
+	if actions["agents/b.json"] != "update" {
+		t.Errorf("b.json should be 'update', got %q", actions["agents/b.json"])
 	}
 	if actions["agents/c.json"] != "orphan" {
 		t.Errorf("c.json should be 'orphan', got %q", actions["agents/c.json"])
