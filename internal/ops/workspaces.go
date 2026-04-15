@@ -272,6 +272,9 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	s.ActiveWorkspace = ws.Name
 	config.SaveSteerSettings(s)
 
+	// Persist resolved workspace snapshot for agent/hook consumption
+	WriteWorkspaceSnapshot(targetDir, resolved)
+
 	// Update default agent for this workspace
 	if agent := SuggestDefaultAgent(steerRoot, targetDir); agent != "" {
 		SetKiroSetting("chat.defaultAgent", agent)
@@ -370,4 +373,13 @@ func PrintWorkspace(ws model.Workspace) {
 		fmt.Printf("  Rules:       %s\n", strings.Join(ws.Rules, ", "))
 	}
 	fmt.Println()
+}
+
+// WriteWorkspaceSnapshot persists the resolved workspace config to
+// ~/.kiro/settings/workspace.json so hooks and agents can read it directly.
+func WriteWorkspaceSnapshot(targetDir string, ws model.Workspace) {
+	settingsDir := filepath.Join(targetDir, config.SettingsDir)
+	os.MkdirAll(settingsDir, 0755)
+	data, _ := json.MarshalIndent(ws, "", "  ")
+	os.WriteFile(filepath.Join(settingsDir, "workspace.json"), append(data, '\n'), 0644)
 }
