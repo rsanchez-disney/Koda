@@ -14,48 +14,67 @@ import (
 
 // ReadGitHubRemotes discovers GitHub remotes from tokens.env by scanning for GITHUB_TOKEN_* keys.
 // Falls back to single remote from GITHUB_TOKEN + GITHUB_URL if no suffixed keys found.
+// Merges with DefaultGitHubRemotes to populate hosts for known names.
 func ReadGitHubRemotes() []model.GitHubRemote {
 	tokens := ReadTokens()
-	var remotes []model.GitHubRemote
-	seen := map[string]bool{}
+	instances := make(map[string]model.GitHubRemote)
 
+	// Seed defaults
+	for _, d := range model.DefaultGitHubRemotes {
+		instances[d.Name] = d
+	}
+
+	// Scan suffixed keys
 	for k, v := range tokens {
 		if !strings.HasPrefix(k, "GITHUB_TOKEN_") || v == "" {
 			continue
 		}
 		name := strings.TrimPrefix(k, "GITHUB_TOKEN_")
-		host := tokens["GITHUB_HOST_"+name]
-		if host == "" {
-			continue
+		inst := instances[name]
+		inst.Name = name
+		inst.Token = v
+		if h := tokens["GITHUB_HOST_"+name]; h != "" {
+			inst.Host = h
 		}
-		seen[name] = true
-		remotes = append(remotes, model.GitHubRemote{
-			Name:    name,
-			Host:    host,
-			Token:   v,
-			APIPath: tokens["GITHUB_API_PATH_"+name],
-		})
+		if a := tokens["GITHUB_API_PATH_"+name]; a != "" {
+			inst.APIPath = a
+		}
+		instances[name] = inst
 	}
 
-	// Backward compat: single GITHUB_TOKEN → remote "disney"
-	if len(remotes) == 0 {
+	// Backward compat: single GITHUB_TOKEN
+	hasSuffixed := false
+	for _, inst := range instances {
+		if inst.Token != "" {
+			hasSuffixed = true
+			break
+		}
+	}
+	if !hasSuffixed {
 		if tok := tokens["GITHUB_TOKEN"]; tok != "" {
 			host := tokens["GITHUB_URL"]
 			if host == "" {
 				host = "https://github.disney.com"
 			}
-			// Strip https:// for host
 			host = strings.TrimPrefix(host, "https://")
 			host = strings.TrimPrefix(host, "http://")
-			remotes = append(remotes, model.GitHubRemote{
-				Name:  "disney",
-				Host:  host,
-				Token: tok,
-			})
+			inst := instances["disney"]
+			inst.Token = tok
+			if inst.Host == "" {
+				inst.Host = host
+			}
+			instances["disney"] = inst
 		}
 	}
 
-	return remotes
+	// Return only instances with tokens set
+	var result []model.GitHubRemote
+	for _, inst := range instances {
+		if inst.Token != "" {
+			result = append(result, inst)
+		}
+	}
+	return result
 }
 
 // WriteGitHubRemote adds or updates a GitHub remote in tokens.env.
@@ -82,34 +101,55 @@ func RemoveGitHubRemote(name string) {
 
 // ReadJiraInstances discovers Jira instances from tokens.env by scanning for JIRA_PAT_* keys.
 // Falls back to single instance from JIRA_PAT + JIRA_URL if no suffixed keys found.
+// Merges with DefaultJiraInstances to populate URLs for known names.
 func ReadJiraInstances() []model.JiraInstance {
 	tokens := ReadTokens()
-	envVars := ReadEnvVars()
-	var instances []model.JiraInstance
+	instances := make(map[string]model.JiraInstance)
 
+	// Seed defaults
+	for _, d := range model.DefaultJiraInstances {
+		instances[d.Name] = d
+	}
+
+	// Scan suffixed keys
 	for k, v := range tokens {
 		if !strings.HasPrefix(k, "JIRA_PAT_") || v == "" {
 			continue
 		}
 		name := strings.TrimPrefix(k, "JIRA_PAT_")
-		url := tokens["JIRA_URL_"+name]
-		if url == "" {
-			url = envVars["JIRA_URL_"+name]
+		inst := instances[name]
+		inst.Name = name
+		inst.Token = v
+		if u := tokens["JIRA_URL_"+name]; u != "" {
+			inst.URL = u
 		}
-		instances = append(instances, model.JiraInstance{Name: name, URL: url, Token: v})
+		instances[name] = inst
 	}
 
 	// Backward compat: single JIRA_PAT
-	if len(instances) == 0 {
-		if tok := tokens["JIRA_PAT"]; tok != "" {
-			url := envVars["JIRA_URL"]
-			if url == "" {
-				url = "https://myjira.disney.com"
+	if tok := tokens["JIRA_PAT"]; tok != "" {
+		found := false
+		for _, inst := range instances {
+			if inst.Token != "" {
+				found = true
+				break
 			}
-			instances = append(instances, model.JiraInstance{Name: "jira", URL: url, Token: tok})
+		}
+		if !found {
+			inst := instances["myjira"]
+			inst.Token = tok
+			instances["myjira"] = inst
 		}
 	}
-	return instances
+
+	// Return only instances with tokens set
+	var result []model.JiraInstance
+	for _, inst := range instances {
+		if inst.Token != "" {
+			result = append(result, inst)
+		}
+	}
+	return result
 }
 
 // WriteJiraInstance adds or updates a Jira instance in tokens.env.
@@ -130,41 +170,60 @@ func RemoveJiraInstance(name string) {
 
 // ReadConfluenceInstances discovers Confluence instances from tokens.env by scanning for CONFLUENCE_PAT_* keys.
 // Falls back to single instance from CONFLUENCE_PAT + CONFLUENCE_URL, and MYWIKI_PAT + MYWIKI_URL.
+// Merges with DefaultConfluenceInstances to populate URLs for known names.
 func ReadConfluenceInstances() []model.ConfluenceInstance {
 	tokens := ReadTokens()
-	envVars := ReadEnvVars()
-	var instances []model.ConfluenceInstance
+	instances := make(map[string]model.ConfluenceInstance)
 
+	// Seed defaults
+	for _, d := range model.DefaultConfluenceInstances {
+		instances[d.Name] = d
+	}
+
+	// Scan suffixed keys
 	for k, v := range tokens {
 		if !strings.HasPrefix(k, "CONFLUENCE_PAT_") || v == "" {
 			continue
 		}
 		name := strings.TrimPrefix(k, "CONFLUENCE_PAT_")
-		url := tokens["CONFLUENCE_URL_"+name]
-		if url == "" {
-			url = envVars["CONFLUENCE_URL_"+name]
+		inst := instances[name]
+		inst.Name = name
+		inst.Token = v
+		if u := tokens["CONFLUENCE_URL_"+name]; u != "" {
+			inst.URL = u
 		}
-		instances = append(instances, model.ConfluenceInstance{Name: name, URL: url, Token: v})
+		instances[name] = inst
 	}
 
-	// Backward compat: single CONFLUENCE_PAT + MYWIKI_PAT
-	if len(instances) == 0 {
-		if tok := tokens["CONFLUENCE_PAT"]; tok != "" {
-			url := envVars["CONFLUENCE_URL"]
-			if url == "" {
-				url = "https://confluence.disney.com"
-			}
-			instances = append(instances, model.ConfluenceInstance{Name: "confluence", URL: url, Token: tok})
-		}
-		if tok := tokens["MYWIKI_PAT"]; tok != "" {
-			url := envVars["MYWIKI_URL"]
-			if url == "" {
-				url = "https://mywiki.disney.com"
-			}
-			instances = append(instances, model.ConfluenceInstance{Name: "mywiki", URL: url, Token: tok})
+	// Backward compat: CONFLUENCE_PAT → confluence, MYWIKI_PAT → mywiki
+	hasSuffixed := false
+	for _, inst := range instances {
+		if inst.Token != "" {
+			hasSuffixed = true
+			break
 		}
 	}
-	return instances
+	if !hasSuffixed {
+		if tok := tokens["CONFLUENCE_PAT"]; tok != "" {
+			inst := instances["confluence"]
+			inst.Token = tok
+			instances["confluence"] = inst
+		}
+		if tok := tokens["MYWIKI_PAT"]; tok != "" {
+			inst := instances["mywiki"]
+			inst.Token = tok
+			instances["mywiki"] = inst
+		}
+	}
+
+	// Return only instances with tokens set
+	var result []model.ConfluenceInstance
+	for _, inst := range instances {
+		if inst.Token != "" {
+			result = append(result, inst)
+		}
+	}
+	return result
 }
 
 // WriteConfluenceInstance adds or updates a Confluence instance in tokens.env.
