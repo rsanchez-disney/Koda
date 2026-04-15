@@ -1865,12 +1865,10 @@ func (m model) viewWorkspaces() string {
 		}
 		kids := children[ws.Name]
 		childPrefix := prefix
-		if prefix != "" {
-			if last {
-				childPrefix += "   "
-			} else {
-				childPrefix += "│  "
-			}
+		if last {
+			childPrefix += "   "
+		} else {
+			childPrefix += "│  "
 		}
 		for j, kid := range kids {
 			renderWS(kid, childPrefix, j == len(kids)-1)
