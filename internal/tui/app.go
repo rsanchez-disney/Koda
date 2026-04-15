@@ -1006,6 +1006,10 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		ops.GenerateMcpJson(ops.FindNodeExe())
+	case "r":
+		ops.GenerateMcpJson(ops.FindNodeExe())
+		m.refresh()
+		m.statusMsg = "✅ mcp.json regenerated"
 	}
 	return m, nil
 }
@@ -1140,7 +1144,7 @@ func (m model) mcpConfRow(row int) mdl.ConfluenceInstance {
 
 func (m model) viewMCP() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("MCP Instances") + dimStyle.Render("  enter=edit  n=add  d=delete  ctrl+d=clear  tab=section  esc=back"))
+	b.WriteString(titleStyle.Render("MCP Instances") + dimStyle.Render("  enter=edit  n=add  d=delete  ctrl+d=clear  r=regenerate  tab=section  esc=back"))
 	b.WriteString("\n\n")
 
 	sections := []struct {
