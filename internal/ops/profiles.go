@@ -286,6 +286,45 @@ func InstallShared(steerRoot, targetDir string) error {
 	return nil
 }
 
+// removeGlobalOrphans removes files installed by the global profile that are NOT
+// present in the workspace override, preventing stale files from leaking through.
+func removeGlobalOrphans(steerRoot, profileID, wsDir, targetDir string) {
+	globalSrc := filepath.Join(steerRoot, config.ProfilePrefix+profileID)
+
+	// Agents (keyed by name, stored as <name>.json)
+	if globalNames, err := agentNames(globalSrc); err == nil {
+		wsAgents, _ := agentNames(wsDir)
+		wsSet := make(map[string]bool, len(wsAgents))
+		for _, n := range wsAgents {
+			wsSet[n] = true
+		}
+		for _, n := range globalNames {
+			if !wsSet[n] {
+				os.Remove(filepath.Join(targetDir, config.AgentsDir, n+".json"))
+				os.Remove(filepath.Join(targetDir, config.PromptsDir, n+".md"))
+			}
+		}
+	}
+
+	// Support dirs: remove global files absent from workspace override
+	for _, sub := range []string{config.ContextDir, config.RulesDir, config.PowersDir, config.SkillsDir, config.SteeringDir} {
+		globalEntries, err := os.ReadDir(filepath.Join(globalSrc, sub))
+		if err != nil {
+			continue
+		}
+		for _, e := range globalEntries {
+			if e.IsDir() {
+				continue
+			}
+			// Keep if workspace override also ships this file
+			if _, err := os.Stat(filepath.Join(wsDir, sub, e.Name())); err == nil {
+				continue
+			}
+			os.Remove(filepath.Join(targetDir, sub, e.Name()))
+		}
+	}
+}
+
 // --- helpers ---
 
 func discoverAgents(profileDir string) ([]model.Agent, error) {
@@ -331,8 +370,12 @@ func isProfileInstalled(id, sourceDir, targetDir string) bool {
 	if err != nil || len(names) == 0 {
 		return false
 	}
-	_, err = os.Stat(filepath.Join(targetDir, config.AgentsDir, names[0]+".json"))
-	return err == nil
+	for _, name := range names {
+		if _, err := os.Stat(filepath.Join(targetDir, config.AgentsDir, name+".json")); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func copyDirContents(src, dst string) {
