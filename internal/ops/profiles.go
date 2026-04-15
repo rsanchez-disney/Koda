@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.disney.com/SANCR225/koda/internal/config"
@@ -117,6 +118,9 @@ func InstallProfile(steerRoot, profileID, targetDir string) (int, error) {
 			continue
 		}
 		expanded := strings.ReplaceAll(string(data), "$HOME", jsonHome)
+		if runtime.GOOS == "windows" {
+			expanded = strings.ReplaceAll(expanded, ".sh\"", ".ps1\"")
+		}
 		os.WriteFile(filepath.Join(agentsDst, e.Name()), []byte(expanded), 0644)
 		count++
 	}
@@ -152,6 +156,9 @@ func InstallProfileFrom(srcDir, targetDir string) (int, error) {
 			continue
 		}
 		expanded := strings.ReplaceAll(string(data), "$HOME", jsonHome)
+		if runtime.GOOS == "windows" {
+			expanded = strings.ReplaceAll(expanded, ".sh\"", ".ps1\"")
+		}
 		os.WriteFile(filepath.Join(agentsDst, e.Name()), []byte(expanded), 0644)
 		count++
 	}
