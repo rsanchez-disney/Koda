@@ -64,7 +64,8 @@ type model struct {
 	profiles    []profileItem
 	tokens      map[string]string
 	tokenInput  string
-	workspaces  []mdl.Workspace
+	workspaces      []mdl.Workspace
+	wsDisplayOrder  []int // visual row → slice index for tree navigation
 	agents      []ops.AgentInfo
 	agentFilter string
 	statusMsg     string
@@ -339,6 +340,7 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		m.agentFilter = ""
 	case "w":
+		m.buildWSDisplayOrder()
 		m.screen = screenWorkspaces
 		m.cursor = 0
 	case "s":
@@ -1725,27 +1727,27 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor--
 		}
 	case "down", "j":
-		if m.cursor < len(m.workspaces)-1 {
+		if m.cursor < len(m.wsDisplayOrder)-1 {
 			m.cursor++
 		}
 	case "enter":
-		if m.cursor < len(m.workspaces) {
-			ws := m.workspaces[m.cursor]
+		if m.cursor < len(m.wsDisplayOrder) {
+			ws := m.workspaces[m.wsDisplayOrder[m.cursor]]
 			ops.ApplyWorkspace(m.steerRoot, m.targetDir, ws)
 			m.refresh()
 			m.screen = screenDashboard
 			m.statusMsg = fmt.Sprintf("Workspace '%s' applied!", ws.Name)
 		}
 	case "e":
-		if m.cursor < len(m.workspaces) {
-			ws := m.workspaces[m.cursor]
+		if m.cursor < len(m.wsDisplayOrder) {
+			ws := m.workspaces[m.wsDisplayOrder[m.cursor]]
 			m.cw = newCWStateFromWorkspace(m.steerRoot, m.targetDir, ws)
 			m.screen = screenCreateWorkspace
 			m.statusMsg = ""
 		}
 	case "x":
-		if m.cursor < len(m.workspaces) {
-			parent := m.workspaces[m.cursor]
+		if m.cursor < len(m.wsDisplayOrder) {
+			parent := m.workspaces[m.wsDisplayOrder[m.cursor]]
 			m.cw = newCWState(m.steerRoot, m.targetDir)
 			m.cw.extends = parent.Name
 			m.screen = screenCreateWorkspace
@@ -1753,6 +1755,39 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m *model) buildWSDisplayOrder() {
+	children := map[string][]int{}
+	var roots []int
+	for i, ws := range m.workspaces {
+		if ws.Extends == "" {
+			roots = append(roots, i)
+		} else {
+			children[ws.Extends] = append(children[ws.Extends], i)
+		}
+	}
+	m.wsDisplayOrder = nil
+	var walk func(idx int)
+	walk = func(idx int) {
+		m.wsDisplayOrder = append(m.wsDisplayOrder, idx)
+		for _, kid := range children[m.workspaces[idx].Name] {
+			walk(kid)
+		}
+	}
+	for _, idx := range roots {
+		walk(idx)
+	}
+	// Orphans
+	shown := map[int]bool{}
+	for _, idx := range m.wsDisplayOrder {
+		shown[idx] = true
+	}
+	for i := range m.workspaces {
+		if !shown[i] {
+			walk(i)
+		}
+	}
 }
 
 func (m model) viewWorkspaces() string {
@@ -1777,11 +1812,20 @@ func (m model) viewWorkspaces() string {
 		}
 	}
 
+	// Map slice index → visual row for cursor highlight
+	sliceToRow := map[int]int{}
+	for row, idx := range m.wsDisplayOrder {
+		sliceToRow[idx] = row
+	}
+
+	active := config.ReadSteerSettings().ActiveWorkspace
+
 	var renderWS func(idx int, prefix string, last bool)
 	renderWS = func(idx int, prefix string, last bool) {
 		ws := m.workspaces[idx]
+		row := sliceToRow[idx]
 		cursor := "  "
-		if idx == m.cursor {
+		if row == m.cursor {
 			cursor = activeStyle.Render("\u25b8 ")
 		}
 		tree := prefix
@@ -1794,21 +1838,30 @@ func (m model) viewWorkspaces() string {
 		}
 		isParent := len(children[ws.Name]) > 0
 		name := ws.Name
-		if idx == m.cursor {
+		if ws.Name == active {
+			name = name + " ●"
+		}
+		if row == m.cursor {
 			name = activeStyle.Render(name)
 		} else if isParent {
 			name = titleStyle.Render(name)
 		}
 		profiles := dimStyle.Render(strings.Join(ws.Profiles, ", "))
 		b.WriteString(fmt.Sprintf("%s%s%s %s\n", cursor, dimStyle.Render(tree), name, profiles))
-		if idx == m.cursor && ws.Description != "" {
+		if row == m.cursor && ws.Description != "" {
 			b.WriteString(fmt.Sprintf("    %s%s\n", dimStyle.Render(prefix), dimStyle.Render(ws.Description)))
 		}
-		if idx == m.cursor && len(ws.Services) > 0 {
+		if row == m.cursor && len(ws.Services) > 0 {
 			b.WriteString(fmt.Sprintf("    %s%s %s\n", dimStyle.Render(prefix), dimStyle.Render("services:"), dimStyle.Render(strings.Join(ws.Services, ", "))))
 		}
-		if idx == m.cursor && len(ws.Channels) > 0 {
+		if row == m.cursor && len(ws.Channels) > 0 {
 			b.WriteString(fmt.Sprintf("    %s%s %s\n", dimStyle.Render(prefix), dimStyle.Render("channels:"), dimStyle.Render(strings.Join(ws.Channels, ", "))))
+		}
+		if row == m.cursor && ws.Team != "" {
+			b.WriteString(fmt.Sprintf("    %s%s %s\n", dimStyle.Render(prefix), dimStyle.Render("team:"), dimStyle.Render(ws.Team)))
+		}
+		if row == m.cursor && len(ws.Projects) > 0 {
+			b.WriteString(fmt.Sprintf("    %s%s\n", dimStyle.Render(prefix), dimStyle.Render(fmt.Sprintf("projects: %d", len(ws.Projects)))))
 		}
 		kids := children[ws.Name]
 		childPrefix := prefix
