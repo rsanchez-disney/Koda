@@ -197,10 +197,12 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 		}
 	}
 
-	// Install profiles: workspace override replaces global entirely
+	// Install profiles: workspace override replaces global entirely.
+	// For overridden profiles, remove global-only files first to avoid orphans.
 	InstallShared(steerRoot, targetDir)
 	for _, p := range profiles {
 		if wsDir, ok := wsOverrides[p]; ok {
+			removeGlobalOrphans(steerRoot, p, wsDir, targetDir)
 			InstallProfileFrom(wsDir, targetDir)
 		} else {
 			InstallProfile(steerRoot, p, targetDir)
