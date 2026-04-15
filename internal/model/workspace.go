@@ -34,11 +34,9 @@ type Token struct {
 }
 
 // KnownTokens defines the tokens Koda manages.
+// Jira and Confluence tokens are managed via instances (like GitHub remotes).
 var KnownTokens = []Token{
-	{Key: "JIRA_PAT", Label: "Jira PAT", Hint: "https://jira.disney.com/secure/ViewProfile.jspa → Personal Access Tokens"},
-	{Key: "CONFLUENCE_PAT", Label: "Confluence PAT", Hint: "https://confluence.disney.com/plugins/personalaccesstokens/usertokens.action"},
 	{Key: "SONARQUBE_TOKEN", Label: "SonarQube Token", Hint: "https://sonar.cicd.wdprapps.disney.com/account/security"},
-	{Key: "MYWIKI_PAT", Label: "MyWiki PAT", Hint: "https://mywiki.disney.com/plugins/personalaccesstokens/usertokens.action"},
 	{Key: "HARNESS_API_KEY", Label: "Harness API Key", Hint: "https://disney.harness.io/ → My Profile → API Key"},
 	{Key: "FIGMA_TOKEN", Label: "Figma Token", Hint: "https://www.figma.com/developers/api#access-tokens"},
 	{Key: "COMPASS_TOKEN", Label: "Compass Token", Hint: "https://compass.wdprapps.disney.com — contact your team lead"},
@@ -59,11 +57,22 @@ type GitHubRemote struct {
 	APIPath string
 }
 
+// JiraInstance represents a configured Jira instance.
+type JiraInstance struct {
+	Name  string // e.g., "myjira", "jira"
+	URL   string // e.g., "https://myjira.disney.com"
+	Token string // JIRA PAT
+}
+
+// ConfluenceInstance represents a configured Confluence instance.
+type ConfluenceInstance struct {
+	Name  string // e.g., "confluence", "mywiki"
+	URL   string // e.g., "https://confluence.disney.com"
+	Token string // Confluence PAT
+}
+
 // KnownEnvVars defines the env vars Koda manages with their defaults.
 var KnownEnvVars = []EnvVar{
-	{Key: "CONFLUENCE_URL", Default: "https://confluence.disney.com", Description: "Confluence URL"},
-	{Key: "MYWIKI_URL", Default: "https://mywiki.disney.com", Description: "MyWiki Confluence URL"},
-	{Key: "JIRA_URL", Default: "https://jira.disney.com", Description: "Jira URL"},
 	{Key: "COMPASS_URL", Default: "https://compass.wdprapps.disney.com/api/mcp/mcp-60d5792b-5ce9-469b-9a6b-b08216eb267e", Description: "Compass MCP endpoint URL"},
 	{Key: "CONTAINER_RUNTIME", Default: "", Description: "Container runtime (docker, nerdctl, podman) — auto-detected if empty"},
 }

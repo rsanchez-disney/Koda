@@ -80,6 +80,109 @@ func RemoveGitHubRemote(name string) {
 	WriteTokens(tokens)
 }
 
+// ReadJiraInstances discovers Jira instances from tokens.env by scanning for JIRA_PAT_* keys.
+// Falls back to single instance from JIRA_PAT + JIRA_URL if no suffixed keys found.
+func ReadJiraInstances() []model.JiraInstance {
+	tokens := ReadTokens()
+	envVars := ReadEnvVars()
+	var instances []model.JiraInstance
+
+	for k, v := range tokens {
+		if !strings.HasPrefix(k, "JIRA_PAT_") || v == "" {
+			continue
+		}
+		name := strings.TrimPrefix(k, "JIRA_PAT_")
+		url := tokens["JIRA_URL_"+name]
+		if url == "" {
+			url = envVars["JIRA_URL_"+name]
+		}
+		instances = append(instances, model.JiraInstance{Name: name, URL: url, Token: v})
+	}
+
+	// Backward compat: single JIRA_PAT
+	if len(instances) == 0 {
+		if tok := tokens["JIRA_PAT"]; tok != "" {
+			url := envVars["JIRA_URL"]
+			if url == "" {
+				url = "https://myjira.disney.com"
+			}
+			instances = append(instances, model.JiraInstance{Name: "jira", URL: url, Token: tok})
+		}
+	}
+	return instances
+}
+
+// WriteJiraInstance adds or updates a Jira instance in tokens.env.
+func WriteJiraInstance(inst model.JiraInstance) {
+	tokens := ReadTokens()
+	tokens["JIRA_PAT_"+inst.Name] = inst.Token
+	tokens["JIRA_URL_"+inst.Name] = inst.URL
+	WriteTokens(tokens)
+}
+
+// RemoveJiraInstance removes a Jira instance from tokens.env.
+func RemoveJiraInstance(name string) {
+	tokens := ReadTokens()
+	delete(tokens, "JIRA_PAT_"+name)
+	delete(tokens, "JIRA_URL_"+name)
+	WriteTokens(tokens)
+}
+
+// ReadConfluenceInstances discovers Confluence instances from tokens.env by scanning for CONFLUENCE_PAT_* keys.
+// Falls back to single instance from CONFLUENCE_PAT + CONFLUENCE_URL, and MYWIKI_PAT + MYWIKI_URL.
+func ReadConfluenceInstances() []model.ConfluenceInstance {
+	tokens := ReadTokens()
+	envVars := ReadEnvVars()
+	var instances []model.ConfluenceInstance
+
+	for k, v := range tokens {
+		if !strings.HasPrefix(k, "CONFLUENCE_PAT_") || v == "" {
+			continue
+		}
+		name := strings.TrimPrefix(k, "CONFLUENCE_PAT_")
+		url := tokens["CONFLUENCE_URL_"+name]
+		if url == "" {
+			url = envVars["CONFLUENCE_URL_"+name]
+		}
+		instances = append(instances, model.ConfluenceInstance{Name: name, URL: url, Token: v})
+	}
+
+	// Backward compat: single CONFLUENCE_PAT + MYWIKI_PAT
+	if len(instances) == 0 {
+		if tok := tokens["CONFLUENCE_PAT"]; tok != "" {
+			url := envVars["CONFLUENCE_URL"]
+			if url == "" {
+				url = "https://confluence.disney.com"
+			}
+			instances = append(instances, model.ConfluenceInstance{Name: "confluence", URL: url, Token: tok})
+		}
+		if tok := tokens["MYWIKI_PAT"]; tok != "" {
+			url := envVars["MYWIKI_URL"]
+			if url == "" {
+				url = "https://mywiki.disney.com"
+			}
+			instances = append(instances, model.ConfluenceInstance{Name: "mywiki", URL: url, Token: tok})
+		}
+	}
+	return instances
+}
+
+// WriteConfluenceInstance adds or updates a Confluence instance in tokens.env.
+func WriteConfluenceInstance(inst model.ConfluenceInstance) {
+	tokens := ReadTokens()
+	tokens["CONFLUENCE_PAT_"+inst.Name] = inst.Token
+	tokens["CONFLUENCE_URL_"+inst.Name] = inst.URL
+	WriteTokens(tokens)
+}
+
+// RemoveConfluenceInstance removes a Confluence instance from tokens.env.
+func RemoveConfluenceInstance(name string) {
+	tokens := ReadTokens()
+	delete(tokens, "CONFLUENCE_PAT_"+name)
+	delete(tokens, "CONFLUENCE_URL_"+name)
+	WriteTokens(tokens)
+}
+
 // ReadTokens reads key=value pairs from ~/.kiro/tokens.env.
 func ReadTokens() map[string]string {
 	tokens := map[string]string{}
@@ -135,10 +238,27 @@ func InjectAgentTokens(targetDir string) error {
 
 	// Map MCP server name → env key
 	injections := map[string]map[string]string{
-		"jira":       {"JIRA_PAT": tokens["JIRA_PAT"]},
-		"confluence": {"CONFLUENCE_PAT": tokens["CONFLUENCE_PAT"]},
-		"mywiki":     {"CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
-		"figma":      {"FIGMA_TOKEN": tokens["FIGMA_TOKEN"]},
+		"figma": {"FIGMA_TOKEN": tokens["FIGMA_TOKEN"]},
+	}
+
+	// Jira: per-instance injections
+	jiraInstances := ReadJiraInstances()
+	if len(jiraInstances) == 1 {
+		injections["jira"] = map[string]string{"JIRA_PAT": jiraInstances[0].Token, "JIRA_URL": jiraInstances[0].URL}
+	} else {
+		for _, inst := range jiraInstances {
+			injections["jira-"+inst.Name] = map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL}
+		}
+	}
+
+	// Confluence: per-instance injections
+	confInstances := ReadConfluenceInstances()
+	if len(confInstances) == 1 {
+		injections["confluence"] = map[string]string{"CONFLUENCE_PAT": confInstances[0].Token, "CONFLUENCE_URL": confInstances[0].URL}
+	} else {
+		for _, inst := range confInstances {
+			injections["confluence-"+inst.Name] = map[string]string{"CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}
+		}
 	}
 
 	// GitHub: per-remote injections
@@ -157,12 +277,22 @@ func InjectAgentTokens(targetDir string) error {
 		return nil
 	}
 
-	// Build tool expansion map for multi-remote (e.g., @github/* → @github-disney/*, @github-public/*)
-	var toolExpansions map[string][]string
+	// Build tool expansion map for multi-remote/instance
+	toolExpansions := map[string][]string{}
 	if len(ghRemotes) > 1 {
-		toolExpansions = map[string][]string{}
 		for _, r := range ghRemotes {
 			toolExpansions["@github/*"] = append(toolExpansions["@github/*"], "@github-"+r.Name+"/*")
+		}
+	}
+	if len(jiraInstances) > 1 {
+		for _, inst := range jiraInstances {
+			toolExpansions["@jira/*"] = append(toolExpansions["@jira/*"], "@jira-"+inst.Name+"/*")
+		}
+	}
+	if len(confInstances) > 1 {
+		for _, inst := range confInstances {
+			toolExpansions["@confluence/*"] = append(toolExpansions["@confluence/*"], "@confluence-"+inst.Name+"/*")
+			toolExpansions["@mywiki/*"] = append(toolExpansions["@mywiki/*"], "@confluence-"+inst.Name+"/*")
 		}
 	}
 

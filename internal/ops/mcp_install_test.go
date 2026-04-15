@@ -124,8 +124,14 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 	ghRemotes := []model.GitHubRemote{
 		{Name: "origin", Host: "github.example.com", Token: "gh-tok"},
 	}
+	jiraInstances := []model.JiraInstance{
+		{Name: "jira", URL: "https://jira.example.com", Token: "tok-jira"},
+	}
+	confInstances := []model.ConfluenceInstance{
+		{Name: "confluence", URL: "https://confluence.example.com", Token: "tok-confluence"},
+	}
 
-	mcpPath, err := GenerateMCPConfig(selected, ghRemotes, tokens, envVars)
+	mcpPath, err := GenerateMCPConfig(selected, ghRemotes, jiraInstances, confInstances, tokens, envVars)
 	if err != nil {
 		t.Fatalf("GenerateMCPConfig error: %v", err)
 	}
@@ -137,7 +143,7 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 	// With 1 remote, github should appear as "github".
 	expectedNames := map[string]bool{
 		"jira": true, "confluence": true, "mermaid": true, "bruno": true,
-		"mywiki": true, "figma": true, "context7": true, "compass": true,
+		"figma": true, "compass": true,
 		"github": true,
 	}
 
@@ -155,76 +161,6 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 	}
 
 	_ = tmpHome // used via HOME override
-}
-
-// --- Task 7.2: Context7 npm install trigger ---
-// Verifies that context7 (IsNPM) appears in the generated config with command "npx"
-// when selected, and is NOT in the config when not selected.
-//
-// **Validates: Requirements 5.3**
-func TestContext7InConfigWhenSelected(t *testing.T) {
-	t.Run("context7 selected", func(t *testing.T) {
-		_, cleanup := setupTempHome(t)
-		defer cleanup()
-
-		var context7Server MCPServer
-		for _, srv := range knownServers {
-			if srv.Name == "context7" {
-				context7Server = srv
-				break
-			}
-		}
-
-		selected := []MCPServer{context7Server}
-		mcpPath, err := GenerateMCPConfig(selected, nil, map[string]string{}, map[string]string{})
-		if err != nil {
-			t.Fatalf("GenerateMCPConfig error: %v", err)
-		}
-
-		servers := readGeneratedConfig(t, mcpPath)
-		entry, ok := servers["context7"]
-		if !ok {
-			t.Fatal("context7 not found in generated config")
-		}
-		if entry.Command != "npx" {
-			t.Errorf("expected command 'npx', got %q", entry.Command)
-		}
-		// Verify args contain the expected package.
-		foundPkg := false
-		for _, arg := range entry.Args {
-			if arg == "@upstash/context7-mcp" {
-				foundPkg = true
-			}
-		}
-		if !foundPkg {
-			t.Errorf("expected args to contain '@upstash/context7-mcp', got %v", entry.Args)
-		}
-	})
-
-	t.Run("context7 not selected", func(t *testing.T) {
-		_, cleanup := setupTempHome(t)
-		defer cleanup()
-
-		// Select only mermaid (no tokens, no special handling).
-		var mermaidServer MCPServer
-		for _, srv := range knownServers {
-			if srv.Name == "mermaid" {
-				mermaidServer = srv
-				break
-			}
-		}
-
-		selected := []MCPServer{mermaidServer}
-		mcpPath, err := GenerateMCPConfig(selected, nil, map[string]string{}, map[string]string{})
-		if err != nil {
-			t.Fatalf("GenerateMCPConfig error: %v", err)
-		}
-
-		servers := readGeneratedConfig(t, mcpPath)
-		if _, ok := servers["context7"]; ok {
-			t.Error("context7 should NOT be in config when not selected")
-		}
-	})
 }
 
 // --- Task 7.3: Compass SSE entry generation ---
@@ -249,7 +185,7 @@ func TestCompassSSEEntryGeneration(t *testing.T) {
 		envVars := map[string]string{"COMPASS_URL": "https://compass.example.com/api/mcp"}
 
 		selected := []MCPServer{compassServer}
-		mcpPath, err := GenerateMCPConfig(selected, nil, tokens, envVars)
+		mcpPath, err := GenerateMCPConfig(selected, nil, nil, nil, tokens, envVars)
 		if err != nil {
 			t.Fatalf("GenerateMCPConfig error: %v", err)
 		}
@@ -282,7 +218,7 @@ func TestCompassSSEEntryGeneration(t *testing.T) {
 		envVars := map[string]string{"COMPASS_URL": "https://compass.example.com/api/mcp"}
 
 		selected := []MCPServer{compassServer}
-		mcpPath, err := GenerateMCPConfig(selected, nil, tokens, envVars)
+		mcpPath, err := GenerateMCPConfig(selected, nil, nil, nil, tokens, envVars)
 		if err != nil {
 			t.Fatalf("GenerateMCPConfig error: %v", err)
 		}
@@ -303,7 +239,7 @@ func TestEmptyServerSelectionProducesEmptyConfig(t *testing.T) {
 	defer cleanup()
 
 	var selected []MCPServer // empty
-	mcpPath, err := GenerateMCPConfig(selected, nil, map[string]string{}, map[string]string{})
+	mcpPath, err := GenerateMCPConfig(selected, nil, nil, nil, map[string]string{}, map[string]string{})
 	if err != nil {
 		t.Fatalf("GenerateMCPConfig error: %v", err)
 	}

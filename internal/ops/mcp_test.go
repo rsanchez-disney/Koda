@@ -342,8 +342,15 @@ func TestGeneratedConfigContainsExactlySelectedServers(t *testing.T) {
 			})
 		}
 
+		jiraInstances := []model.JiraInstance{
+			{Name: "jira", URL: "https://jira.example.com", Token: "tok-jira"},
+		}
+		confInstances := []model.ConfluenceInstance{
+			{Name: "confluence", URL: "https://confluence.example.com", Token: "tok-confluence"},
+		}
+
 		// --- Call GenerateMCPConfig ---
-		mcpPath, err := GenerateMCPConfig(selected, ghRemotes, tokens, envVars)
+		mcpPath, err := GenerateMCPConfig(selected, ghRemotes, jiraInstances, confInstances, tokens, envVars)
 		if err != nil {
 			t.Logf("GenerateMCPConfig error: %v", err)
 			return false
@@ -498,7 +505,7 @@ func TestGitHubConfigNamingDependsOnRemoteCount(t *testing.T) {
 		envVars := map[string]string{}
 
 		// --- Call GenerateMCPConfig ---
-		mcpPath, err := GenerateMCPConfig(selected, input.Remotes, tokens, envVars)
+		mcpPath, err := GenerateMCPConfig(selected, input.Remotes, nil, nil, tokens, envVars)
 		if err != nil {
 			t.Logf("GenerateMCPConfig error: %v", err)
 			return false
@@ -654,9 +661,15 @@ func TestServerEntryStructureCorrectness(t *testing.T) {
 
 		// No GitHub remotes (github excluded from selection).
 		var ghRemotes []model.GitHubRemote
+		jiraInstances := []model.JiraInstance{
+			{Name: "jira", URL: "https://jira.example.com", Token: "tok-jira"},
+		}
+		confInstances := []model.ConfluenceInstance{
+			{Name: "confluence", URL: "https://confluence.example.com", Token: "tok-confluence"},
+		}
 
 		// --- Call GenerateMCPConfig ---
-		mcpPath, err := GenerateMCPConfig(selected, ghRemotes, tokens, envVars)
+		mcpPath, err := GenerateMCPConfig(selected, ghRemotes, jiraInstances, confInstances, tokens, envVars)
 		if err != nil {
 			t.Logf("GenerateMCPConfig error: %v", err)
 			return false
@@ -841,8 +854,15 @@ func TestConfigGenerationIsIdempotent(t *testing.T) {
 			})
 		}
 
+		jiraInstances := []model.JiraInstance{
+			{Name: "jira", URL: "https://jira.example.com", Token: "tok-jira"},
+		}
+		confInstances := []model.ConfluenceInstance{
+			{Name: "confluence", URL: "https://confluence.example.com", Token: "tok-confluence"},
+		}
+
 		// --- First call ---
-		mcpPath1, err := GenerateMCPConfig(selected, ghRemotes, tokens, envVars)
+		mcpPath1, err := GenerateMCPConfig(selected, ghRemotes, jiraInstances, confInstances, tokens, envVars)
 		if err != nil {
 			t.Logf("first GenerateMCPConfig error: %v", err)
 			return false
@@ -854,7 +874,7 @@ func TestConfigGenerationIsIdempotent(t *testing.T) {
 		}
 
 		// --- Second call with identical inputs ---
-		mcpPath2, err := GenerateMCPConfig(selected, ghRemotes, tokens, envVars)
+		mcpPath2, err := GenerateMCPConfig(selected, ghRemotes, jiraInstances, confInstances, tokens, envVars)
 		if err != nil {
 			t.Logf("second GenerateMCPConfig error: %v", err)
 			return false

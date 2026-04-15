@@ -24,14 +24,12 @@ type MCPServer struct {
 
 // knownServers defines all MCP servers Koda can install.
 var knownServers = []MCPServer{
-	{Name: "jira", BundleDir: "jira-mcp", TokenKeys: []string{"JIRA_PAT"}},
-	{Name: "confluence", BundleDir: "confluence-mcp", TokenKeys: []string{"CONFLUENCE_PAT"}, EnvKeys: []string{"CONFLUENCE_URL"}},
+	{Name: "jira", BundleDir: "jira-mcp"},
+	{Name: "confluence", BundleDir: "confluence-mcp"},
 	{Name: "mermaid", BundleDir: "mermaid-diagram-mcp"},
 	{Name: "bruno", BundleDir: "bruno-mcp"},
-	{Name: "mywiki", BundleDir: "mywiki-mcp", TokenKeys: []string{"MYWIKI_PAT"}, EnvKeys: []string{"MYWIKI_URL"}},
 	{Name: "figma", BundleDir: "figma-mcp", TokenKeys: []string{"FIGMA_TOKEN"}},
 	{Name: "github", BundleDir: "github-mcp"},
-	{Name: "context7", BundleDir: "context7-mcp", IsNPM: true},
 	{Name: "compass", BundleDir: "", TokenKeys: []string{"COMPASS_TOKEN"}, EnvKeys: []string{"COMPASS_URL"}, IsSSE: true},
 }
 
@@ -84,16 +82,6 @@ func GenerateMcpJson(nodeExe string) error {
 	bundleDir := filepath.Join(home, ".kiro", "tools", "mcp-servers")
 
 	servers := map[string]mcpServer{
-		"jira": {
-			Command: nodeExe,
-			Args:    []string{filepath.Join(bundleDir, "jira-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"JIRA_PAT": tokens["JIRA_PAT"]},
-		},
-		"confluence": {
-			Command: nodeExe,
-			Args:    []string{filepath.Join(bundleDir, "confluence-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"CONFLUENCE_URL": envVars["CONFLUENCE_URL"], "CONFLUENCE_PAT": tokens["CONFLUENCE_PAT"]},
-		},
 		"mermaid": {
 			Command: nodeExe,
 			Args:    []string{filepath.Join(bundleDir, "mermaid-diagram-mcp", "dist", "index.cjs")},
@@ -102,25 +90,42 @@ func GenerateMcpJson(nodeExe string) error {
 			Command: nodeExe,
 			Args:    []string{filepath.Join(bundleDir, "bruno-mcp", "dist", "index.cjs")},
 		},
-		"mywiki": {
-			Command: nodeExe,
-			Args:    []string{filepath.Join(bundleDir, "mywiki-mcp", "dist", "index.cjs")},
-			Env:     map[string]string{"CONFLUENCE_URL": envVars["MYWIKI_URL"], "CONFLUENCE_PAT": tokens["MYWIKI_PAT"]},
-		},
 		"figma": {
 			Command: nodeExe,
 			Args:    []string{filepath.Join(bundleDir, "figma-mcp", "dist", "index.cjs")},
 			Env:     map[string]string{"FIGMA_TOKEN": tokens["FIGMA_TOKEN"]},
-		},
-		"context7": {
-			Command: "npx",
-			Args:    []string{"-y", "@upstash/context7-mcp"},
 		},
 	}
 
 	// fetch via uvx (optional)
 	if uvx := FindUvxExe(); uvx != "" {
 		servers["fetch"] = mcpServer{Command: uvx, Args: []string{"mcp-server-fetch"}}
+	}
+
+	// Jira: per-instance entries
+	jiraInstances := ReadJiraInstances()
+	jiraBundle := filepath.Join(bundleDir, "jira-mcp", "dist", "index.cjs")
+	if len(jiraInstances) == 1 {
+		servers["jira"] = mcpServer{Command: nodeExe, Args: []string{jiraBundle},
+			Env: map[string]string{"JIRA_PAT": jiraInstances[0].Token, "JIRA_URL": jiraInstances[0].URL}}
+	} else {
+		for _, inst := range jiraInstances {
+			servers["jira-"+inst.Name] = mcpServer{Command: nodeExe, Args: []string{jiraBundle},
+				Env: map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL}}
+		}
+	}
+
+	// Confluence: per-instance entries
+	confInstances := ReadConfluenceInstances()
+	confBundle := filepath.Join(bundleDir, "confluence-mcp", "dist", "index.cjs")
+	if len(confInstances) == 1 {
+		servers["confluence"] = mcpServer{Command: nodeExe, Args: []string{confBundle},
+			Env: map[string]string{"CONFLUENCE_PAT": confInstances[0].Token, "CONFLUENCE_URL": confInstances[0].URL}}
+	} else {
+		for _, inst := range confInstances {
+			servers["confluence-"+inst.Name] = mcpServer{Command: nodeExe, Args: []string{confBundle},
+				Env: map[string]string{"CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}}
+		}
 	}
 
 	// GitHub: per-remote entries
@@ -413,6 +418,7 @@ func HasExistingMCPConfig() bool {
 // ghRemotes provides GitHub remote configs; tokens and envVars supply credentials.
 // Returns the path to the written file.
 func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
+	jiraInstances []model.JiraInstance, confInstances []model.ConfluenceInstance,
 	tokens map[string]string, envVars map[string]string) (string, error) {
 
 	home, _ := os.UserHomeDir()
@@ -448,6 +454,32 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 			servers[srv.Name] = mcpServer{
 				Command: "npx",
 				Args:    []string{"-y", "@upstash/context7-mcp"},
+			}
+
+		case srv.Name == "jira":
+			// Jira: per-instance entries (same pattern as GitHub).
+			jiraBundle := filepath.Join(bundleDir, "jira-mcp", "dist", "index.cjs")
+			if len(jiraInstances) == 1 {
+				servers["jira"] = mcpServer{Command: "node", Args: []string{jiraBundle},
+					Env: map[string]string{"JIRA_PAT": jiraInstances[0].Token, "JIRA_URL": jiraInstances[0].URL}}
+			} else {
+				for _, inst := range jiraInstances {
+					servers["jira-"+inst.Name] = mcpServer{Command: "node", Args: []string{jiraBundle},
+						Env: map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL}}
+				}
+			}
+
+		case srv.Name == "confluence":
+			// Confluence: per-instance entries (same pattern as GitHub).
+			confBundle := filepath.Join(bundleDir, "confluence-mcp", "dist", "index.cjs")
+			if len(confInstances) == 1 {
+				servers["confluence"] = mcpServer{Command: "node", Args: []string{confBundle},
+					Env: map[string]string{"CONFLUENCE_PAT": confInstances[0].Token, "CONFLUENCE_URL": confInstances[0].URL}}
+			} else {
+				for _, inst := range confInstances {
+					servers["confluence-"+inst.Name] = mcpServer{Command: "node", Args: []string{confBundle},
+						Env: map[string]string{"CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}}
+				}
 			}
 
 		case srv.Name == "github":
