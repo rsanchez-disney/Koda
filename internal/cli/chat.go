@@ -13,42 +13,45 @@ import (
 
 var (
 	chatAgent string
-	chatLite  bool
 )
 
 var chatCmd = &cobra.Command{
-	Use:                "chat [message]",
-	Short:              "Start an interactive chat with a Kiro agent",
-	DisableFlagParsing: false,
+	Use:   "chat [message]",
+	Short: "Start an interactive chat with a Kiro agent (proxies to kiro-cli --tui)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Resolve agent: flag > workspace default > auto-detect
 		agent := chatAgent
 		if agent == "" {
 			agent = ops.SuggestDefaultAgent(steerRoot, config.TargetDir(projectDir))
 		}
 
-		// Lite mode: proxy to kiro-cli
-		if chatLite {
-			var cliArgs []string
-			cliArgs = append(cliArgs, "chat")
-			if agent != "" {
-				cliArgs = append(cliArgs, "--agent", agent)
-			}
-			cliArgs = append(cliArgs, args...)
-
-			c := exec.Command(ops.FindKiroCLI(), cliArgs...)
-			c.Stdin = os.Stdin
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-			return c.Run()
+		var cliArgs []string
+		cliArgs = append(cliArgs, "chat", "--tui")
+		if agent != "" {
+			cliArgs = append(cliArgs, "--agent", agent)
 		}
+		cliArgs = append(cliArgs, args...)
 
-		// Default: rich ACP TUI with live indicators
+		c := exec.Command(ops.FindKiroCLI(), cliArgs...)
+		c.Stdin = os.Stdin
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		return c.Run()
+	},
+}
+
+var promptCmd = &cobra.Command{
+	Use:   "prompt [message]",
+	Short: "Start a chat using Koda's built-in ACP TUI (with live indicators)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		agent := chatAgent
+		if agent == "" {
+			agent = ops.SuggestDefaultAgent(steerRoot, config.TargetDir(projectDir))
+		}
 		return tui.RunChat(agent)
 	},
 }
 
 func init() {
 	chatCmd.Flags().StringVar(&chatAgent, "agent", "", "Agent to chat with (e.g., orchestrator, backend)")
-	chatCmd.Flags().BoolVar(&chatLite, "lite", false, "Lite mode — proxy to kiro-cli chat (no live indicators)")
+	promptCmd.Flags().StringVar(&chatAgent, "agent", "", "Agent to chat with (e.g., orchestrator, backend)")
 }
