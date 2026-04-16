@@ -279,6 +279,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case kiroIDEDoneMsg:
 		m.statusMsg = fmt.Sprintf("\u2705 Kiro IDE %s: %d steering, %d skills, %d hooks, %d MCP", msg.action, msg.result.Steering, msg.result.Skills, msg.result.Hooks, msg.result.MCP)
 		return m, nil
+	case mcpRegenDoneMsg:
+		m.refresh()
+		if msg.err != nil {
+			m.statusMsg = "❌ Regenerate failed: " + msg.err.Error()
+		} else {
+			m.statusMsg = "✅ mcp.json regenerated"
+		}
 	case doctorFixDoneMsg:
 		m.envVars = ops.ReadEnvVars()
 		m.ghRemotes = ops.ReadGitHubRemotes()
@@ -640,6 +647,7 @@ type forkDoneMsg struct {
 	repo string
 }
 
+type mcpRegenDoneMsg struct{ err error }
 type kiroIDEDoneMsg struct {
 	result ops.KiroIDEResult
 	action string
@@ -1026,9 +1034,11 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		ops.GenerateMcpJson(ops.FindNodeExe())
 	case "r":
-		ops.GenerateMcpJson(ops.FindNodeExe())
-		m.refresh()
-		m.statusMsg = "✅ mcp.json regenerated"
+		m.statusMsg = "⏳ Regenerating mcp.json..."
+		return m, func() tea.Msg {
+			err := ops.GenerateMcpJson(ops.FindNodeExe())
+			return mcpRegenDoneMsg{err: err}
+		}
 	}
 	return m, nil
 }
