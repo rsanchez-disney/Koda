@@ -358,9 +358,12 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenProfiles
 		m.cursor = 0
 	case "t":
-		m.screen = screenTokens
-		m.cursor = 0
-		m.tokenInput = ""
+		m.buildWSDisplayOrder()
+		m.mcpSection = 3 // Other Tokens section
+		m.mcpRow = 0
+		m.mcpAdding = false
+		m.mcpEditing = false
+		m.screen = screenMCP
 	case "a":
 		m.screen = screenAgents
 		m.cursor = 0
@@ -920,6 +923,12 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					inst.Token = val
 				}
 				ops.WriteConfluenceInstance(inst)
+			case 3:
+				if m.mcpRow < len(mdl.KnownTokens) && val != "" {
+					tk := mdl.KnownTokens[m.mcpRow]
+					m.tokens[tk.Key] = val
+					ops.WriteTokens(m.tokens)
+				}
 			}
 			ops.GenerateMcpJson(ops.FindNodeExe())
 			m.ghRemotes = ops.ReadGitHubRemotes()
@@ -966,7 +975,7 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mcpInput = ""
 		}
 	case "enter":
-		if m.mcpSection < 3 && m.mcpSectionLen() > 0 {
+		if m.mcpSection <= 3 && m.mcpSectionLen() > 0 {
 			m.mcpEditing = true
 			m.mcpEditField = 1 // default to token field
 			m.mcpInput = ""
@@ -1005,10 +1014,7 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mcpRow = 0
 		}
 	case "ctrl+d":
-		// Clear token on selected instance (keeps the row for defaults)
-		if m.mcpSection >= 3 {
-			break
-		}
+		// Clear token on selected instance
 		switch m.mcpSection {
 		case 0:
 			r := m.mcpGHRow(m.mcpRow)
@@ -1030,6 +1036,13 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				ops.RemoveConfluenceInstance(inst.Name)
 				m.confInstances = ops.ReadConfluenceInstances()
 				m.statusMsg = fmt.Sprintf("Cleared token for '%s'", inst.Name)
+			}
+		case 3:
+			if m.mcpRow < len(mdl.KnownTokens) {
+				tk := mdl.KnownTokens[m.mcpRow]
+				delete(m.tokens, tk.Key)
+				ops.WriteTokens(m.tokens)
+				m.statusMsg = fmt.Sprintf("Cleared %s", tk.Label)
 			}
 		}
 		ops.GenerateMcpJson(ops.FindNodeExe())
@@ -1053,7 +1066,7 @@ func (m model) mcpSectionLen() int {
 	case 2:
 		return m.confAllCount()
 	case 3:
-		return len(m.mcpServers)
+		return len(mdl.KnownTokens)
 	}
 	return 0
 }
@@ -1181,7 +1194,7 @@ func (m model) viewMCP() string {
 		title string
 		idx   int
 	}{
-		{"GitHub", 0}, {"Jira", 1}, {"Confluence", 2}, {"Bundles", 3},
+		{"GitHub", 0}, {"Jira", 1}, {"Confluence", 2}, {"Other Tokens", 3},
 	}
 
 	for _, sec := range sections {
@@ -1285,14 +1298,40 @@ func (m model) viewMCP() string {
 				}
 				row++
 			}
-		case 3: // Bundles
-			for _, s := range m.mcpServers {
-				icon := checkStyle.Render("✓")
-				if !s.hasBundle {
-					icon = errStyle.Render("✗")
+		case 3: // Other Tokens
+			for i, tk := range mdl.KnownTokens {
+				cur := "    "
+				if isActive && m.mcpRow == i && !m.mcpAdding && !m.mcpEditing {
+					cur = activeStyle.Render("  ▸ ")
 				}
-				b.WriteString(fmt.Sprintf("    %s %s\n", icon, s.name))
+				val := m.tokens[tk.Key]
+				status := errStyle.Render("not set")
+				if val != "" {
+					status = checkStyle.Render(ops.MaskToken(val))
+				}
+				b.WriteString(fmt.Sprintf("%s%-22s %s\n", cur, tk.Label, status))
+				if isActive && m.mcpEditing && m.mcpRow == i {
+					b.WriteString("    " + activeStyle.Render("▸ Token: ") + activeStyle.Render(m.mcpInput+"█"))
+					if val != "" {
+						b.WriteString(dimStyle.Render("  (current: "+ops.MaskToken(val)+")"))
+					}
+					b.WriteString("\n")
+					b.WriteString("    " + dimStyle.Render("enter=save  esc=cancel") + "\n")
+				}
 			}
+		}
+		b.WriteString("\n")
+	}
+
+	// Bundles footer (read-only)
+	if len(m.mcpServers) > 0 {
+		b.WriteString(dimStyle.Render("  Bundles") + "\n")
+		for _, s := range m.mcpServers {
+			icon := checkStyle.Render("✓")
+			if !s.hasBundle {
+				icon = errStyle.Render("✗")
+			}
+			b.WriteString(fmt.Sprintf("    %s %s\n", icon, dimStyle.Render(s.name)))
 		}
 		b.WriteString("\n")
 	}
