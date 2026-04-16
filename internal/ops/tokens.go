@@ -96,6 +96,9 @@ func RemoveGitHubRemote(name string) {
 	delete(tokens, "GITHUB_TOKEN_"+name)
 	delete(tokens, "GITHUB_HOST_"+name)
 	delete(tokens, "GITHUB_API_PATH_"+name)
+	// Also remove legacy single-key format
+	delete(tokens, "GITHUB_TOKEN")
+	delete(tokens, "GITHUB_URL")
 	WriteTokens(tokens)
 }
 
@@ -165,6 +168,9 @@ func RemoveJiraInstance(name string) {
 	tokens := ReadTokens()
 	delete(tokens, "JIRA_PAT_"+name)
 	delete(tokens, "JIRA_URL_"+name)
+	// Also remove legacy single-key format
+	delete(tokens, "JIRA_PAT")
+	delete(tokens, "JIRA_URL")
 	WriteTokens(tokens)
 }
 
@@ -239,6 +245,15 @@ func RemoveConfluenceInstance(name string) {
 	tokens := ReadTokens()
 	delete(tokens, "CONFLUENCE_PAT_"+name)
 	delete(tokens, "CONFLUENCE_URL_"+name)
+	// Also remove legacy single-key format
+	if name == "confluence" {
+		delete(tokens, "CONFLUENCE_PAT")
+		delete(tokens, "CONFLUENCE_URL")
+	}
+	if name == "mywiki" {
+		delete(tokens, "MYWIKI_PAT")
+		delete(tokens, "MYWIKI_URL")
+	}
 	WriteTokens(tokens)
 }
 
