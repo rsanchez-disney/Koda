@@ -45,11 +45,14 @@ func CopyMcpBundles(steerRoot string) int {
 	if err != nil {
 		return 0
 	}
+	// Build set of source bundles
+	srcSet := make(map[string]bool)
 	count := 0
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
+		srcSet[e.Name()] = true
 		bundle := filepath.Join(srcDir, e.Name(), "dist", "index.cjs")
 		if _, err := os.Stat(bundle); err == nil {
 			dst := filepath.Join(dstBase, e.Name(), "dist")
@@ -58,6 +61,16 @@ func CopyMcpBundles(steerRoot string) int {
 			count++
 		}
 	}
+
+	// Clean up stale bundles not in source
+	if dstEntries, err := os.ReadDir(dstBase); err == nil {
+		for _, e := range dstEntries {
+			if e.IsDir() && !srcSet[e.Name()] {
+				os.RemoveAll(filepath.Join(dstBase, e.Name()))
+			}
+		}
+	}
+
 	return count
 }
 
