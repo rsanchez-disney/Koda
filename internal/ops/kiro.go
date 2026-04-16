@@ -128,9 +128,12 @@ func SuggestDefaultAgent(steerRoot, targetDir string) string {
 
 // ConfigureKiroSettings applies recommended settings + default agent.
 func ConfigureKiroSettings(steerRoot, targetDir string) {
-	if agent := SuggestDefaultAgent(steerRoot, targetDir); agent != "" {
-		SetKiroSetting("chat.defaultAgent", agent)
-		fmt.Printf("  ✓ kiro: chat.defaultAgent = %s\n", agent)
+	current := ReadKiroSettings()
+	if current["chat.defaultAgent"] == "" {
+		if agent := SuggestDefaultAgent(steerRoot, targetDir); agent != "" {
+			SetKiroSetting("chat.defaultAgent", agent)
+			fmt.Printf("  ✓ kiro: chat.defaultAgent = %s\n", agent)
+		}
 	}
 	for _, s := range ManagedKiroSettings {
 		if s.Recommended && s.Type == "bool" {
