@@ -56,11 +56,10 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 		globalOrder = append(globalOrder, id)
 	}
 
-	// Workspace profiles override globals with same ID
+	// Workspace profiles merge into globals with same ID (specialization)
 	wsGlob := filepath.Join(steerRoot, config.WorkspacesDir, "*", "profiles", "*")
 	wsDirs, _ := filepath.Glob(wsGlob)
-	overridden := map[string]bool{}
-	var wsProfiles []model.Profile
+	var extraProfiles []model.Profile
 	for _, d := range wsDirs {
 		info, err := os.Stat(d)
 		if err != nil || !info.IsDir() {
@@ -68,27 +67,49 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 		}
 		id := filepath.Base(d)
 		wsName := filepath.Base(filepath.Dir(filepath.Dir(d)))
-		agents, _ := discoverAgents(d)
-		installed := isProfileInstalled(id, d, targetDir)
-		wsProfiles = append(wsProfiles, model.Profile{
-			ID:            id,
-			SourceDir:     d,
-			Agents:        agents,
-			AgentCount:    len(agents),
-			Installed:     installed,
-			WorkspaceName: wsName,
-		})
-		overridden[id] = true
-	}
+		wsAgents, _ := discoverAgents(d)
 
-	// Build result: globals (not overridden) + workspace profiles
-	var profiles []model.Profile
-	for _, id := range globalOrder {
-		if !overridden[id] {
-			profiles = append(profiles, globalByID[id])
+		if global, ok := globalByID[id]; ok {
+			// Merge: global agents + workspace agents (workspace wins on conflict)
+			merged := make(map[string]model.Agent)
+			for _, a := range global.Agents {
+				merged[a.Name] = a
+			}
+			for _, a := range wsAgents {
+				merged[a.Name] = a
+			}
+			var agents []model.Agent
+			for _, a := range merged {
+				agents = append(agents, a)
+			}
+			installed := isProfileInstalled(id, d, targetDir) || global.Installed
+			globalByID[id] = model.Profile{
+				ID:            id,
+				SourceDir:     d,
+				Agents:        agents,
+				AgentCount:    len(agents),
+				Installed:     installed,
+				WorkspaceName: wsName,
+			}
+		} else {
+			// Workspace-only profile (no global parent)
+			installed := isProfileInstalled(id, d, targetDir)
+			extraProfiles = append(extraProfiles, model.Profile{
+				ID:            id,
+				SourceDir:     d,
+				Agents:        wsAgents,
+				AgentCount:    len(wsAgents),
+				Installed:     installed,
+				WorkspaceName: wsName,
+			})
 		}
 	}
-	profiles = append(profiles, wsProfiles...)
+
+	var profiles []model.Profile
+	for _, id := range globalOrder {
+		profiles = append(profiles, globalByID[id])
+	}
+	profiles = append(profiles, extraProfiles...)
 	return profiles, nil
 }
 

@@ -1616,6 +1616,8 @@ func (m *model) applyProfileChanges() {
 	for _, p := range m.profiles {
 		if p.selected && !p.installed {
 			if p.workspace != "" {
+				// Install global base first, then workspace specialization
+				ops.InstallProfile(m.steerRoot, p.id, m.targetDir)
 				ops.InstallProfileFrom(p.sourceDir, m.targetDir)
 			} else {
 				ops.InstallProfile(m.steerRoot, p.id, m.targetDir)

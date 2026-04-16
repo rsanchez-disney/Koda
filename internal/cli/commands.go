@@ -29,6 +29,9 @@ var installCmd = &cobra.Command{
 			srcDir, wsName := ops.ResolveProfileSource(steerRoot, p)
 			if wsName != "" {
 				fmt.Printf("📦 Installing %s... (workspace: %s)\n", p, wsName)
+				// Install global base first, then workspace specialization
+				globalDir := filepath.Join(steerRoot, config.ProfilePrefix+p)
+				ops.InstallProfileFrom(globalDir, target)
 			} else {
 				fmt.Printf("📦 Installing %s...\n", p)
 			}
@@ -109,6 +112,8 @@ var syncCmd = &cobra.Command{
 			label := p
 			if wsName != "" {
 				label = fmt.Sprintf("%s (workspace: %s)", p, wsName)
+				globalDir := filepath.Join(steerRoot, config.ProfilePrefix+p)
+				ops.InstallProfileFrom(globalDir, target)
 			}
 			count, err := ops.InstallProfileFrom(srcDir, target)
 			if err != nil {
