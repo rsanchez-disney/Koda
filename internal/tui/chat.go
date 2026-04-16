@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
@@ -32,7 +33,7 @@ var (
 	agentBarStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#22D3EE")).Bold(true)
 )
 
-var slashCommands = []string{"/quit", "/clear", "/agent", "/profile", "/save"}
+var slashCommands = []string{"/quit", "/clear", "/agent", "/profile", "/save", "/load"}
 var devSubProfiles = []string{"dev-core", "dev-web", "dev-mobile"}
 
 var delegateRe = regexp.MustCompile(`<delegate\s+agent="([^"]+)">((?s).*?)</delegate>`)
@@ -372,6 +373,25 @@ func (m *chatModel) updateSuggestions() {
 			}
 			return
 		}
+		// /load <session> completion
+		if strings.HasPrefix(m.input, "/load ") || strings.HasPrefix(m.input, "/save ") {
+			cmd := "/load "
+			if strings.HasPrefix(m.input, "/save ") {
+				cmd = "/save "
+			}
+			prefix := strings.ToLower(strings.TrimPrefix(m.input, cmd))
+			home, _ := os.UserHomeDir()
+			entries, _ := os.ReadDir(filepath.Join(home, ".kiro", "settings", "sessions"))
+			for _, e := range entries {
+				if strings.HasSuffix(e.Name(), ".json") {
+					name := strings.TrimSuffix(e.Name(), ".json")
+					if strings.HasPrefix(strings.ToLower(name), prefix) {
+						m.suggestions = append(m.suggestions, name)
+					}
+				}
+			}
+			return
+		}
 		for _, cmd := range slashCommands {
 			if strings.HasPrefix(cmd, m.input) && cmd != m.input {
 				m.suggestions = append(m.suggestions, cmd)
@@ -408,6 +428,10 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m.handleSlash(m.input)
 			} else if strings.HasPrefix(m.input, "/agent ") {
 				m.input = "/agent " + selected
+				m.suggestions = nil
+				return m.handleSlash(m.input)
+			} else if strings.HasPrefix(m.input, "/load ") {
+				m.input = "/load " + selected
 				m.suggestions = nil
 				return m.handleSlash(m.input)
 			} else if strings.HasPrefix(m.input, "/") {
@@ -556,6 +580,60 @@ func (m chatModel) handleSlash(text string) (tea.Model, tea.Cmd) {
 			m.messages = append(m.messages, chatMsg{role: "system", content: "Profile filter cleared (all agents)"})
 		} else {
 			m.messages = append(m.messages, chatMsg{role: "system", content: "Usage: /profile <name> (or /profile to clear)"})
+		}
+	case "/save":
+		home, _ := os.UserHomeDir()
+		sessDir := filepath.Join(home, ".kiro", "settings", "sessions")
+		os.MkdirAll(sessDir, 0755)
+		name := "session"
+		if len(parts) > 1 {
+			name = parts[1]
+		}
+		filename := filepath.Join(sessDir, name+".json")
+		var msgs []map[string]string
+		for _, msg := range m.messages {
+			msgs = append(msgs, map[string]string{"role": msg.role, "content": msg.content})
+		}
+		data, _ := json.MarshalIndent(map[string]interface{}{
+			"agent":    m.agent,
+			"messages": msgs,
+			"savedAt":  time.Now().Format(time.RFC3339),
+		}, "", "  ")
+		os.WriteFile(filename, data, 0644)
+		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Session saved: %s", name)})
+	case "/load":
+		home, _ := os.UserHomeDir()
+		sessDir := filepath.Join(home, ".kiro", "settings", "sessions")
+		if len(parts) > 1 {
+			filename := filepath.Join(sessDir, parts[1]+".json")
+			data, err := os.ReadFile(filename)
+			if err != nil {
+				m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Session not found: %s", parts[1])})
+				return m, nil
+			}
+			var sess struct {
+				Agent    string              `json:"agent"`
+				Messages []map[string]string `json:"messages"`
+			}
+			json.Unmarshal(data, &sess)
+			m.messages = nil
+			for _, msg := range sess.Messages {
+				m.messages = append(m.messages, chatMsg{role: msg["role"], content: msg["content"]})
+			}
+			m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Loaded session: %s (%d messages)", parts[1], len(sess.Messages))})
+		} else {
+			entries, _ := os.ReadDir(sessDir)
+			if len(entries) == 0 {
+				m.messages = append(m.messages, chatMsg{role: "system", content: "No saved sessions. Use /save <name> to save."})
+				return m, nil
+			}
+			var names []string
+			for _, e := range entries {
+				if strings.HasSuffix(e.Name(), ".json") {
+					names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+				}
+			}
+			m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Available sessions:\n  %s\n\nUse /load <name> to load.", strings.Join(names, "\n  "))})
 		}
 	default:
 		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Unknown command: %s", parts[0])})
