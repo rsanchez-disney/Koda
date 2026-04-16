@@ -1033,11 +1033,12 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		ops.GenerateMcpJson(ops.FindNodeExe())
-	case "r":
-		m.statusMsg = "⏳ Regenerating mcp.json..."
-		return m, func() tea.Msg {
-			err := ops.GenerateMcpJson(ops.FindNodeExe())
-			return mcpRegenDoneMsg{err: err}
+	case "r", "R":
+		if err := ops.GenerateMcpJson(ops.FindNodeExe()); err != nil {
+			m.statusMsg = "❌ Regenerate failed: " + err.Error()
+		} else {
+			m.refresh()
+			m.statusMsg = "✅ mcp.json regenerated"
 		}
 	}
 	return m, nil
