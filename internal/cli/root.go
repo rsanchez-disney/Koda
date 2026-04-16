@@ -143,6 +143,7 @@ func init() {
 	rootCmd.AddCommand(diffCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(chatCmd)
+	rootCmd.AddCommand(promptCmd)
 	rootCmd.AddCommand(setupCmd)
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(autoUpdateCmd)
