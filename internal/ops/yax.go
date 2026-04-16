@@ -2,10 +2,12 @@ package ops
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 )
 
-const yaxInstallURL = "https://github.disney.com/QUINJ327/yax/raw/main/install.sh"
+const yaxRepo = "QUINJ327/yax"
 
 // YaxInstalled checks if yax binary is in PATH.
 func YaxInstalled() bool {
@@ -13,22 +15,44 @@ func YaxInstalled() bool {
 	return err == nil
 }
 
-// YaxInstall installs yax via the official install script.
+// YaxInstall installs yax using gh release download (authenticated via gh CLI).
+// Falls back gracefully if gh is not available or the repo is unreachable.
 func YaxInstall() error {
-	fmt.Println("  📥 Installing yax...")
-	cmd := exec.Command("sh", "-c", "curl -sSL "+yaxInstallURL+" | sh")
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("yax install failed: %w", err)
+	// Require gh CLI for authenticated GHE access
+	ghPath, err := exec.LookPath("gh")
+	if err != nil {
+		fmt.Println("  ⚠ yax: gh CLI required for install (skipping)")
+		return nil
 	}
-	// Run setup to initialize MCP config
-	if setup, err := exec.LookPath("yax"); err == nil {
-		s := exec.Command(setup, "setup")
+
+	home, _ := os.UserHomeDir()
+	installDir := filepath.Join(home, ".local", "bin")
+	os.MkdirAll(installDir, 0755)
+
+	fmt.Println("  📥 Installing yax...")
+
+	// Download latest release binary via gh
+	cmd := exec.Command(ghPath, "release", "download", "--repo", yaxRepo,
+		"--pattern", "yax-*", "--dir", installDir, "--clobber")
+	cmd.Env = append(os.Environ(), "GH_HOST=github.disney.com")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// Non-fatal — yax is optional
+		fmt.Printf("  ⚠ yax: download failed (skipping): %s\n", string(out))
+		return nil
+	}
+
+	// Make executable
+	yaxBin := filepath.Join(installDir, "yax")
+	os.Chmod(yaxBin, 0755)
+
+	// Run setup
+	if _, err := os.Stat(yaxBin); err == nil {
+		s := exec.Command(yaxBin, "setup")
 		if err := s.Run(); err != nil {
-			fmt.Printf("  ⚠ yax setup warning: %v\n", err)
+			fmt.Printf("  ⚠ yax setup: %v\n", err)
 		}
 	}
+
 	fmt.Println("  ✅ yax installed")
 	return nil
 }
