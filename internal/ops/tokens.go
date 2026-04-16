@@ -87,6 +87,9 @@ func WriteGitHubRemote(r model.GitHubRemote) {
 	} else {
 		delete(tokens, "GITHUB_API_PATH_"+r.Name)
 	}
+	// Migrate legacy single-key format
+	delete(tokens, "GITHUB_TOKEN")
+	delete(tokens, "GITHUB_URL")
 	WriteTokens(tokens)
 }
 
@@ -160,6 +163,9 @@ func WriteJiraInstance(inst model.JiraInstance) {
 	tokens := ReadTokens()
 	tokens["JIRA_PAT_"+inst.Name] = inst.Token
 	tokens["JIRA_URL_"+inst.Name] = inst.URL
+	// Migrate legacy single-key format
+	delete(tokens, "JIRA_PAT")
+	delete(tokens, "JIRA_URL")
 	WriteTokens(tokens)
 }
 
@@ -237,6 +243,15 @@ func WriteConfluenceInstance(inst model.ConfluenceInstance) {
 	tokens := ReadTokens()
 	tokens["CONFLUENCE_PAT_"+inst.Name] = inst.Token
 	tokens["CONFLUENCE_URL_"+inst.Name] = inst.URL
+	// Migrate legacy single-key format
+	if inst.Name == "confluence" {
+		delete(tokens, "CONFLUENCE_PAT")
+		delete(tokens, "CONFLUENCE_URL")
+	}
+	if inst.Name == "mywiki" {
+		delete(tokens, "MYWIKI_PAT")
+		delete(tokens, "MYWIKI_URL")
+	}
 	WriteTokens(tokens)
 }
 
