@@ -1627,6 +1627,7 @@ func (m *model) applyProfileChanges() {
 		}
 	}
 	ops.InjectAgentTokens(m.targetDir)
+	ops.WriteProfilesManifest(m.steerRoot, m.targetDir)
 }
 
 func (m model) viewProfiles() string {
