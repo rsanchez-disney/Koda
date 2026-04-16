@@ -23,20 +23,22 @@ var chatCmd = &cobra.Command{
 		if agent == "" {
 			agent = ops.SuggestDefaultAgent(steerRoot, config.TargetDir(projectDir))
 		}
-
-		var cliArgs []string
-		cliArgs = append(cliArgs, "chat", "--tui")
-		if agent != "" {
-			cliArgs = append(cliArgs, "--agent", agent)
-		}
-		cliArgs = append(cliArgs, args...)
-
-		c := exec.Command(ops.FindKiroCLI(), cliArgs...)
-		c.Stdin = os.Stdin
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		return c.Run()
+		return launchKiroCLIChat(agent, args...)
 	},
+}
+
+func launchKiroCLIChat(agent string, extra ...string) error {
+	var cliArgs []string
+	cliArgs = append(cliArgs, "chat", "--tui")
+	if agent != "" {
+		cliArgs = append(cliArgs, "--agent", agent)
+	}
+	cliArgs = append(cliArgs, extra...)
+	c := exec.Command(ops.FindKiroCLI(), cliArgs...)
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c.Run()
 }
 
 var promptCmd = &cobra.Command{

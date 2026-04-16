@@ -83,7 +83,7 @@ Run with no arguments to launch the interactive TUI.`,
 			return err
 		}
 		if launchChat {
-			return tui.RunChat("")
+			return launchKiroCLIChat("")
 		}
 		return nil
 	},
