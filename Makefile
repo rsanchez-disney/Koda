@@ -61,6 +61,16 @@ release: ## Tag + build + release to github.com (make release TAG=v0.1.0)
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
+YAX_SRC ?= /tmp/yax
+
+yax-cross: ## Cross-compile yax binaries (YAX_SRC=/path/to/yax)
+	@test -d "$(YAX_SRC)" || { echo "Usage: make yax-cross YAX_SRC=/path/to/yax"; exit 1; }
+	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-darwin-arm64  .
+	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-darwin-amd64  .
+	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-linux-amd64   .
+	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-linux-arm64   .
+	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-windows-amd64.exe .
+
 .DEFAULT_GOAL := help
 
 smoke: cross ## Run smoke tests in Docker

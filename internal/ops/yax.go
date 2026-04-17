@@ -5,9 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 )
-
-const yaxRepo = "QUINJ327/yax"
 
 // YaxInstalled checks if yax binary is in PATH.
 func YaxInstalled() bool {
@@ -15,44 +14,51 @@ func YaxInstalled() bool {
 	return err == nil
 }
 
-// YaxInstall installs yax using gh release download (authenticated via gh CLI).
-// Falls back gracefully if gh is not available or the repo is unreachable.
+// YaxInstall installs yax.
+// Priority: 1) binary from Koda releases, 2) build from source via GHE install script.
 func YaxInstall() error {
-	// Require gh CLI for authenticated GHE access
-	ghPath, err := exec.LookPath("gh")
-	if err != nil {
-		fmt.Println("  ⚠ yax: gh CLI required for install (skipping)")
-		return nil
-	}
-
 	home, _ := os.UserHomeDir()
 	installDir := filepath.Join(home, ".local", "bin")
 	os.MkdirAll(installDir, 0755)
 
 	fmt.Println("  📥 Installing yax...")
 
-	// Download latest release binary via gh
-	cmd := exec.Command(ghPath, "release", "download", "--repo", yaxRepo,
-		"--pattern", "yax-*", "--dir", installDir, "--clobber")
-	cmd.Env = append(os.Environ(), "GH_HOST=github.disney.com")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		// Non-fatal — yax is optional
-		fmt.Printf("  ⚠ yax: download failed (skipping): %s\n", string(out))
-		return nil
+	// Try binary download from Koda releases
+	asset := fmt.Sprintf("yax-%s-%s", runtime.GOOS, runtime.GOARCH)
+	if runtime.GOOS == "windows" {
+		asset += ".exe"
+	}
+	dest := filepath.Join(installDir, "yax")
+	if runtime.GOOS == "windows" {
+		dest += ".exe"
 	}
 
-	// Make executable
-	yaxBin := filepath.Join(installDir, "yax")
-	os.Chmod(yaxBin, 0755)
-
-	// Run setup
-	if _, err := os.Stat(yaxBin); err == nil {
-		s := exec.Command(yaxBin, "setup")
-		if err := s.Run(); err != nil {
-			fmt.Printf("  ⚠ yax setup: %v\n", err)
+	if ghPath, err := exec.LookPath("gh"); err == nil {
+		cmd := exec.Command(ghPath, "release", "download", "--repo", "rsanchez-disney/Koda",
+			"--pattern", asset, "--dir", installDir, "--clobber")
+		cmd.Env = append(os.Environ(), "GH_HOST=github.com")
+		if _, err := cmd.CombinedOutput(); err == nil {
+			downloaded := filepath.Join(installDir, asset)
+			if downloaded != dest {
+				os.Rename(downloaded, dest)
+			}
+			os.Chmod(dest, 0755)
+			fmt.Println("  ✅ yax installed")
+			return nil
 		}
 	}
 
-	fmt.Println("  ✅ yax installed")
+	// Fallback: build from source (requires Go + GHE access)
+	fmt.Println("  ⚠ yax binary not found in release, trying build from source...")
+	url := "https://github.disney.com/raw/QUINJ327/yax/main/install.sh"
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("curl -fsSL %s | sh", url))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("  ⚠ yax: install failed (skipping): %v\n", err)
+		return nil
+	}
+
+	fmt.Println("  ✅ yax installed from source")
 	return nil
 }
