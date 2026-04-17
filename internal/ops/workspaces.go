@@ -229,6 +229,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	InstallWorkspaceMCPBundles(steerRoot, targetDir, wsNames)
 
 	InjectAgentTokens(targetDir)
+	EnrichWelcomeMessages(targetDir)
 	GenerateMcpJson(FindNodeExe())
 
 	// Install service and channel banks

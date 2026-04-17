@@ -43,6 +43,7 @@ var installCmd = &cobra.Command{
 			fmt.Printf("  ✓ %s (%d agents)\n", p, count)
 		}
 		ops.InjectAgentTokens(target)
+		ops.EnrichWelcomeMessages(target)
 		ops.WriteProfilesManifest(steerRoot, target)
 		ops.GenerateMcpJson(ops.FindNodeExe())
 		// Kiro settings: full configure on first run, just default agent after
@@ -123,6 +124,7 @@ var syncCmd = &cobra.Command{
 			fmt.Printf("  ✓ %s (%d agents)\n", label, count)
 		}
 		ops.InjectAgentTokens(target)
+		ops.EnrichWelcomeMessages(target)
 
 		// Sync workspace steering and MCP bundles if a workspace is active
 		if s := config.ReadSteerSettings(); s.ActiveWorkspace != "" {

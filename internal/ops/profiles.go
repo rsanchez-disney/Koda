@@ -464,3 +464,86 @@ func mergeBank(srcDir, dstFile string) bool {
 	os.WriteFile(dstFile, []byte(buf.String()), 0644)
 	return true
 }
+
+// EnrichWelcomeMessages patches installed agent JSONs that have a welcomeMessage
+// with workspace context from the resolved workspace snapshot.
+func EnrichWelcomeMessages(targetDir string) {
+	home, _ := os.UserHomeDir()
+	wsData, err := os.ReadFile(filepath.Join(home, ".kiro", "settings", "workspace.json"))
+	if err != nil {
+		return
+	}
+	var ws struct {
+		Name       string   `json:"name"`
+		Team       string   `json:"team"`
+		JiraPrefix string   `json:"jira_prefix"`
+		Profiles   []string `json:"profiles"`
+		Projects   []struct {
+			Name string `json:"name"`
+			Repo string `json:"repo,omitempty"`
+		} `json:"projects"`
+		Services []string `json:"services,omitempty"`
+		Channels []string `json:"channels,omitempty"`
+	}
+	if json.Unmarshal(wsData, &ws) != nil || ws.Name == "" {
+		return
+	}
+
+	// Build workspace suffix
+	var b strings.Builder
+	b.WriteString("\n\n\U0001f4cb Workspace: " + ws.Name)
+	if ws.Team != "" {
+		b.WriteString(" (" + ws.Team + ")")
+	}
+	if ws.JiraPrefix != "" {
+		b.WriteString("\n  Jira: " + ws.JiraPrefix + "-*")
+	}
+	if len(ws.Profiles) > 0 {
+		b.WriteString("\n  Profiles: " + strings.Join(ws.Profiles, ", "))
+	}
+	if len(ws.Projects) > 0 {
+		b.WriteString("\n  Projects:")
+		for _, p := range ws.Projects {
+			b.WriteString("\n    \u2022 " + p.Name)
+			if p.Repo != "" {
+				b.WriteString(" (" + p.Repo + ")")
+			}
+		}
+	}
+	if len(ws.Services) > 0 {
+		b.WriteString("\n  Services: " + strings.Join(ws.Services, ", "))
+	}
+	if len(ws.Channels) > 0 {
+		b.WriteString("\n  Channels: " + strings.Join(ws.Channels, ", "))
+	}
+	suffix := b.String()
+
+	// Patch each agent JSON that has a welcomeMessage
+	agentsDir := filepath.Join(targetDir, config.AgentsDir)
+	entries, _ := os.ReadDir(agentsDir)
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(agentsDir, e.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var raw map[string]interface{}
+		if json.Unmarshal(data, &raw) != nil {
+			continue
+		}
+		msg, ok := raw["welcomeMessage"].(string)
+		if !ok || msg == "" {
+			continue
+		}
+		// Strip any previous workspace suffix (re-enrichment safe)
+		if idx := strings.Index(msg, "\n\n\U0001f4cb Workspace:"); idx >= 0 {
+			msg = msg[:idx]
+		}
+		raw["welcomeMessage"] = msg + suffix
+		out, _ := json.MarshalIndent(raw, "", "  ")
+		os.WriteFile(path, out, 0644)
+	}
+}
