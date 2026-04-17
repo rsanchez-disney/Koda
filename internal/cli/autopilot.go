@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.disney.com/SANCR225/koda/internal/config"
+	"github.disney.com/SANCR225/koda/internal/ops"
 	"github.disney.com/SANCR225/koda/internal/pkg"
 )
 
@@ -43,9 +44,9 @@ var autopilotInstallCmd = &cobra.Command{
 			return nil
 		}
 
-		key := os.Getenv("STEER_RELEASE_KEY")
+		key := ops.GetReleaseKey()
 		if key == "" {
-			return fmt.Errorf("STEER_RELEASE_KEY env var required")
+			return fmt.Errorf("release key not available in this build")
 		}
 
 		fmt.Println("⚡ Installing autopilot...")
@@ -95,9 +96,9 @@ var autopilotUpdateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update autopilot to latest version",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		key := os.Getenv("STEER_RELEASE_KEY")
+		key := ops.GetReleaseKey()
 		if key == "" {
-			return fmt.Errorf("STEER_RELEASE_KEY env var required")
+			return fmt.Errorf("release key not available in this build")
 		}
 		// Uninstall + reinstall
 		pkg.Uninstall(autopilotName)

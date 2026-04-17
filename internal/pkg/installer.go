@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.disney.com/SANCR225/koda/internal/ops"
 )
 
 const BinDir = ".koda/bin"
@@ -50,23 +52,26 @@ func Install(name, downloadURL, decryptKey string) error {
 	io.Copy(tmpEnc, resp.Body)
 	tmpEnc.Close()
 
-	// Decrypt
+	// Decrypt using Go-native decryption (same as steer-runtime)
 	fmt.Printf("  Decrypting...\n")
+	encData, err := os.ReadFile(tmpEnc.Name())
+	if err != nil {
+		return fmt.Errorf("read encrypted file: %w", err)
+	}
+	tarData, err := ops.DecryptOpenSSL(encData, decryptKey)
+	if err != nil {
+		return fmt.Errorf("decrypt failed: %w", err)
+	}
+
+	// Extract
+	fmt.Printf("  Installing...\n")
 	tmpTar, err := os.CreateTemp("", name+"-*.tar.gz")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmpTar.Name())
-	tmpTar.Close()
+	os.WriteFile(tmpTar.Name(), tarData, 0o644)
 
-	cmd := exec.Command("openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2",
-		"-in", tmpEnc.Name(), "-out", tmpTar.Name(), "-pass", "pass:"+decryptKey)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("decrypt failed: %s", string(out))
-	}
-
-	// Extract
-	fmt.Printf("  Installing...\n")
 	tmpDir, _ := os.MkdirTemp("", name+"-extract-*")
 	defer os.RemoveAll(tmpDir)
 
