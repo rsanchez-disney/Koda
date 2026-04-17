@@ -562,7 +562,21 @@ func (m chatModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scrollToBottom()
 	case "tab":
 		if len(m.suggestions) > 0 {
-			m.suggestIdx = (m.suggestIdx + 1) % len(m.suggestions)
+			selected := m.suggestions[m.suggestIdx]
+			if strings.HasPrefix(m.input, "/profile ") {
+				m.input = "/profile " + selected
+			} else if strings.HasPrefix(m.input, "/agent ") {
+				m.input = "/agent " + selected
+			} else if strings.HasPrefix(m.input, "/load ") {
+				m.input = "/load " + selected
+			} else if strings.HasPrefix(m.input, "/save ") {
+				m.input = "/save " + selected
+			} else if strings.HasPrefix(m.input, "/") {
+				m.input = selected + " "
+			} else if atIdx := strings.LastIndex(m.input, "@"); atIdx >= 0 {
+				m.input = m.input[:atIdx+1] + selected + " "
+			}
+			m.suggestions = nil
 		}
 	default:
 		if msg.Paste {
