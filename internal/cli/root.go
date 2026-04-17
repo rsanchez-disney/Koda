@@ -152,4 +152,5 @@ func init() {
 	rootCmd.AddCommand(evalCmd)
 	rootCmd.AddCommand(memoryCmd)
 	rootCmd.AddCommand(kiroIDECmd)
+	rootCmd.AddCommand(autopilotCmd)
 }
