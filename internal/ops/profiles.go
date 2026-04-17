@@ -39,27 +39,26 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Index global profiles by ID
-	globalByID := map[string]model.Profile{}
-	var globalOrder []string
+	// Global profiles
+	var profiles []model.Profile
+	globalAgents := map[string][]model.Agent{} // id -> agents (for inheritance)
 	for _, d := range dirs {
 		id := filepath.Base(d)
 		agents, _ := discoverAgents(d)
 		installed := isProfileInstalled(id, d, targetDir)
-		globalByID[id] = model.Profile{
+		profiles = append(profiles, model.Profile{
 			ID:         id,
 			SourceDir:  d,
 			Agents:     agents,
 			AgentCount: len(agents),
 			Installed:  installed,
-		}
-		globalOrder = append(globalOrder, id)
+		})
+		globalAgents[id] = agents
 	}
 
-	// Workspace profiles merge into globals with same ID (specialization)
+	// Workspace profiles as separate entries with inherited agent count
 	wsGlob := filepath.Join(steerRoot, config.WorkspacesDir, "*", "profiles", "*")
 	wsDirs, _ := filepath.Glob(wsGlob)
-	var extraProfiles []model.Profile
 	for _, d := range wsDirs {
 		info, err := os.Stat(d)
 		if err != nil || !info.IsDir() {
@@ -69,47 +68,30 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 		wsName := filepath.Base(filepath.Dir(filepath.Dir(d)))
 		wsAgents, _ := discoverAgents(d)
 
-		if global, ok := globalByID[id]; ok {
-			// Merge: global agents + workspace agents (workspace wins on conflict)
-			merged := make(map[string]model.Agent)
-			for _, a := range global.Agents {
-				merged[a.Name] = a
-			}
-			for _, a := range wsAgents {
-				merged[a.Name] = a
-			}
-			var agents []model.Agent
-			for _, a := range merged {
-				agents = append(agents, a)
-			}
-			installed := isProfileInstalled(id, d, targetDir) || global.Installed
-			globalByID[id] = model.Profile{
-				ID:            id,
-				SourceDir:     d,
-				Agents:        agents,
-				AgentCount:    len(agents),
-				Installed:     installed,
-				WorkspaceName: wsName,
-			}
-		} else {
-			// Workspace-only profile (no global parent)
-			installed := isProfileInstalled(id, d, targetDir)
-			extraProfiles = append(extraProfiles, model.Profile{
-				ID:            id,
-				SourceDir:     d,
-				Agents:        wsAgents,
-				AgentCount:    len(wsAgents),
-				Installed:     installed,
-				WorkspaceName: wsName,
-			})
+		// Merge global base + workspace agents for count
+		merged := make(map[string]model.Agent)
+		for _, a := range globalAgents[id] {
+			merged[a.Name] = a
 		}
+		for _, a := range wsAgents {
+			merged[a.Name] = a
+		}
+		var agents []model.Agent
+		for _, a := range merged {
+			agents = append(agents, a)
+		}
+
+		installed := isProfileInstalled(id, d, targetDir)
+		profiles = append(profiles, model.Profile{
+			ID:            id,
+			SourceDir:     d,
+			Agents:        agents,
+			AgentCount:    len(agents),
+			Installed:     installed,
+			WorkspaceName: wsName,
+		})
 	}
 
-	var profiles []model.Profile
-	for _, id := range globalOrder {
-		profiles = append(profiles, globalByID[id])
-	}
-	profiles = append(profiles, extraProfiles...)
 	return profiles, nil
 }
 
