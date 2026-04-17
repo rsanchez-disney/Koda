@@ -1350,6 +1350,10 @@ func (m model) viewMCP() string {
 		}
 	}
 
+	if m.statusMsg != "" {
+		b.WriteString("\n  " + checkStyle.Render(m.statusMsg) + "\n")
+	}
+
 	return boxStyle.Render(b.String())
 }
 
