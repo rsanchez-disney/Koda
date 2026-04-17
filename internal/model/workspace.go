@@ -91,7 +91,7 @@ var DefaultConfluenceInstances = []ConfluenceInstance{
 
 // KnownEnvVars defines the env vars Koda manages with their defaults.
 var KnownEnvVars = []EnvVar{
-	{Key: "COMPASS_URL", Default: "https://compass.wdprapps.disney.com/api/mcp/mcp-60d5792b-5ce9-469b-9a6b-b08216eb267e", Description: "Compass MCP endpoint URL"},
+	{Key: "COMPASS_URL", Default: "", Description: "Compass MCP endpoint URL"},
 	{Key: "QTEST_BASE_URL", Default: "https://qtest.disney.com", Description: "qTest Manager base URL"},
 	{Key: "QTEST_PROJECT_ID", Default: "", Description: "Default qTest project ID (optional)"},
 	{Key: "CONTAINER_RUNTIME", Default: "", Description: "Container runtime (docker, nerdctl, podman) — auto-detected if empty"},
