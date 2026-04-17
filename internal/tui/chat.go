@@ -274,7 +274,58 @@ func loadWelcomeMessage(agent string) string {
 		WelcomeMessage string `json:"welcomeMessage"`
 	}
 	json.Unmarshal(data, &a)
-	return a.WelcomeMessage
+	msg := a.WelcomeMessage
+
+	// Enrich with workspace context if active
+	wsData, err := os.ReadFile(filepath.Join(home, ".kiro", "settings", "workspace.json"))
+	if err != nil {
+		return msg
+	}
+	var ws struct {
+		Name       string `json:"name"`
+		Team       string `json:"team"`
+		JiraPrefix string `json:"jira_prefix"`
+		Profiles   []string `json:"profiles"`
+		Projects   []struct {
+			Name string `json:"name"`
+			Repo string `json:"repo,omitempty"`
+		} `json:"projects"`
+		Services []string `json:"services,omitempty"`
+		Channels []string `json:"channels,omitempty"`
+	}
+	if json.Unmarshal(wsData, &ws) != nil || ws.Name == "" {
+		return msg
+	}
+
+	var b strings.Builder
+	b.WriteString(msg)
+	b.WriteString("\n\n📋 Workspace: " + ws.Name)
+	if ws.Team != "" {
+		b.WriteString(" (" + ws.Team + ")")
+	}
+	if ws.JiraPrefix != "" {
+		b.WriteString("\n  Jira: " + ws.JiraPrefix + "-*")
+	}
+	if len(ws.Profiles) > 0 {
+		b.WriteString("\n  Profiles: " + strings.Join(ws.Profiles, ", "))
+	}
+	if len(ws.Projects) > 0 {
+		b.WriteString("\n  Projects:")
+		for _, p := range ws.Projects {
+			line := "\n    • " + p.Name
+			if p.Repo != "" {
+				line += " (" + p.Repo + ")"
+			}
+			b.WriteString(line)
+		}
+	}
+	if len(ws.Services) > 0 {
+		b.WriteString("\n  Services: " + strings.Join(ws.Services, ", "))
+	}
+	if len(ws.Channels) > 0 {
+		b.WriteString("\n  Channels: " + strings.Join(ws.Channels, ", "))
+	}
+	return b.String()
 }
 
 func loadAgentNames() []string {
