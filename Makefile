@@ -5,8 +5,10 @@ VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev
 RELEASE_KEY ?= $(STEER_RELEASE_KEY)
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X github.disney.com/SANCR225/koda/internal/ops.releaseKey=$(RELEASE_KEY)
 BIN      := ./bin/$(APP)
+YAX_REPO := github.disney.com-sancr225:QUINJ327/yax.git
+YAX_SRC  ?= /tmp/yax
 
-.PHONY: build run clean test lint fmt vet tidy install cross release release help
+.PHONY: build run clean test lint fmt vet tidy install cross release help yax-fetch yax-cross
 
 build: ## Build binary
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/koda/
@@ -38,38 +40,48 @@ tidy: ## Tidy modules
 clean: ## Remove build artifacts
 	rm -rf bin/
 
-cross: ## Cross-compile for macOS, Linux, Windows
+cross: ## Cross-compile Koda for macOS, Linux, Windows
 	CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-darwin-arm64  ./cmd/koda/
 	CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-darwin-amd64  ./cmd/koda/
 	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-linux-amd64   ./cmd/koda/
 	CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-linux-arm64   ./cmd/koda/
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-windows-amd64.exe ./cmd/koda/
 
+yax-fetch: ## Clone or pull latest yax source
+	@if [ -d "$(YAX_SRC)/.git" ]; then \
+		echo "  Pulling yax..."; \
+		cd $(YAX_SRC) && git pull --ff-only 2>/dev/null || true; \
+	else \
+		echo "  Cloning yax..."; \
+		rm -rf $(YAX_SRC); \
+		git clone --depth 1 git@$(YAX_REPO) $(YAX_SRC); \
+	fi
 
-release: ## Tag + build + release to github.com (make release TAG=v0.1.0)
-	@test -n "$(TAG)" || { echo "Usage: make release TAG=v0.1.0"; exit 1; }
-	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
-	git tag -a $(TAG) -m "Release $(TAG)"
-	git push origin $(TAG)
-	$(MAKE) cross VERSION=$(TAG)
-	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* --latest \
-		--repo $(PUB_REPO) \
-		--title "Koda $(TAG)" \
-		--generate-notes
-	@echo "\n✅ Published $(TAG) to github.com/$(PUB_REPO)"
-
-help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
-
-YAX_SRC ?= /tmp/yax
-
-yax-cross: ## Cross-compile yax binaries (YAX_SRC=/path/to/yax)
-	@test -d "$(YAX_SRC)" || { echo "Usage: make yax-cross YAX_SRC=/path/to/yax"; exit 1; }
+yax-cross: yax-fetch ## Fetch, test, and cross-compile yax
+	@echo "  Testing yax..."
+	cd $(YAX_SRC) && go test ./...
+	@echo "  Building yax..."
 	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-darwin-arm64  .
 	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-darwin-amd64  .
 	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-linux-amd64   .
 	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-linux-arm64   .
 	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-windows-amd64.exe .
+
+release: ## Tag + build Koda + yax + publish (make release TAG=v0.1.0)
+	@test -n "$(TAG)" || { echo "Usage: make release TAG=v0.1.0"; exit 1; }
+	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
+	git tag -a $(TAG) -m "Release $(TAG)"
+	git push origin $(TAG)
+	$(MAKE) cross VERSION=$(TAG)
+	-$(MAKE) yax-cross
+	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* $$(ls bin/yax-* 2>/dev/null) --latest \
+		--repo $(PUB_REPO) \
+		--title "Koda $(TAG)" \
+		--generate-notes
+	@echo "Published $(TAG) to github.com/$(PUB_REPO)"
+
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 .DEFAULT_GOAL := help
 
@@ -81,22 +93,21 @@ publish: ## Tag + build + upload to GitHub releases (make publish TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make publish TAG=v0.1.0"; exit 1; }
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
 	$(MAKE) release TAG=$(TAG)
-	@echo "\n✅ Published $(TAG) to GitHub releases"
 
 smoke-install: ## Test install script in Docker (downloads from GitHub releases)
 	docker run --rm ubuntu:22.04 bash -c "\
 		apt-get update -qq && apt-get install -y -qq curl git > /dev/null 2>&1 && \
-		echo '🐾 Testing install script...' && \
+		echo 'Testing install script...' && \
 		curl -fsSL https://raw.githubusercontent.com/rsanchez-disney/Koda/main/install.sh | bash && \
 		echo '' && \
 		export PATH=\$$HOME/.local/bin:\$$PATH && \
 		koda version && \
 		koda --help | head -5 && \
-		echo '' && echo '✅ Install test passed'"
+		echo '' && echo 'Install test passed'"
 
 pack-steer: ## Create steer-runtime tarball for release (requires STEER_ROOT and optionally STEER_RELEASE_KEY)
 	@test -n "$(STEER_ROOT)" || { echo "Usage: make pack-steer STEER_ROOT=../steer-runtime"; exit 1; }
-	@echo "📦 Packing steer-runtime from $(STEER_ROOT)..."
+	@echo "Packing steer-runtime from $(STEER_ROOT)..."
 	tar czf bin/steer-runtime.tar.gz -C "$(STEER_ROOT)" \
 		--exclude='.git' --exclude='node_modules' --exclude='.DS_Store' --exclude='tests/runs' \
 		--exclude='shared/tools/mcp-servers/*/src' \
@@ -105,12 +116,12 @@ pack-steer: ## Create steer-runtime tarball for release (requires STEER_ROOT and
 		--exclude='shared/tools/mcp-servers/*/tsconfig.json' .
 	@ls -lh bin/steer-runtime.tar.gz
 	@if [ -n "$(STEER_RELEASE_KEY)" ]; then \
-		echo "🔒 Encrypting..."; \
+		echo "Encrypting..."; \
 		openssl enc -aes-256-cbc -pbkdf2 -salt -in bin/steer-runtime.tar.gz -out bin/steer-runtime.tar.gz.enc -pass pass:$(STEER_RELEASE_KEY); \
 		ls -lh bin/steer-runtime.tar.gz.enc; \
-		echo "✅ Encrypted tarball ready"; \
+		echo "Encrypted tarball ready"; \
 	else \
-		echo "⚠ No STEER_RELEASE_KEY — tarball is unencrypted"; \
+		echo "No STEER_RELEASE_KEY — tarball is unencrypted"; \
 	fi
 
 publish-steer: pack-steer ## Upload steer-runtime tarball to public repo (make publish-steer TAG=v0.1.4 STEER_ROOT=../steer-runtime)
@@ -121,4 +132,4 @@ publish-steer: pack-steer ## Upload steer-runtime tarball to public repo (make p
 	else \
 		GH_HOST=github.com gh release upload $(TAG) bin/steer-runtime.tar.gz --repo rsanchez-disney/steer-runtime --clobber; \
 	fi
-	@echo "✅ Uploaded steer-runtime tarball to rsanchez-disney/steer-runtime $(TAG)"
+	@echo "Uploaded steer-runtime tarball to rsanchez-disney/steer-runtime $(TAG)"
