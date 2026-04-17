@@ -24,6 +24,9 @@ const steerReleaseAPI = "https://api.github.com/repos/rsanchez-disney/steer-runt
 // releaseKey is set at build time via -ldflags
 var releaseKey string
 
+// GetReleaseKey returns the build-time embedded release key.
+func GetReleaseKey() string { return releaseKey }
+
 type releaseInfo struct {
 	TagName string `json:"tag_name"`
 	Assets  []struct {
