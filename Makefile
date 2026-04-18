@@ -135,3 +135,48 @@ publish-steer: pack-steer ## Upload steer-runtime tarball to public repo (make p
 		GH_HOST=github.com gh release upload $(TAG) bin/steer-runtime.tar.gz --repo rsanchez-disney/steer-runtime --clobber; \
 	fi
 	@echo "Uploaded steer-runtime tarball to rsanchez-disney/steer-runtime $(TAG)"
+
+STEER_ROOT ?= ../steer-runtime
+
+publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
+	@echo "=== Pulling latest ==="
+	@git pull --ff-only 2>/dev/null || true
+	@git -C $(STEER_ROOT) checkout main 2>/dev/null && git -C $(STEER_ROOT) pull --ff-only 2>/dev/null || true
+	@echo ""
+	@# --- Koda ---
+	@KODA_LAST=$$(git tag --sort=-v:refname | head -1); \
+	KODA_COMMITS=$$(git log $$KODA_LAST..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
+	if [ "$$KODA_COMMITS" -gt 0 ]; then \
+		MAJOR=$$(echo $$KODA_LAST | sed 's/v//' | cut -d. -f1); \
+		MINOR=$$(echo $$KODA_LAST | sed 's/v//' | cut -d. -f2); \
+		PATCH=$$(echo $$KODA_LAST | sed 's/v//' | cut -d. -f3); \
+		NEXT="v$$MAJOR.$$MINOR.$$((PATCH + 1))"; \
+		echo "Koda: $$KODA_COMMITS commits since $$KODA_LAST → $$NEXT"; \
+		read -p "  Publish Koda $$NEXT? [y/N]: " ans; \
+		if [ "$$ans" = "y" ]; then \
+			$(MAKE) release TAG=$$NEXT; \
+		fi; \
+	else \
+		echo "Koda: up to date ($$KODA_LAST)"; \
+	fi
+	@echo ""
+	@# --- steer-runtime ---
+	@STEER_LAST=$$(GH_HOST=github.com gh release list --repo rsanchez-disney/steer-runtime --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null); \
+	STEER_GHE_LAST=$$(git -C $(STEER_ROOT) tag --sort=-v:refname | head -1); \
+	STEER_COMMITS=$$(git -C $(STEER_ROOT) log $$STEER_GHE_LAST..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
+	if [ "$$STEER_COMMITS" -gt 0 ] || [ "$$STEER_LAST" != "$$STEER_GHE_LAST" ]; then \
+		MAJOR=$$(echo $$STEER_LAST | sed 's/v//' | cut -d. -f1); \
+		MINOR=$$(echo $$STEER_LAST | sed 's/v//' | cut -d. -f2); \
+		PATCH=$$(echo $$STEER_LAST | sed 's/v//' | cut -d. -f3); \
+		NEXT="v$$MAJOR.$$MINOR.$$((PATCH + 1))"; \
+		echo "steer-runtime: changes since $$STEER_LAST → $$NEXT"; \
+		git -C $(STEER_ROOT) log $$STEER_GHE_LAST..HEAD --oneline 2>/dev/null | head -5; \
+		read -p "  Publish steer-runtime $$NEXT? [y/N]: " ans; \
+		if [ "$$ans" = "y" ]; then \
+			$(MAKE) publish-steer TAG=$$NEXT STEER_ROOT=$(STEER_ROOT); \
+		fi; \
+	else \
+		echo "steer-runtime: up to date ($$STEER_LAST)"; \
+	fi
+	@echo ""
+	@echo "Done."
