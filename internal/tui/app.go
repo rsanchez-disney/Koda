@@ -111,6 +111,7 @@ type model struct {
 	ghIdentity    ops.GHIdentity
 	kodaVersion   string
 	memoryStatus  ops.MemoryStatusInfo
+	yaxStatus     ops.YaxStatus
 }
 
 type profileItem struct {
@@ -182,6 +183,7 @@ func (m *model) refresh() {
 	m.confInstances = ops.ReadConfluenceInstances()
 	m.doctorResults = ops.RunDoctor(m.steerRoot, m.targetDir)
 	m.memoryStatus = ops.MemoryStatus(m.targetDir)
+	m.yaxStatus = ops.GetYaxStatus()
 
 	// First-run: apply recommended kiro settings
 	s := config.ReadSteerSettings()
@@ -551,6 +553,15 @@ func (m model) viewDashboard() string {
 		} else {
 			b.WriteString("  Memory:    " + warnStyle.Render("stopped") + "\n")
 		}
+	}
+
+	// yax status
+	if m.yaxStatus.Installed {
+		detail := m.yaxStatus.Version
+		if m.yaxStatus.Observations > 0 {
+			detail += fmt.Sprintf(" — %d obs, %d sessions, %d edges", m.yaxStatus.Observations, m.yaxStatus.Sessions, m.yaxStatus.Edges)
+		}
+		b.WriteString(fmt.Sprintf("  Yax:       %s\n", checkStyle.Render(detail)))
 	}
 
 	if m.ghIdentity.Login != "" {

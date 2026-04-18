@@ -1,11 +1,13 @@
 package ops
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // YaxInstalled checks if yax binary is in PATH.
@@ -63,4 +65,42 @@ func YaxInstall() error {
 	os.Chmod(dest, 0755)
 	fmt.Println("  ✅ yax installed")
 	return nil
+}
+
+// YaxStatus holds yax installation and usage info.
+type YaxStatus struct {
+	Installed    bool
+	Version      string
+	Path         string
+	Observations int
+	Sessions     int
+	Edges        int
+	Prompts      int
+}
+
+// GetYaxStatus checks yax installation and stats.
+func GetYaxStatus() YaxStatus {
+	yaxBin, err := exec.LookPath("yax")
+	if err != nil {
+		return YaxStatus{}
+	}
+	s := YaxStatus{Installed: true, Path: yaxBin}
+	if out, err := exec.Command(yaxBin, "version").Output(); err == nil {
+		s.Version = strings.TrimSpace(string(out))
+	}
+	if out, err := exec.Command(yaxBin, "stats").Output(); err == nil {
+		var stats struct {
+			Observations int `json:"total_observations"`
+			Sessions     int `json:"total_sessions"`
+			Edges        int `json:"total_edges"`
+			Prompts      int `json:"total_prompts"`
+		}
+		if json.Unmarshal(out, &stats) == nil {
+			s.Observations = stats.Observations
+			s.Sessions = stats.Sessions
+			s.Edges = stats.Edges
+			s.Prompts = stats.Prompts
+		}
+	}
+	return s
 }

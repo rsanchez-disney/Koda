@@ -330,6 +330,29 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		results = append(results, DoctorResult{Name: "container-runtime", OK: false, Detail: "not found (needed for memory-mcp)", Fix: "Install docker, podman, or nerdctl"})
 	}
 
+	// 12. yax persistent memory
+	if yaxBin, err := exec.LookPath("yax"); err == nil {
+		verOut, _ := exec.Command(yaxBin, "version").Output()
+		ver := strings.TrimSpace(string(verOut))
+		statsOut, _ := exec.Command(yaxBin, "stats").Output()
+		detail := ver
+		if len(statsOut) > 0 {
+			var stats struct {
+				Observations int `json:"total_observations"`
+				Sessions     int `json:"total_sessions"`
+				Edges        int `json:"total_edges"`
+				Prompts      int `json:"total_prompts"`
+			}
+			if json.Unmarshal(statsOut, &stats) == nil {
+				detail += fmt.Sprintf(" — %d observations, %d sessions, %d edges, %d prompts",
+					stats.Observations, stats.Sessions, stats.Edges, stats.Prompts)
+			}
+		}
+		results = append(results, DoctorResult{Name: "yax", OK: true, Detail: detail + " (" + yaxBin + ")"})
+	} else {
+		results = append(results, DoctorResult{Name: "yax", OK: false, Detail: "not installed (persistent memory disabled)", Fix: "koda upgrade"})
+	}
+
 	return results
 }
 
