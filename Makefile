@@ -5,7 +5,7 @@ VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev
 RELEASE_KEY ?= $(STEER_RELEASE_KEY)
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X github.disney.com/SANCR225/koda/internal/ops.releaseKey=$(RELEASE_KEY)
 BIN      := ./bin/$(APP)
-YAX_REPO := github.disney.com-sancr225:QUINJ327/yax.git
+YAX_REPO := github.disney.com-sancr225:SANCR225/yax.git
 YAX_SRC  ?= /tmp/yax
 
 .PHONY: build run clean test lint fmt vet tidy install cross release help yax-fetch yax-cross
@@ -61,11 +61,11 @@ yax-cross: yax-fetch ## Fetch, test, and cross-compile yax
 	@echo "  Testing yax..."
 	cd $(YAX_SRC) && go test ./...
 	@echo "  Building yax..."
-	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-darwin-arm64  .
-	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-darwin-amd64  .
-	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-linux-amd64   .
-	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-linux-arm64   .
-	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-windows-amd64.exe .
+	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-darwin-arm64  ./cmd/yax/
+	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-darwin-amd64  ./cmd/yax/
+	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-linux-amd64   ./cmd/yax/
+	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-linux-arm64   ./cmd/yax/
+	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-windows-amd64.exe ./cmd/yax/
 
 release: ## Tag + build Koda + yax + publish (make release TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make release TAG=v0.1.0"; exit 1; }
