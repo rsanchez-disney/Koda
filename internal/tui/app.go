@@ -1520,6 +1520,7 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			ops.WriteEnvVars(envOnly)
+			ops.GenerateMcpJson(ops.FindNodeExe())
 			m.refresh()
 			m.screen = screenDashboard
 			m.statusMsg = "Env vars saved!"
