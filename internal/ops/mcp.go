@@ -2,7 +2,6 @@ package ops
 
 import (
 	"encoding/json"
-	"os/exec"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -197,7 +196,7 @@ func GenerateMcpJson(nodeExe string) error {
 	}
 
 	// yax: persistent memory via stdio MCP
-	if yaxBin, err := exec.LookPath("yax"); err == nil {
+	if yaxBin := findYax(); yaxBin != "" {
 		servers["yax"] = mcpServer{Command: yaxBin, Args: []string{"mcp", "--tools=agent"}}
 		fmt.Println("  ✓ yax (persistent memory)")
 	}

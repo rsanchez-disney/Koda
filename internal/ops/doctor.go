@@ -331,7 +331,7 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 	}
 
 	// 12. yax persistent memory
-	if yaxBin, err := exec.LookPath("yax"); err == nil {
+	if yaxBin := findYax(); yaxBin != "" {
 		verOut, _ := exec.Command(yaxBin, "version").Output()
 		ver := strings.TrimSpace(string(verOut))
 		statsOut, _ := exec.Command(yaxBin, "stats").Output()

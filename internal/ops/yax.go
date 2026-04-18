@@ -10,22 +10,43 @@ import (
 	"strings"
 )
 
-// YaxInstalled checks if yax binary is in PATH.
+// YaxInstalled checks if yax binary is in PATH or known install location.
 func YaxInstalled() bool {
-	_, err := exec.LookPath("yax")
+	if _, err := exec.LookPath("yax"); err == nil {
+		return true
+	}
+	_, err := os.Stat(yaxKnownPath())
 	return err == nil
 }
 
-// YaxInstall installs yax.
-// Priority: 1) binary from Koda releases, 2) build from source via GHE install script.
+// yaxKnownPath returns the expected yax binary path.
+func yaxKnownPath() string {
+	home, _ := os.UserHomeDir()
+	p := filepath.Join(home, ".local", "bin", "yax")
+	if runtime.GOOS == "windows" {
+		p += ".exe"
+	}
+	return p
+}
+
+// findYax returns the yax binary path (PATH or known location).
+func findYax() string {
+	if p, err := exec.LookPath("yax"); err == nil {
+		return p
+	}
+	p := yaxKnownPath()
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
+	return ""
+}
+
+// YaxInstall installs yax from Koda releases on github.com.
 func YaxInstall() error {
 	home, _ := os.UserHomeDir()
 	installDir := filepath.Join(home, ".local", "bin")
 	os.MkdirAll(installDir, 0755)
 
-	fmt.Println("  📥 Installing yax...")
-
-	// Try binary download from Koda releases
 	asset := fmt.Sprintf("yax-%s-%s", runtime.GOOS, runtime.GOARCH)
 	if runtime.GOOS == "windows" {
 		asset += ".exe"
@@ -35,6 +56,23 @@ func YaxInstall() error {
 		dest += ".exe"
 	}
 
+	fmt.Println("  📥 Installing yax...")
+
+	// Primary: curl from github.com (public, no auth needed)
+	url := fmt.Sprintf("https://github.com/rsanchez-disney/Koda/releases/latest/download/%s", asset)
+	curlBin := "curl"
+	if runtime.GOOS == "windows" {
+		curlBin = "curl.exe"
+	}
+	if out, err := exec.Command(curlBin, "-fsSL", "-o", dest, url).CombinedOutput(); err == nil {
+		os.Chmod(dest, 0755)
+		fmt.Println("  ✅ yax installed")
+		return nil
+	} else {
+		fmt.Fprintf(os.Stderr, "  curl: %s\n", strings.TrimSpace(string(out)))
+	}
+
+	// Fallback: gh release download
 	if ghPath, err := exec.LookPath("gh"); err == nil {
 		cmd := exec.Command(ghPath, "release", "download", "--repo", "rsanchez-disney/Koda",
 			"--pattern", asset, "--dir", installDir, "--clobber")
@@ -50,20 +88,7 @@ func YaxInstall() error {
 		}
 	}
 
-	// Fallback: direct curl download from GitHub releases
-	fmt.Println("  ⚠ yax: gh not available, trying curl...")
-	url := fmt.Sprintf("https://github.com/rsanchez-disney/Koda/releases/latest/download/%s", asset)
-	curlBin := "curl"
-	if runtime.GOOS == "windows" {
-		curlBin = "curl.exe"
-	}
-	cmd := exec.Command(curlBin, "-fsSL", "-o", dest, url)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		fmt.Printf("  ⚠ yax: download failed (skipping): %s\n", string(out))
-		return nil
-	}
-	os.Chmod(dest, 0755)
-	fmt.Println("  ✅ yax installed")
+	fmt.Println("  ⚠ yax: download failed (skipping)")
 	return nil
 }
 
@@ -80,8 +105,8 @@ type YaxStatus struct {
 
 // GetYaxStatus checks yax installation and stats.
 func GetYaxStatus() YaxStatus {
-	yaxBin, err := exec.LookPath("yax")
-	if err != nil {
+	yaxBin := findYax()
+	if yaxBin == "" {
 		return YaxStatus{}
 	}
 	s := YaxStatus{Installed: true, Path: yaxBin}
