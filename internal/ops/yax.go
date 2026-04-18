@@ -104,3 +104,103 @@ func GetYaxStatus() YaxStatus {
 	}
 	return s
 }
+
+// YaxProject holds project name and count from yax projects.
+type YaxProject struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+// YaxObservation holds a single observation from yax.
+type YaxObservation struct {
+	ID        int64  `json:"id"`
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Project   string `json:"project"`
+	CreatedAt string `json:"created_at"`
+}
+
+// YaxProjects returns project list with counts.
+func YaxProjects() []YaxProject {
+	yaxBin, err := exec.LookPath("yax")
+	if err != nil {
+		return nil
+	}
+	out, err := exec.Command(yaxBin, "stats").Output()
+	if err != nil {
+		return nil
+	}
+	var stats struct {
+		Projects []string `json:"projects"`
+	}
+	json.Unmarshal(out, &stats)
+	// stats only has project names, get counts via context per project
+	var projects []YaxProject
+	for _, p := range stats.Projects {
+		projects = append(projects, YaxProject{Name: p})
+	}
+	return projects
+}
+
+// YaxRecent returns recent observations, optionally filtered by project.
+func YaxRecent(project string, limit int) []YaxObservation {
+	yaxBin, err := exec.LookPath("yax")
+	if err != nil {
+		return nil
+	}
+	args := []string{"context"}
+	if project != "" {
+		args = append(args, project)
+	}
+	out, err := exec.Command(yaxBin, args...).Output()
+	if err != nil || len(out) == 0 {
+		return nil
+	}
+	// yax context outputs text lines, not JSON — parse them
+	var obs []YaxObservation
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" || line == "No recent memories." {
+			continue
+		}
+		o := YaxObservation{Title: line}
+		obs = append(obs, o)
+		if limit > 0 && len(obs) >= limit {
+			break
+		}
+	}
+	return obs
+}
+
+// YaxSearch runs a search query and returns text results.
+func YaxSearch(query string) []string {
+	yaxBin, err := exec.LookPath("yax")
+	if err != nil {
+		return nil
+	}
+	out, _ := exec.Command(yaxBin, "search", query).Output()
+	if len(out) == 0 {
+		return nil
+	}
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// YaxPrune runs yax prune with given days.
+func YaxPrune(days int, hard bool) (string, error) {
+	yaxBin, err := exec.LookPath("yax")
+	if err != nil {
+		return "", fmt.Errorf("yax not installed")
+	}
+	args := []string{"prune", "--older-than", fmt.Sprint(days)}
+	if hard {
+		args = append(args, "--hard")
+	}
+	out, err := exec.Command(yaxBin, args...).CombinedOutput()
+	return strings.TrimSpace(string(out)), err
+}

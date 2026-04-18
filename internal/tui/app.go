@@ -54,6 +54,7 @@ const (
 	screenEnvVars
 	screenGitHub
 	screenKiroIDE
+	screenYax
 )
 
 type model struct {
@@ -112,6 +113,11 @@ type model struct {
 	kodaVersion   string
 	memoryStatus  ops.MemoryStatusInfo
 	yaxStatus     ops.YaxStatus
+	yaxProjects   []ops.YaxProject
+	yaxLines      []string // recent or search results
+	yaxSearch     string
+	yaxSearching  bool
+	yaxProject    string // selected project filter
 }
 
 type profileItem struct {
@@ -341,6 +347,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateGitHub(msg)
 		case screenCreateWorkspace:
 			return m.updateCreateWorkspace(msg)
+		case screenYax:
+			return m.updateYax(msg)
 		}
 	}
 	return m, nil
@@ -476,6 +484,22 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "m":
 		m.screen = screenMCP
 		m.cursor = 0
+	case "x":
+		if m.yaxStatus.Installed {
+			m.yaxProjects = ops.YaxProjects()
+			m.yaxLines = nil
+			m.yaxSearch = ""
+			m.yaxSearching = false
+			m.yaxProject = ""
+			m.cursor = 0
+			// Load recent observations
+			for _, line := range ops.YaxRecent("", 20) {
+				m.yaxLines = append(m.yaxLines, line.Title)
+			}
+			m.screen = screenYax
+		} else {
+			m.statusMsg = "yax not installed — run koda upgrade"
+		}
 	}
 	return m, nil
 }
@@ -603,6 +627,9 @@ func (m model) viewDashboard() string {
 		} else {
 			b.WriteString(activeStyle.Render("  [M]") + " Memory     ")
 		}
+	}
+	if m.yaxStatus.Installed {
+		b.WriteString(activeStyle.Render("  [x]") + fmt.Sprintf(" Yax (%d)    ", m.yaxStatus.Observations))
 	}
 	b.WriteString(activeStyle.Render("  [enter]") + " Chat       ")
 	b.WriteString(activeStyle.Render("[q]") + " Quit\n")
@@ -2418,6 +2445,8 @@ func (m model) View() string {
 		return m.viewGitHub()
 	case screenCreateWorkspace:
 		return m.viewCreateWorkspace()
+	case screenYax:
+		return m.viewYax()
 	default:
 		return m.viewDashboard()
 	}
@@ -2662,6 +2691,153 @@ func (m model) viewKiroAgentPicker() string {
 
 	if len(filtered) == 0 {
 		b.WriteString(dimStyle.Render("  No agents match filter\n"))
+	}
+
+	return boxStyle.Render(b.String())
+}
+
+// --- Yax Memory ---
+
+func (m model) updateYax(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.yaxSearching {
+		switch msg.String() {
+		case "enter":
+			m.yaxSearching = false
+			if m.yaxSearch != "" {
+				m.yaxLines = ops.YaxSearch(m.yaxSearch)
+				if len(m.yaxLines) == 0 {
+					m.yaxLines = []string{"No results for: " + m.yaxSearch}
+				}
+			}
+			m.cursor = 0
+		case "esc":
+			m.yaxSearching = false
+			m.yaxSearch = ""
+		case "backspace":
+			if len(m.yaxSearch) > 0 {
+				m.yaxSearch = m.yaxSearch[:len(m.yaxSearch)-1]
+			}
+		default:
+			key := msg.String()
+			if len(key) == 1 && key[0] >= 32 {
+				m.yaxSearch += key
+			}
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "esc":
+		m.screen = screenDashboard
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.yaxLines)-1 {
+			m.cursor++
+		}
+	case "/":
+		m.yaxSearching = true
+		m.yaxSearch = ""
+	case "a":
+		// Show all (clear project filter)
+		m.yaxProject = ""
+		m.yaxLines = nil
+		for _, line := range ops.YaxRecent("", 20) {
+			m.yaxLines = append(m.yaxLines, line.Title)
+		}
+		m.cursor = 0
+	case "tab":
+		// Cycle through projects
+		if len(m.yaxProjects) > 0 {
+			found := false
+			for i, p := range m.yaxProjects {
+				if p.Name == m.yaxProject {
+					if i+1 < len(m.yaxProjects) {
+						m.yaxProject = m.yaxProjects[i+1].Name
+					} else {
+						m.yaxProject = ""
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				m.yaxProject = m.yaxProjects[0].Name
+			}
+			m.yaxLines = nil
+			for _, line := range ops.YaxRecent(m.yaxProject, 20) {
+				m.yaxLines = append(m.yaxLines, line.Title)
+			}
+			m.cursor = 0
+		}
+	case "P":
+		// Prune
+		if out, err := ops.YaxPrune(180, false); err == nil {
+			m.statusMsg = out
+		} else {
+			m.statusMsg = "Prune failed: " + err.Error()
+		}
+		m.yaxStatus = ops.GetYaxStatus()
+	}
+	return m, nil
+}
+
+func (m model) viewYax() string {
+	var b strings.Builder
+
+	b.WriteString(titleStyle.Render("Yax Memory") + dimStyle.Render("  /=search  tab=project  a=all  P=prune  esc=back"))
+	b.WriteString("\n\n")
+
+	// Stats line
+	b.WriteString(fmt.Sprintf("  %s — %d observations, %d sessions, %d edges, %d prompts\n",
+		checkStyle.Render(m.yaxStatus.Version),
+		m.yaxStatus.Observations, m.yaxStatus.Sessions, m.yaxStatus.Edges, m.yaxStatus.Prompts))
+
+	// Projects
+	if len(m.yaxProjects) > 0 {
+		b.WriteString("\n" + dimStyle.Render("  Projects: "))
+		for _, p := range m.yaxProjects {
+			if p.Name == m.yaxProject {
+				b.WriteString(activeStyle.Render("["+p.Name+"]") + " ")
+			} else {
+				b.WriteString(dimStyle.Render(p.Name) + " ")
+			}
+		}
+		if m.yaxProject == "" {
+			b.WriteString(activeStyle.Render("[all]"))
+		}
+		b.WriteString("\n")
+	}
+
+	// Search bar
+	if m.yaxSearching {
+		b.WriteString("\n  " + activeStyle.Render("Search: ") + m.yaxSearch + "█\n")
+	} else if m.yaxSearch != "" {
+		b.WriteString("\n  " + dimStyle.Render("Search: "+m.yaxSearch) + "\n")
+	}
+
+	// Observations list
+	b.WriteString("\n")
+	if len(m.yaxLines) == 0 {
+		b.WriteString("  " + dimStyle.Render("No observations.") + "\n")
+	} else {
+		for i, line := range m.yaxLines {
+			cursor := "  "
+			if i == m.cursor {
+				cursor = activeStyle.Render("▸ ")
+			}
+			if i == m.cursor {
+				b.WriteString(cursor + activeStyle.Render(line) + "\n")
+			} else {
+				b.WriteString(cursor + line + "\n")
+			}
+		}
+	}
+
+	if m.statusMsg != "" {
+		b.WriteString("\n  " + checkStyle.Render(m.statusMsg) + "\n")
 	}
 
 	return boxStyle.Render(b.String())
