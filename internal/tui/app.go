@@ -1499,28 +1499,12 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Save current edit
 			m.envVars[m.envVarKeys[m.cursor]] = m.envInput
 			m.envInput = ""
+			m.saveEnvVars()
 			if m.cursor < len(m.envVarKeys)-1 {
 				m.cursor++
 			}
 		} else {
-			// Save workspace MCP keys to tokens.env
-			wsMCP := make(map[string]bool, len(m.wsMCPKeys))
-			for _, k := range m.wsMCPKeys {
-				wsMCP[k] = true
-				if v := m.envVars[k]; v != "" {
-					m.tokens[k] = v
-				}
-			}
-			ops.WriteTokens(m.tokens)
-			// Save the rest to env.vars (without workspace MCP keys)
-			envOnly := make(map[string]string, len(m.envVars))
-			for k, v := range m.envVars {
-				if !wsMCP[k] {
-					envOnly[k] = v
-				}
-			}
-			ops.WriteEnvVars(envOnly)
-			ops.GenerateMcpJson(ops.FindNodeExe())
+			m.saveEnvVars()
 			m.refresh()
 			m.screen = screenDashboard
 			m.statusMsg = "Env vars saved!"
@@ -1544,6 +1528,7 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if !isKnown {
 				delete(m.envVars, k)
+				m.saveEnvVars()
 				m.refreshEnvVarKeys()
 				if m.cursor >= len(m.envVarKeys) {
 					m.cursor = len(m.envVarKeys) - 1
@@ -1564,6 +1549,25 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m *model) saveEnvVars() {
+	wsMCP := make(map[string]bool, len(m.wsMCPKeys))
+	for _, k := range m.wsMCPKeys {
+		wsMCP[k] = true
+		if v := m.envVars[k]; v != "" {
+			m.tokens[k] = v
+		}
+	}
+	ops.WriteTokens(m.tokens)
+	envOnly := make(map[string]string, len(m.envVars))
+	for k, v := range m.envVars {
+		if !wsMCP[k] {
+			envOnly[k] = v
+		}
+	}
+	ops.WriteEnvVars(envOnly)
+	ops.GenerateMcpJson(ops.FindNodeExe())
 }
 
 func (m model) viewEnvVars() string {
