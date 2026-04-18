@@ -155,6 +155,9 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 		read -p "  Publish Koda $$NEXT? [y/N]: " ans; \
 		if [ "$$ans" = "y" ]; then \
 			$(MAKE) release TAG=$$NEXT; \
+			echo "  Cleaning old Koda releases (keeping last 3)..."; \
+			GH_HOST=github.com gh release list --repo $(PUB_REPO) --json tagName --jq '.[3:][].tagName' 2>/dev/null | \
+				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo $(PUB_REPO) --yes --cleanup-tag 2>/dev/null; done; \
 		fi; \
 	else \
 		echo "Koda: up to date ($$KODA_LAST)"; \
@@ -174,6 +177,9 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 		read -p "  Publish steer-runtime $$NEXT? [y/N]: " ans; \
 		if [ "$$ans" = "y" ]; then \
 			$(MAKE) publish-steer TAG=$$NEXT STEER_ROOT=$(STEER_ROOT); \
+			echo "  Cleaning old steer-runtime releases (keeping last 3)..."; \
+			GH_HOST=github.com gh release list --repo rsanchez-disney/steer-runtime --json tagName --jq '.[3:][].tagName' 2>/dev/null | \
+				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-runtime --yes --cleanup-tag 2>/dev/null; done; \
 		fi; \
 	else \
 		echo "steer-runtime: up to date ($$STEER_LAST)"; \
