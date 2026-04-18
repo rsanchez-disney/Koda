@@ -401,15 +401,19 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mcpAdding = false
 		m.screen = screenMCP
 	case "y":
-		if tray.AutoStartEnabled() {
-			tray.DisableAutoStart()
-			m.statusMsg = "Tray auto-start disabled"
-		} else {
-			if err := tray.EnableAutoStart(); err == nil {
-				m.statusMsg = "Tray auto-start enabled — launches on login"
-			} else {
-				m.statusMsg = "Tray: " + err.Error()
+		if m.yaxStatus.Installed {
+			m.yaxProjects = ops.YaxProjects()
+			m.yaxLines = nil
+			m.yaxSearch = ""
+			m.yaxSearching = false
+			m.yaxProject = ""
+			m.cursor = 0
+			for _, line := range ops.YaxRecent("", 20) {
+				m.yaxLines = append(m.yaxLines, line.Title)
 			}
+			m.screen = screenYax
+		} else {
+			m.statusMsg = "yax not installed — run koda upgrade"
 		}
 	case "M":
 		if m.memoryStatus.Installed {
@@ -484,22 +488,6 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "m":
 		m.screen = screenMCP
 		m.cursor = 0
-	case "x":
-		if m.yaxStatus.Installed {
-			m.yaxProjects = ops.YaxProjects()
-			m.yaxLines = nil
-			m.yaxSearch = ""
-			m.yaxSearching = false
-			m.yaxProject = ""
-			m.cursor = 0
-			// Load recent observations
-			for _, line := range ops.YaxRecent("", 20) {
-				m.yaxLines = append(m.yaxLines, line.Title)
-			}
-			m.screen = screenYax
-		} else {
-			m.statusMsg = "yax not installed — run koda upgrade"
-		}
 	}
 	return m, nil
 }
@@ -579,7 +567,6 @@ func (m model) viewDashboard() string {
 		}
 	}
 
-	// yax status
 	if m.yaxStatus.Installed {
 		detail := m.yaxStatus.Version
 		if m.yaxStatus.Observations > 0 {
@@ -616,10 +603,10 @@ func (m model) viewDashboard() string {
 	} else {
 		b.WriteString(activeStyle.Render("  [f]") + " Fork        ")
 	}
-	if tray.AutoStartEnabled() {
-		b.WriteString(activeStyle.Render("[y]") + " Tray \u2713\n")
+	if m.yaxStatus.Installed {
+		b.WriteString(activeStyle.Render("[y]") + fmt.Sprintf(" Yax (%d)\n", m.yaxStatus.Observations))
 	} else {
-		b.WriteString(activeStyle.Render("[y]") + " Tray\n")
+		b.WriteString(activeStyle.Render("[y]") + " Yax\n")
 	}
 	if m.memoryStatus.Installed {
 		if m.memoryStatus.Running {
@@ -2567,6 +2554,17 @@ func (m model) updateKiroIDE(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor = 0
 			}
 		}
+	case "t":
+		if tray.AutoStartEnabled() {
+			tray.DisableAutoStart()
+			m.statusMsg = "Tray auto-start disabled"
+		} else {
+			if err := tray.EnableAutoStart(); err == nil {
+				m.statusMsg = "Tray auto-start enabled"
+			} else {
+				m.statusMsg = "Tray: " + err.Error()
+			}
+		}
 	}
 	return m, nil
 }
@@ -2577,7 +2575,7 @@ func (m model) viewKiroIDE() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Kiro") + dimStyle.Render("  i=install  s=sync  r=remove hooks  esc=back"))
+	b.WriteString(titleStyle.Render("Kiro") + dimStyle.Render("  i=install  s=sync  r=remove hooks  t=tray  esc=back"))
 	b.WriteString("\n\n")
 
 	// IDE section
@@ -2595,6 +2593,12 @@ func (m model) viewKiroIDE() string {
 	}
 
 	// Settings section
+	b.WriteString("\n")
+	if tray.AutoStartEnabled() {
+		b.WriteString("  " + checkStyle.Render("☑") + " Tray auto-start" + dimStyle.Render("  (t to toggle)") + "\n")
+	} else {
+		b.WriteString("  ☐ Tray auto-start" + dimStyle.Render("  (t to toggle)") + "\n")
+	}
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("  Preferences") + dimStyle.Render("  space=toggle  enter=select agent") + "\n\n")
 	ideItems := 2 // offset for IDE section (not selectable)
