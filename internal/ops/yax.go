@@ -48,17 +48,19 @@ func YaxInstall() error {
 		}
 	}
 
-	// Fallback: build from source (requires Go + GHE access)
-	fmt.Println("  ⚠ yax binary not found in release, trying build from source...")
-	url := "https://github.disney.com/raw/QUINJ327/yax/main/install.sh"
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("curl -fsSL %s | sh", url))
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("  ⚠ yax: install failed (skipping): %v\n", err)
+	// Fallback: direct curl download from GitHub releases
+	fmt.Println("  ⚠ yax: gh not available, trying curl...")
+	url := fmt.Sprintf("https://github.com/rsanchez-disney/Koda/releases/latest/download/%s", asset)
+	curlBin := "curl"
+	if runtime.GOOS == "windows" {
+		curlBin = "curl.exe"
+	}
+	cmd := exec.Command(curlBin, "-fsSL", "-o", dest, url)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		fmt.Printf("  ⚠ yax: download failed (skipping): %s\n", string(out))
 		return nil
 	}
-
-	fmt.Println("  ✅ yax installed from source")
+	os.Chmod(dest, 0755)
+	fmt.Println("  ✅ yax installed")
 	return nil
 }
