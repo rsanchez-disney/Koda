@@ -22,6 +22,23 @@ type ghAsset struct {
 	URL  string `json:"browser_download_url"`
 }
 
+// CheckForUpdate returns the latest version tag, or empty if already current.
+func CheckForUpdate(currentVersion string) string {
+	resp, err := http.Get(releaseURL)
+	if err != nil || resp.StatusCode != 200 {
+		return ""
+	}
+	defer resp.Body.Close()
+	var rel ghRelease
+	if json.NewDecoder(resp.Body).Decode(&rel) != nil {
+		return ""
+	}
+	if rel.TagName == currentVersion || rel.TagName == "v"+currentVersion {
+		return ""
+	}
+	return rel.TagName
+}
+
 // Upgrade downloads the latest release binary and replaces the current one.
 func Upgrade(currentVersion string) error {
 	exePath, err := os.Executable()

@@ -234,6 +234,13 @@ func (m *model) refresh() {
 			}
 		}
 	}
+
+	// Auto-upgrade check
+	if config.ReadSteerSettings().AutoUpgrade && m.kodaVersion != "" {
+		if latest := ops.CheckForUpdate(m.kodaVersion); latest != "" {
+			m.statusMsg = fmt.Sprintf("⬆ Koda %s available (current: %s) — run koda upgrade", latest, m.kodaVersion)
+		}
+	}
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -2565,6 +2572,15 @@ func (m model) updateKiroIDE(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "Tray: " + err.Error()
 			}
 		}
+	case "u":
+		s := config.ReadSteerSettings()
+		s.AutoUpgrade = !s.AutoUpgrade
+		config.SaveSteerSettings(s)
+		if s.AutoUpgrade {
+			m.statusMsg = "Auto-upgrade enabled"
+		} else {
+			m.statusMsg = "Auto-upgrade disabled"
+		}
 	}
 	return m, nil
 }
@@ -2575,7 +2591,7 @@ func (m model) viewKiroIDE() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Kiro") + dimStyle.Render("  i=install  s=sync  r=remove hooks  t=tray  esc=back"))
+	b.WriteString(titleStyle.Render("Kiro") + dimStyle.Render("  i=install  s=sync  r=remove hooks  t=tray  u=auto-upgrade  esc=back"))
 	b.WriteString("\n\n")
 
 	// IDE section
@@ -2598,6 +2614,11 @@ func (m model) viewKiroIDE() string {
 		b.WriteString("  " + checkStyle.Render("☑") + " Tray auto-start" + dimStyle.Render("  (t to toggle)") + "\n")
 	} else {
 		b.WriteString("  ☐ Tray auto-start" + dimStyle.Render("  (t to toggle)") + "\n")
+	}
+	if config.ReadSteerSettings().AutoUpgrade {
+		b.WriteString("  " + checkStyle.Render("☑") + " Auto-upgrade" + dimStyle.Render("  (u to toggle)") + "\n")
+	} else {
+		b.WriteString("  ☐ Auto-upgrade" + dimStyle.Render("  (u to toggle)") + "\n")
 	}
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("  Preferences") + dimStyle.Render("  space=toggle  enter=select agent") + "\n\n")
