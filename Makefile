@@ -156,7 +156,9 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 		if [ "$$ans" = "y" ]; then \
 			$(MAKE) release TAG=$$NEXT; \
 			echo "  Cleaning old Koda releases (keeping last 3)..."; \
-			GH_HOST=github.com gh release list --repo $(PUB_REPO) --json tagName --jq '.[3:][].tagName' 2>/dev/null | \
+			sleep 3; \
+			GH_HOST=github.com gh release list --repo $(PUB_REPO) --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
+				sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
 				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo $(PUB_REPO) --yes --cleanup-tag 2>/dev/null; done; \
 		fi; \
 	else \
@@ -178,7 +180,9 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 		if [ "$$ans" = "y" ]; then \
 			$(MAKE) publish-steer TAG=$$NEXT STEER_ROOT=$(STEER_ROOT); \
 			echo "  Cleaning old steer-runtime releases (keeping last 3)..."; \
-			GH_HOST=github.com gh release list --repo rsanchez-disney/steer-runtime --json tagName --jq '.[3:][].tagName' 2>/dev/null | \
+			sleep 3; \
+			GH_HOST=github.com gh release list --repo rsanchez-disney/steer-runtime --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
+				sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
 				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-runtime --yes --cleanup-tag 2>/dev/null; done; \
 		fi; \
 	else \
