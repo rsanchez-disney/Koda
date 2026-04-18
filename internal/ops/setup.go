@@ -35,6 +35,15 @@ func CheckDeps() []Dep {
 	}
 
 	for i := range deps {
+		if deps[i].Binary == "kiro-cli" {
+			ok, detail, fix := DiagnoseKiroCLI()
+			deps[i].Installed = ok
+			deps[i].Version = detail
+			if fix != "" {
+				deps[i].Version += " — " + fix
+			}
+			continue
+		}
 		path, err := exec.LookPath(deps[i].Binary)
 		if err == nil {
 			deps[i].Installed = true

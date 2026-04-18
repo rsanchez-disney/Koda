@@ -43,6 +43,47 @@ func FindKiroCLI() string {
 	return kiroCLIPath
 }
 
+// DiagnoseKiroCLI checks kiro-cli health on Windows and returns a diagnostic message.
+// Returns (ok, detail, fix).
+func DiagnoseKiroCLI() (bool, string, string) {
+	kiroPath := FindKiroCLI()
+
+	// Try running --version
+	cmd := exec.Command(kiroPath, "--version")
+	out, err := cmd.CombinedOutput()
+	version := strings.TrimSpace(string(out))
+
+	if err == nil && version != "" {
+		return true, version + " (" + kiroPath + ")", ""
+	}
+
+	// Binary found but silent/crash
+	if _, statErr := os.Stat(kiroPath); statErr == nil {
+		if runtime.GOOS == "windows" {
+			// Check exit code for VC++ Redist missing (0xC0000135 = -1073741515)
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				code := exitErr.ExitCode()
+				if code == -1073741515 {
+					return false,
+						fmt.Sprintf("found at %s but missing Visual C++ Redistributable (exit 0xC0000135)", kiroPath),
+						"Download from https://aka.ms/vs/17/release/vc_redist.x64.exe"
+				}
+				return false,
+					fmt.Sprintf("found at %s but crashed (exit %d)", kiroPath, code),
+					"Try reinstalling: irm https://kiro.dev/install.ps1 | iex"
+			}
+			if version == "" {
+				return false,
+					fmt.Sprintf("found at %s but --version returned empty", kiroPath),
+					"Try reinstalling: irm https://kiro.dev/install.ps1 | iex"
+			}
+		}
+		return false, fmt.Sprintf("found at %s but failed: %v", kiroPath, err), ""
+	}
+
+	return false, "not found in PATH or common install locations", "Install from https://kiro.dev"
+}
+
 // KiroSetting represents a kiro-cli setting Koda can manage.
 type KiroSetting struct {
 	Key         string
