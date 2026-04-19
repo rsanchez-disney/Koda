@@ -61,7 +61,9 @@ type model struct {
 	steerRoot   string
 	targetDir   string
 	screen      screen
-	cursor      int
+	cursor       int
+	scrollOffset int
+	maxVisible   int
 	report      ops.HealthReport
 	profiles    []profileItem
 	tokens      map[string]string
@@ -243,6 +245,23 @@ func (m *model) refresh() {
 	}
 }
 
+
+// adjustScroll keeps the cursor visible within the scroll window.
+func (m *model) adjustScroll(listLen int) {
+	if m.maxVisible <= 0 {
+		m.maxVisible = 20 // default
+	}
+	if m.cursor < m.scrollOffset {
+		m.scrollOffset = m.cursor
+	}
+	if m.cursor >= m.scrollOffset+m.maxVisible {
+		m.scrollOffset = m.cursor - m.maxVisible + 1
+	}
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
+	}
+}
+
 func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -374,6 +393,7 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "p":
 		m.screen = screenProfiles
 		m.cursor = 0
+		m.scrollOffset = 0
 	case "t":
 		m.buildWSDisplayOrder()
 		m.mcpSection = 3 // Other Tokens section
@@ -389,6 +409,7 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.buildWSDisplayOrder()
 		m.screen = screenWorkspaces
 		m.cursor = 0
+		m.scrollOffset = 0
 	case "s":
 		if !m.syncing {
 			m.syncing = true
@@ -1634,10 +1655,12 @@ func (m model) updateProfiles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
+			m.adjustScroll(len(m.profiles))
 		}
 	case "down", "j":
 		if m.cursor < len(m.profiles)-1 {
 			m.cursor++
+			m.adjustScroll(len(m.profiles))
 		}
 	case " ":
 		if m.cursor < len(m.profiles) {
