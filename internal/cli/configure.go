@@ -185,7 +185,13 @@ var upgradeCmd = &cobra.Command{
 	Use:   "upgrade",
 	Short: "Self-update to the latest release",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return ops.Upgrade(appVersion)
+		if err := ops.Upgrade(appVersion); err != nil {
+			return err
+		}
+		// Auto-sync steer-runtime and installed profiles after upgrade
+		fmt.Println("\n🔄 Syncing steer-runtime...")
+		syncUpdate = true
+		return syncCmd.RunE(cmd, nil)
 	},
 }
 
