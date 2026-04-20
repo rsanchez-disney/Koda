@@ -1986,6 +1986,18 @@ func (m model) viewWorkspaces() string {
 		if row == m.cursor && len(ws.Projects) > 0 {
 			b.WriteString(fmt.Sprintf("    %s%s\n", dimStyle.Render(prefix), dimStyle.Render(fmt.Sprintf("projects: %d", len(ws.Projects)))))
 		}
+		if row == m.cursor && len(ws.Teams) > 0 {
+			b.WriteString(fmt.Sprintf("    %s%s\n", dimStyle.Render(prefix), dimStyle.Render(fmt.Sprintf("teams: %d", len(ws.Teams)))))
+			for _, t := range ws.Teams {
+				info := t.Name
+				if t.Studio != "" {
+					info += " (" + t.Studio + ")"
+				} else if t.TeamID != 0 {
+					info += fmt.Sprintf(" (team:%d)", t.TeamID)
+				}
+				b.WriteString(fmt.Sprintf("    %s  %s\n", dimStyle.Render(prefix), dimStyle.Render("• "+info)))
+			}
+		}
 		kids := children[ws.Name]
 		childPrefix := prefix
 		if last {

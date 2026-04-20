@@ -15,6 +15,7 @@ type Workspace struct {
 	Services      []string           `json:"services,omitempty"`
 	Channels      []string           `json:"channels,omitempty"`
 	WorkspacePath string             `json:"workspace_path,omitempty"`
+	Teams         []TeamEntry        `json:"teams,omitempty"`
 }
 
 // WorkspaceProject is a repo entry inside a workspace.
@@ -23,6 +24,17 @@ type WorkspaceProject struct {
 	Path       string `json:"path"`
 	Repo       string `json:"repo,omitempty"`
 	MemoryBank string `json:"memory_bank,omitempty"`
+}
+
+// TeamEntry represents a team within a leadership/vertical workspace.
+type TeamEntry struct {
+	Name         string   `json:"name"`
+	Workspace    string   `json:"workspace,omitempty"`
+	JiraProjects []string `json:"jira_projects,omitempty"`
+	BoardIDs     []int    `json:"board_ids,omitempty"`
+	Studio       string   `json:"studio,omitempty"`
+	StudioID     int      `json:"studio_id,omitempty"`
+	TeamID       int      `json:"team_id,omitempty"`
 }
 
 // Token represents a configured MCP token.
