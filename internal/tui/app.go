@@ -607,33 +607,26 @@ func (m model) viewDashboard() string {
 
 	b.WriteString("\n")
 	b.WriteString(activeStyle.Render("  [p]") + " Profiles    ")
-	b.WriteString(activeStyle.Render("[t]") + " Tokens    ")
-	b.WriteString(activeStyle.Render("[w]") + " Workspaces\n")
-	b.WriteString(activeStyle.Render("  [a]") + " Agents      ")
-	b.WriteString(activeStyle.Render("[d]") + " Doctor    ")
-	b.WriteString(activeStyle.Render("[r]") + " Rules\n")
+	b.WriteString(activeStyle.Render("[w]") + " Workspaces  ")
+	b.WriteString(activeStyle.Render("[a]") + " Agents\n")
 	mcpCount := len(m.ghRemotes) + len(m.jiraInstances) + len(m.confInstances)
 	b.WriteString(activeStyle.Render("  [m]") + fmt.Sprintf(" MCP (%d)     ", mcpCount))
-	b.WriteString(activeStyle.Render("[e]") + " Env Vars  ")
-	b.WriteString(activeStyle.Render("[k]") + " Kiro\n")
-	b.WriteString(activeStyle.Render("  [g]") + fmt.Sprintf(" GitHub (%d) ", len(m.ghRemotes)))
-
-	b.WriteString(activeStyle.Render("  [s]") + " Sync        ")
-	b.WriteString(activeStyle.Render("[c]") + " Clean\n")
+	b.WriteString(activeStyle.Render("[e]") + " Env Vars    ")
+	b.WriteString(activeStyle.Render("[d]") + " Doctor\n")
+	b.WriteString(activeStyle.Render("  [r]") + " Rules       ")
+	b.WriteString(activeStyle.Render("[k]") + " Kiro        ")
+	b.WriteString(activeStyle.Render("[s]") + " Sync\n")
 	if settings.Source == "git" {
 		b.WriteString(activeStyle.Render("  [f]") + " Unfork      ")
 	} else {
 		b.WriteString(activeStyle.Render("  [f]") + " Fork        ")
 	}
 	if m.yaxStatus.Installed {
-		b.WriteString(activeStyle.Render("[y]") + fmt.Sprintf(" Yax (%d)\n", m.yaxStatus.Observations))
+		b.WriteString(activeStyle.Render("[y]") + fmt.Sprintf(" Yax (%d)     ", m.yaxStatus.Observations))
 	} else {
-		b.WriteString(activeStyle.Render("[y]") + " Yax\n")
+		b.WriteString(activeStyle.Render("[y]") + " Yax         ")
 	}
-
-	if m.yaxStatus.Installed {
-		b.WriteString(activeStyle.Render("  [x]") + fmt.Sprintf(" Yax (%d)    ", m.yaxStatus.Observations))
-	}
+	b.WriteString(activeStyle.Render("[c]") + " Reset\n")
 	b.WriteString(activeStyle.Render("  [enter]") + " Chat       ")
 	b.WriteString(activeStyle.Render("[q]") + " Quit\n")
 
