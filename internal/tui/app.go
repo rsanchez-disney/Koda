@@ -45,7 +45,7 @@ const (
 	screenTokens
 	screenWorkspaces
 	screenAgents
-	screenCleanConfirm
+	screenResetConfirm
 	screenDoctor
 	screenRules
 	screenMCP
@@ -355,8 +355,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateWorkspaces(msg)
 		case screenAgents:
 			return m.updateAgents(msg)
-		case screenCleanConfirm:
-			return m.updateCleanConfirm(msg)
+		case screenResetConfirm:
+			return m.updateResetConfirm(msg)
 		case screenDoctor:
 			return m.updateDoctor(msg)
 		case screenRules:
@@ -487,7 +487,7 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenFork
 		}
 	case "c":
-		m.screen = screenCleanConfirm
+		m.screen = screenResetConfirm
 	case "d":
 		m.screen = screenDoctor
 	case "r":
@@ -520,15 +520,16 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) updateCleanConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) updateResetConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
-		for _, sub := range []string{"agents", "prompts", "context", "powers", "skills", "steering"} {
-			ops.RemoveDir(m.targetDir + "/" + sub)
+		if err := ops.Reset(m.steerRoot); err != nil {
+			m.statusMsg = "Reset failed: " + err.Error()
+		} else {
+			m.statusMsg = "✅ Reset complete — run install to add profiles"
 		}
 		m.refresh()
 		m.screen = screenDashboard
-		m.statusMsg = "Cleaned!"
 	case "n", "N", "esc", "q":
 		m.screen = screenDashboard
 		m.statusMsg = ""
@@ -656,13 +657,13 @@ func (m model) viewDashboard() string {
 	return boxStyle.Render(b.String())
 }
 
-func (m model) viewCleanConfirm() string {
+func (m model) viewResetConfirm() string {
 	var b strings.Builder
-	b.WriteString(errStyle.Render("\u26a0 Clean ALL profiles?"))
+	b.WriteString(errStyle.Render("\u26a0 Reset Koda installation?"))
 	b.WriteString("\n\n")
-	b.WriteString(fmt.Sprintf("  This will remove %d agents from:\n", m.report.TotalAgents))
+	b.WriteString(fmt.Sprintf("  This will backup ~/.kiro and reinstall fresh.\n  Tokens and env vars will be preserved.\n\n  Current: %d agents in:\n", m.report.TotalAgents))
 	b.WriteString(fmt.Sprintf("  %s\n\n", dimStyle.Render(m.targetDir)))
-	b.WriteString(activeStyle.Render("  [y]") + " Yes, clean    ")
+	b.WriteString(activeStyle.Render("  [y]") + " Yes, reset    ")
 	b.WriteString(activeStyle.Render("[n]") + " Cancel\n")
 	return boxStyle.Render(b.String())
 }
@@ -2449,8 +2450,8 @@ func (m model) View() string {
 		return m.viewWorkspaces()
 	case screenAgents:
 		return m.viewAgents()
-	case screenCleanConfirm:
-		return m.viewCleanConfirm()
+	case screenResetConfirm:
+		return m.viewResetConfirm()
 	case screenDoctor:
 		return m.viewDoctor()
 	case screenRules:
