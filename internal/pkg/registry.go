@@ -3,6 +3,7 @@ package pkg
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"net/http"
 	"runtime"
 )
@@ -61,8 +62,16 @@ func ResolveArtifact(manifest *PackageManifest) (*Platform, error) {
 
 // FindAssetURL matches a platform artifact name to a release asset download URL.
 func FindAssetURL(release *GitHubRelease, artifactName string) (string, error) {
+	// Exact match first
 	for _, a := range release.Assets {
 		if a.Name == artifactName {
+			return a.BrowserDownloadURL, nil
+		}
+	}
+	// Prefix match: autopilot-darwin-arm64 matches autopilot-darwin-arm64-abc123.tar.gz.enc
+	prefix := strings.TrimSuffix(artifactName, ".tar.gz.enc")
+	for _, a := range release.Assets {
+		if strings.HasPrefix(a.Name, prefix) && strings.HasSuffix(a.Name, ".tar.gz.enc") {
 			return a.BrowserDownloadURL, nil
 		}
 	}
