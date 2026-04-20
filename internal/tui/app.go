@@ -444,8 +444,8 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusMsg = "yax not installed — run koda upgrade"
 		}
 	case "M":
-		if m.memoryStatus.Installed {
-			if m.memoryStatus.Running {
+		if false { // memory-mcp deprecated — replaced by yax
+			if false {
 				m.statusMsg = "⏳ Stopping memory-mcp..."
 				targetDir := m.targetDir
 				return m, func() tea.Msg {
@@ -588,13 +588,6 @@ func (m model) viewDashboard() string {
 		b.WriteString(fmt.Sprintf("  Koda:      %s\n", dimStyle.Render(m.kodaVersion)))
 	}
 	// Memory status
-	if m.memoryStatus.Installed {
-		if m.memoryStatus.Running {
-			b.WriteString(fmt.Sprintf("  Memory:    %s\n", checkStyle.Render(fmt.Sprintf("running (port %d)", m.memoryStatus.Port))))
-		} else {
-			b.WriteString("  Memory:    " + warnStyle.Render("stopped") + "\n")
-		}
-	}
 
 	if m.yaxStatus.Installed {
 		detail := m.yaxStatus.Version
@@ -637,13 +630,7 @@ func (m model) viewDashboard() string {
 	} else {
 		b.WriteString(activeStyle.Render("[y]") + " Yax\n")
 	}
-	if m.memoryStatus.Installed {
-		if m.memoryStatus.Running {
-			b.WriteString(activeStyle.Render("  [M]") + " Memory ✓   ")
-		} else {
-			b.WriteString(activeStyle.Render("  [M]") + " Memory     ")
-		}
-	}
+
 	if m.yaxStatus.Installed {
 		b.WriteString(activeStyle.Render("  [x]") + fmt.Sprintf(" Yax (%d)    ", m.yaxStatus.Observations))
 	}
