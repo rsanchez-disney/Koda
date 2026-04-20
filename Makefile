@@ -136,9 +136,10 @@ publish-steer: pack-steer ## Upload steer-runtime tarball to public repo (make p
 	fi
 	@echo "Uploaded steer-runtime tarball to rsanchez-disney/steer-runtime $(TAG)"
 
-STEER_ROOT ?= ../steer-runtime
+STEER_ROOT    ?= ../steer-runtime
+AUTOPILOT_ROOT ?= ../steer-autopilot
 
-publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
+publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime + steer-autopilot
 	@echo "=== Pulling latest ==="
 	@git pull --ff-only 2>/dev/null || true
 	@git -C $(STEER_ROOT) checkout main 2>/dev/null && git -C $(STEER_ROOT) pull --ff-only 2>/dev/null || true
@@ -187,6 +188,34 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 		fi; \
 	else \
 		echo "steer-runtime: up to date ($$STEER_LAST)"; \
+	fi
+	@echo ""
+	@# --- steer-autopilot ---
+	@if [ -d "$(AUTOPILOT_ROOT)" ]; then \
+		AP_LAST=$$(GH_HOST=github.com gh release list --repo rsanchez-disney/steer-autopilot --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null); \
+		AP_GHE_LAST=$$(git -C $(AUTOPILOT_ROOT) tag --sort=-v:refname | head -1 2>/dev/null); \
+		AP_COMMITS=$$(git -C $(AUTOPILOT_ROOT) log $${AP_GHE_LAST:-HEAD~10}..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
+		if [ "$$AP_COMMITS" -gt 0 ] || [ "$$AP_LAST" != "$$AP_GHE_LAST" ]; then \
+			MAJOR=$$(echo $$AP_LAST | sed 's/v//' | cut -d. -f1); \
+			MINOR=$$(echo $$AP_LAST | sed 's/v//' | cut -d. -f2); \
+			PATCH=$$(echo $$AP_LAST | sed 's/v//' | cut -d. -f3); \
+			NEXT="v$$MAJOR.$$MINOR.$$((PATCH + 1))"; \
+			echo "steer-autopilot: changes since $$AP_LAST → $$NEXT"; \
+			git -C $(AUTOPILOT_ROOT) log $${AP_GHE_LAST:-HEAD~10}..HEAD --oneline 2>/dev/null | head -5; \
+			read -p "  Publish steer-autopilot $$NEXT? [y/N]: " ans; \
+			if [ "$$ans" = "y" ]; then \
+				$(MAKE) -C $(AUTOPILOT_ROOT) release TAG=$$NEXT; \
+				echo "  Cleaning old autopilot releases (keeping last 3)..."; \
+				sleep 3; \
+				GH_HOST=github.com gh release list --repo rsanchez-disney/steer-autopilot --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
+					sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
+					while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-autopilot --yes --cleanup-tag 2>/dev/null; done; \
+			fi; \
+		else \
+			echo "steer-autopilot: up to date ($$AP_LAST)"; \
+		fi; \
+	else \
+		echo "steer-autopilot: not found at $(AUTOPILOT_ROOT) — skipping"; \
 	fi
 	@echo ""
 	@echo "Done."
