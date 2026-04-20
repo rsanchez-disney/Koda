@@ -185,18 +185,12 @@ var checkCmd = &cobra.Command{
 	},
 }
 
-var cleanCmd = &cobra.Command{
-	Use:   "clean",
-	Short: "Remove ALL profiles and agents",
+var resetCmd = &cobra.Command{
+	Use:   "reset",
+	Short: "Backup ~/.kiro and reinstall fresh (preserves tokens)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		target := config.TargetDir(projectDir)
-		total := countAgents(target)
-		fmt.Printf("🧹 Cleaning %s (%d agents)...\n", target, total)
-		for _, sub := range []string{"agents", "prompts", "context", "powers", "skills", "steering"} {
-			os.RemoveAll(filepath.Join(target, sub))
-		}
-		fmt.Println("\u2705 Clean complete")
-		return nil
+		fmt.Println("🔄 Resetting Koda installation...")
+		return ops.Reset(steerRoot)
 	},
 }
 

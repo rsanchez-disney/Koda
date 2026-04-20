@@ -128,7 +128,7 @@ func init() {
 	rootCmd.AddCommand(syncCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(checkCmd)
-	rootCmd.AddCommand(cleanCmd)
+	rootCmd.AddCommand(resetCmd)
 	rootCmd.AddCommand(workspaceCmd)
 	rootCmd.AddCommand(rulesCmd)
 	rootCmd.AddCommand(promptsCmd)
