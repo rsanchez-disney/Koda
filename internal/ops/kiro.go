@@ -99,6 +99,7 @@ var ManagedKiroSettings = []KiroSetting{
 	{Key: "chat.enableThinking", Label: "Enable Thinking", Type: "bool", Recommended: true},
 	{Key: "chat.enableTodoList", Label: "Enable Todo List", Type: "bool", Recommended: true},
 	{Key: "chat.enableKnowledge", Label: "Enable Knowledge", Type: "bool", Recommended: true},
+	{Key: "chat.enableSubagent", Label: "Enable Subagent", Type: "bool", Recommended: true},
 	{Key: "autocomplete.developerMode", Label: "Developer Mode", Type: "bool", Recommended: true},
 	{Key: "autocomplete.immediatelyExecuteAfterSpace", Label: "Execute After Space", Type: "bool", Recommended: true},
 }
