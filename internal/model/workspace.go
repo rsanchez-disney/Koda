@@ -52,6 +52,7 @@ var KnownTokens = []Token{
 	{Key: "HARNESS_API_KEY", Label: "Harness API Key", Hint: "https://disney.harness.io/ → My Profile → API Key"},
 	{Key: "FIGMA_TOKEN", Label: "Figma Token", Hint: "https://www.figma.com/developers/api#access-tokens"},
 	{Key: "COMPASS_TOKEN", Label: "Compass Token", Hint: "https://compass.wdprapps.disney.com — contact your team lead"},
+	{Key: "QTEST_BEARER_TOKEN", Label: "qTest Token", Hint: "https://qtest.disney.com — Settings → API Keys"},
 }
 
 // EnvVar represents a managed environment variable.
