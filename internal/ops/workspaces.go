@@ -319,19 +319,32 @@ func resolveProjectPath(workspacePath, projPath, steerRoot string) string {
 }
 
 
-// snapshotFiles returns the set of all regular files currently under targetDir.
+// installDirs are the only directories tracked by the workspace manifest.
+// This avoids capturing settings, sessions, MCP bundles, or files written
+// by background processes during apply.
+var installDirs = []string{
+	config.AgentsDir, config.PromptsDir, config.ContextDir,
+	config.SteeringDir, config.RulesDir, config.SkillsDir, config.HooksDir,
+}
+
+// snapshotFiles returns the set of relative paths (relative to targetDir) for
+// all regular files under the known install dirs.
 func snapshotFiles(targetDir string) map[string]struct{} {
 	files := map[string]struct{}{}
-	filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
-		if err == nil && !info.IsDir() {
-			files[path] = struct{}{}
-		}
-		return nil
-	})
+	for _, dir := range installDirs {
+		filepath.Walk(filepath.Join(targetDir, dir), func(path string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() {
+				if rel, err := filepath.Rel(targetDir, path); err == nil {
+					files[rel] = struct{}{}
+				}
+			}
+			return nil
+		})
+	}
 	return files
 }
 
-// WriteWorkspaceManifest persists the list of files added by workspace apply
+// WriteWorkspaceManifest persists relative paths of files added by workspace apply
 // (i.e. present after but not before) to WorkspaceManifestFile.
 func WriteWorkspaceManifest(targetDir string, before, after map[string]struct{}) {
 	var added []string
@@ -345,6 +358,7 @@ func WriteWorkspaceManifest(targetDir string, before, after map[string]struct{})
 }
 
 // RemoveWorkspaceFiles reads the manifest and deletes every listed file.
+// Paths in the manifest are relative to targetDir.
 func RemoveWorkspaceFiles(targetDir string) {
 	manifestPath := filepath.Join(targetDir, config.WorkspaceManifestFile)
 	data, err := os.ReadFile(manifestPath)
@@ -356,19 +370,16 @@ func RemoveWorkspaceFiles(targetDir string) {
 		return
 	}
 	for _, f := range files {
-		os.Remove(f)
+		os.Remove(filepath.Join(targetDir, f))
 	}
 	os.Remove(manifestPath)
 }
 
-// DeactivateWorkspace removes files installed by the active workspace and clears
-// the active workspace setting.
+// DeactivateWorkspace removes files installed by the active workspace and removes
+// the workspace snapshot. ActiveWorkspace is intentionally NOT cleared here —
+// ApplyWorkspace overwrites it immediately after calling this function.
 func DeactivateWorkspace(targetDir string) {
 	RemoveWorkspaceFiles(targetDir)
-	s := config.ReadSteerSettings()
-	s.ActiveWorkspace = ""
-	config.SaveSteerSettings(s)
-	// Remove workspace snapshot
 	os.Remove(filepath.Join(targetDir, config.SettingsDir, "workspace.json"))
 }
 
@@ -377,6 +388,8 @@ func DeactivateWorkspace(targetDir string) {
 // Files are suffixed with the workspace name to avoid collisions with global common.
 // e.g. bugfix.md → bugfix-opsheet-team.md
 // Walks the inheritance chain (parent first, child wins).
+// Note: only one level deep is supported (common/{subdir}/{file}).
+// Nested subdirectories inside common/ are not copied.
 func InstallWorkspaceCommon(steerRoot, targetDir string, wsNames []string) {
 	for _, wsName := range wsNames {
 		wsPath := findWorkspaceDir(steerRoot, wsName)

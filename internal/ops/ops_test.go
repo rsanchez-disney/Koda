@@ -282,19 +282,24 @@ func TestWorkspaceManifest(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmp, "settings"), 0755)
 	WriteWorkspaceManifest(tmp, before, after)
 
-	// Manifest should exist and contain only the new files
+	// Manifest should exist and contain only the new files as relative paths
 	data, err := os.ReadFile(filepath.Join(tmp, "settings", "workspace-files.json"))
 	if err != nil {
 		t.Fatal("manifest not written")
 	}
-	if !strings.Contains(string(data), "new_agent.json") {
+	content := string(data)
+	if !strings.Contains(content, "new_agent.json") {
 		t.Error("manifest should contain new_agent.json")
 	}
-	if !strings.Contains(string(data), "bugfix.md") {
+	if !strings.Contains(content, "bugfix.md") {
 		t.Error("manifest should contain bugfix.md")
 	}
-	if strings.Contains(string(data), "existing.json") {
+	if strings.Contains(content, "existing.json") {
 		t.Error("manifest should NOT contain pre-existing file")
+	}
+	// Paths must be relative (no absolute path prefix)
+	if strings.Contains(content, tmp) {
+		t.Error("manifest should store relative paths, not absolute")
 	}
 }
 
@@ -327,15 +332,14 @@ func TestRemoveWorkspaceFiles(t *testing.T) {
 func TestDeactivateWorkspace(t *testing.T) {
 	tmp := t.TempDir()
 
-	// Write a fake workspace snapshot
 	os.MkdirAll(filepath.Join(tmp, "settings"), 0755)
 	os.WriteFile(filepath.Join(tmp, "settings", "workspace.json"), []byte(`{"name":"test"}`), 0644)
 
-	// Write manifest with one file
+	// Write manifest with a relative path (as snapshotFiles now produces)
 	wsFile := filepath.Join(tmp, "steering", "bugfix.md")
 	os.MkdirAll(filepath.Join(tmp, "steering"), 0755)
 	os.WriteFile(wsFile, []byte("# bugfix"), 0644)
-	manifest := []string{wsFile}
+	manifest := []string{"steering/bugfix.md"} // relative path
 	data, _ := json.MarshalIndent(manifest, "", "  ")
 	os.WriteFile(filepath.Join(tmp, "settings", "workspace-files.json"), data, 0644)
 
@@ -375,3 +379,4 @@ func TestInstallWorkspaceCommon(t *testing.T) {
 		t.Error("file should be installed with suffix, not original name")
 	}
 }
+
