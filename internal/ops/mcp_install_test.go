@@ -115,6 +115,12 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 		"FIGMA_TOKEN":        "tok-figma",
 		"COMPASS_TOKEN":      "tok-compass",
 		"QTEST_BEARER_TOKEN": "tok-qtest",
+		"SPLUNK_USERNAME":     "tok-splunk-user",
+		"SPLUNK_PASSWORD":     "tok-splunk-pass",
+		"APPD_CLIENT_ID":      "tok-appd-id",
+		"APPD_CLIENT_SECRET":  "tok-appd-secret",
+		"SNOW_USERNAME":       "tok-snow-user",
+		"SNOW_PASSWORD":       "tok-snow-pass",
 	}
 	envVars := map[string]string{
 		"CONFLUENCE_URL": "https://confluence.example.com",
@@ -145,6 +151,7 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 	expectedNames := map[string]bool{
 		"jira": true, "confluence": true, "mermaid": true, "bruno": true,
 		"figma": true, "compass": true, "qtest": true,
+		"splunk-mcp": true, "appdynamics-mcp": true, "servicenow-mcp": true,
 		"github": true,
 	}
 
