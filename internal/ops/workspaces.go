@@ -184,6 +184,15 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	}
 	config.MarkSynced()
 
+	// Snapshot files present before workspace install so we can track what we add
+	before := snapshotFiles(targetDir)
+
+	// If switching from a different workspace, clean up its files first
+	if s.ActiveWorkspace != "" && s.ActiveWorkspace != ws.Name {
+		fmt.Printf("  Deactivating workspace '%s'...\n", s.ActiveWorkspace)
+		DeactivateWorkspace(targetDir)
+	}
+
 	// Build workspace override map: last workspace in chain wins for each profile ID
 	profiles := ExpandAliases(resolved.Profiles)
 	wsOverrides := map[string]string{} // profileID -> wsProfileDir
@@ -227,6 +236,9 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	// Copy workspace steering and MCP server bundles (chain order: parent first)
 	InstallWorkspaceSteering(steerRoot, targetDir, wsNames)
 	InstallWorkspaceMCPBundles(steerRoot, targetDir, wsNames)
+
+	// Install workspace-level common/ (transversal to all profiles in this workspace)
+	InstallWorkspaceCommon(steerRoot, targetDir, wsNames)
 
 	InjectAgentTokens(targetDir)
 	EnrichWelcomeMessages(targetDir)
@@ -272,6 +284,10 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	s.ActiveWorkspace = ws.Name
 	config.SaveSteerSettings(s)
 
+	// Write manifest of files added by this workspace apply (used by DeactivateWorkspace)
+	after := snapshotFiles(targetDir)
+	WriteWorkspaceManifest(targetDir, before, after)
+
 	WriteProfilesManifest(steerRoot, targetDir)
 
 	// Persist resolved workspace snapshot for agent/hook consumption
@@ -302,6 +318,99 @@ func resolveProjectPath(workspacePath, projPath, steerRoot string) string {
 	return projPath
 }
 
+
+// snapshotFiles returns the set of all regular files currently under targetDir.
+func snapshotFiles(targetDir string) map[string]struct{} {
+	files := map[string]struct{}{}
+	filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			files[path] = struct{}{}
+		}
+		return nil
+	})
+	return files
+}
+
+// WriteWorkspaceManifest persists the list of files added by workspace apply
+// (i.e. present after but not before) to WorkspaceManifestFile.
+func WriteWorkspaceManifest(targetDir string, before, after map[string]struct{}) {
+	var added []string
+	for f := range after {
+		if _, existed := before[f]; !existed {
+			added = append(added, f)
+		}
+	}
+	data, _ := json.MarshalIndent(added, "", "  ")
+	os.WriteFile(filepath.Join(targetDir, config.WorkspaceManifestFile), append(data, '\n'), 0644)
+}
+
+// RemoveWorkspaceFiles reads the manifest and deletes every listed file.
+func RemoveWorkspaceFiles(targetDir string) {
+	manifestPath := filepath.Join(targetDir, config.WorkspaceManifestFile)
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return
+	}
+	var files []string
+	if json.Unmarshal(data, &files) != nil {
+		return
+	}
+	for _, f := range files {
+		os.Remove(f)
+	}
+	os.Remove(manifestPath)
+}
+
+// DeactivateWorkspace removes files installed by the active workspace and clears
+// the active workspace setting.
+func DeactivateWorkspace(targetDir string) {
+	RemoveWorkspaceFiles(targetDir)
+	s := config.ReadSteerSettings()
+	s.ActiveWorkspace = ""
+	config.SaveSteerSettings(s)
+	// Remove workspace snapshot
+	os.Remove(filepath.Join(targetDir, config.SettingsDir, "workspace.json"))
+}
+
+// InstallWorkspaceCommon copies workspace-level common/ files into targetDir,
+// mirroring the behaviour of the global steer-runtime common/.
+// Files are suffixed with the workspace name to avoid collisions with global common.
+// e.g. bugfix.md → bugfix-opsheet-team.md
+// Walks the inheritance chain (parent first, child wins).
+func InstallWorkspaceCommon(steerRoot, targetDir string, wsNames []string) {
+	for _, wsName := range wsNames {
+		wsPath := findWorkspaceDir(steerRoot, wsName)
+		commonSrc := filepath.Join(wsPath, "common")
+		if _, err := os.Stat(commonSrc); err != nil {
+			continue
+		}
+		entries, err := os.ReadDir(commonSrc)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			subSrc := filepath.Join(commonSrc, e.Name())
+			subDst := filepath.Join(targetDir, e.Name())
+			os.MkdirAll(subDst, 0755)
+			files, err := os.ReadDir(subSrc)
+			if err != nil {
+				continue
+			}
+			for _, f := range files {
+				if f.IsDir() || strings.HasPrefix(f.Name(), "._") {
+					continue
+				}
+				ext := filepath.Ext(f.Name())
+				base := strings.TrimSuffix(f.Name(), ext)
+				dstName := base + "-" + wsName + ext
+				copyFile(filepath.Join(subSrc, f.Name()), filepath.Join(subDst, dstName))
+			}
+		}
+	}
+}
 
 // InstallWorkspaceSteering copies workspace-level steering files into targetDir.
 // Walks the inheritance chain (parent first, child wins).

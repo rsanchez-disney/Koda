@@ -18,8 +18,9 @@ const (
 	PowersDir     = "powers"
 	SkillsDir     = "skills"
 	SteeringDir   = "steering"
-	TokensFile    = "tokens.env"
-	EnvVarsFile   = "env.vars"
+	TokensFile            = "tokens.env"
+	EnvVarsFile           = "env.vars"
+	WorkspaceManifestFile = "settings/workspace-files.json"
 )
 
 // KiroRoot returns ~/.kiro
