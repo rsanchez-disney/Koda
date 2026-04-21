@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -263,3 +264,119 @@ func TestApplyWorkspace(t *testing.T) {
 		t.Error("rule not installed")
 	}
 }
+
+func TestWorkspaceManifest(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Snapshot before: one existing file
+	os.MkdirAll(filepath.Join(tmp, "agents"), 0755)
+	os.WriteFile(filepath.Join(tmp, "agents", "existing.json"), []byte(`{}`), 0644)
+	before := snapshotFiles(tmp)
+
+	// Add new files (simulating workspace install)
+	os.WriteFile(filepath.Join(tmp, "agents", "new_agent.json"), []byte(`{}`), 0644)
+	os.MkdirAll(filepath.Join(tmp, "steering"), 0755)
+	os.WriteFile(filepath.Join(tmp, "steering", "bugfix.md"), []byte("# bugfix"), 0644)
+	after := snapshotFiles(tmp)
+
+	os.MkdirAll(filepath.Join(tmp, "settings"), 0755)
+	WriteWorkspaceManifest(tmp, before, after)
+
+	// Manifest should exist and contain only the new files as relative paths
+	data, err := os.ReadFile(filepath.Join(tmp, "settings", "workspace-files.json"))
+	if err != nil {
+		t.Fatal("manifest not written")
+	}
+	content := string(data)
+	if !strings.Contains(content, "new_agent.json") {
+		t.Error("manifest should contain new_agent.json")
+	}
+	if !strings.Contains(content, "bugfix.md") {
+		t.Error("manifest should contain bugfix.md")
+	}
+	if strings.Contains(content, "existing.json") {
+		t.Error("manifest should NOT contain pre-existing file")
+	}
+	// Paths must be relative (no absolute path prefix)
+	if strings.Contains(content, tmp) {
+		t.Error("manifest should store relative paths, not absolute")
+	}
+}
+
+func TestRemoveWorkspaceFiles(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Pre-existing file (should survive)
+	os.MkdirAll(filepath.Join(tmp, "agents"), 0755)
+	existing := filepath.Join(tmp, "agents", "existing.json")
+	os.WriteFile(existing, []byte(`{}`), 0644)
+	before := snapshotFiles(tmp)
+
+	// New files added by workspace
+	wsFile := filepath.Join(tmp, "agents", "ws_agent.json")
+	os.WriteFile(wsFile, []byte(`{}`), 0644)
+	after := snapshotFiles(tmp)
+
+	os.MkdirAll(filepath.Join(tmp, "settings"), 0755)
+	WriteWorkspaceManifest(tmp, before, after)
+	RemoveWorkspaceFiles(tmp)
+
+	if _, err := os.Stat(wsFile); err == nil {
+		t.Error("workspace file should have been removed")
+	}
+	if _, err := os.Stat(existing); err != nil {
+		t.Error("pre-existing file should NOT have been removed")
+	}
+}
+
+func TestDeactivateWorkspace(t *testing.T) {
+	tmp := t.TempDir()
+
+	os.MkdirAll(filepath.Join(tmp, "settings"), 0755)
+	os.WriteFile(filepath.Join(tmp, "settings", "workspace.json"), []byte(`{"name":"test"}`), 0644)
+
+	// Write manifest with a relative path (as snapshotFiles now produces)
+	wsFile := filepath.Join(tmp, "steering", "bugfix.md")
+	os.MkdirAll(filepath.Join(tmp, "steering"), 0755)
+	os.WriteFile(wsFile, []byte("# bugfix"), 0644)
+	manifest := []string{"steering/bugfix.md"} // relative path
+	data, _ := json.MarshalIndent(manifest, "", "  ")
+	os.WriteFile(filepath.Join(tmp, "settings", "workspace-files.json"), data, 0644)
+
+	DeactivateWorkspace(tmp)
+
+	if _, err := os.Stat(wsFile); err == nil {
+		t.Error("workspace file should have been removed by deactivate")
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "settings", "workspace.json")); err == nil {
+		t.Error("workspace snapshot should have been removed")
+	}
+}
+
+func TestInstallWorkspaceCommon(t *testing.T) {
+	tmp := t.TempDir()
+
+	wsDir := filepath.Join(tmp, "workspaces", "myteam")
+	os.MkdirAll(filepath.Join(wsDir, "common", "steering"), 0755)
+	os.MkdirAll(filepath.Join(wsDir, "common", "rules"), 0755)
+	os.WriteFile(filepath.Join(wsDir, "workspace.json"), []byte(`{"name":"myteam"}`), 0644)
+	os.WriteFile(filepath.Join(wsDir, "common", "steering", "bugfix.md"), []byte("# bugfix"), 0644)
+	os.WriteFile(filepath.Join(wsDir, "common", "rules", "git-flow.md"), []byte("# git"), 0644)
+
+	target := filepath.Join(tmp, "target")
+	os.MkdirAll(target, 0755)
+
+	InstallWorkspaceCommon(tmp, target, []string{"myteam"})
+
+	if _, err := os.Stat(filepath.Join(target, "steering", "bugfix-myteam.md")); err != nil {
+		t.Error("steering file not installed with workspace suffix")
+	}
+	if _, err := os.Stat(filepath.Join(target, "rules", "git-flow-myteam.md")); err != nil {
+		t.Error("rules file not installed with workspace suffix")
+	}
+	// Original name should NOT exist
+	if _, err := os.Stat(filepath.Join(target, "steering", "bugfix.md")); err == nil {
+		t.Error("file should be installed with suffix, not original name")
+	}
+}
+
