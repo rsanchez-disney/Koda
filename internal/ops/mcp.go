@@ -32,6 +32,9 @@ var knownServers = []MCPServer{
 	{Name: "github", BundleDir: "github-mcp"},
 	{Name: "compass", BundleDir: "", TokenKeys: []string{"COMPASS_TOKEN"}, EnvKeys: []string{"COMPASS_URL"}, IsSSE: true},
 	{Name: "qtest", BundleDir: "qtest-mcp", TokenKeys: []string{"QTEST_BEARER_TOKEN"}, EnvKeys: []string{"QTEST_BASE_URL", "QTEST_PROJECT_ID"}},
+	{Name: "splunk-mcp", BundleDir: "splunk-mcp", TokenKeys: []string{"SPLUNK_USERNAME", "SPLUNK_PASSWORD"}, EnvKeys: []string{"SPLUNK_BASE_URL"}},
+	{Name: "appdynamics-mcp", BundleDir: "appdynamics-mcp", TokenKeys: []string{"APPD_CLIENT_ID", "APPD_CLIENT_SECRET"}, EnvKeys: []string{"APPD_CONTROLLER_URL"}},
+	{Name: "servicenow-mcp", BundleDir: "servicenow-mcp", TokenKeys: []string{"SNOW_USERNAME", "SNOW_PASSWORD"}, EnvKeys: []string{"SNOW_INSTANCE"}},
 }
 
 // CopyMcpBundles copies pre-built MCP server bundles from steerRoot to ~/.kiro/tools/mcp-servers/.

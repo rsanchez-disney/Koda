@@ -53,6 +53,12 @@ var KnownTokens = []Token{
 	{Key: "FIGMA_TOKEN", Label: "Figma Token", Hint: "https://www.figma.com/developers/api#access-tokens"},
 	{Key: "COMPASS_TOKEN", Label: "Compass Token", Hint: "https://compass.wdprapps.disney.com — contact your team lead"},
 	{Key: "QTEST_BEARER_TOKEN", Label: "qTest Token", Hint: "https://qtest.disney.com — Settings → API Keys"},
+	{Key: "SPLUNK_USERNAME", Label: "Splunk Username", Hint: "Splunk service account username"},
+	{Key: "SPLUNK_PASSWORD", Label: "Splunk Password", Hint: "Splunk service account password"},
+	{Key: "APPD_CLIENT_ID", Label: "AppDynamics Client ID", Hint: "Format: client-name@account-name"},
+	{Key: "APPD_CLIENT_SECRET", Label: "AppDynamics Client Secret", Hint: "OAuth client secret from AppDynamics"},
+	{Key: "SNOW_USERNAME", Label: "ServiceNow Username", Hint: "ServiceNow service account"},
+	{Key: "SNOW_PASSWORD", Label: "ServiceNow Password", Hint: "ServiceNow service account password"},
 }
 
 // EnvVar represents a managed environment variable.
@@ -108,4 +114,7 @@ var KnownEnvVars = []EnvVar{
 	{Key: "QTEST_BASE_URL", Default: "https://qtest.disney.com", Description: "qTest Manager base URL"},
 	{Key: "QTEST_PROJECT_ID", Default: "", Description: "Default qTest project ID (optional)"},
 	{Key: "CONTAINER_RUNTIME", Default: "", Description: "Container runtime (docker, nerdctl, podman) — auto-detected if empty"},
+	{Key: "SPLUNK_BASE_URL", Default: "https://splunk.wdprapps.disney.com:8089", Description: "Splunk REST API base URL"},
+	{Key: "APPD_CONTROLLER_URL", Default: "https://disney-prod.saas.appdynamics.com", Description: "AppDynamics controller URL"},
+	{Key: "SNOW_INSTANCE", Default: "https://disney.service-now.com", Description: "ServiceNow instance URL"},
 }
