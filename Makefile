@@ -160,7 +160,7 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 			sleep 3; \
 			GH_HOST=github.com gh release list --repo $(PUB_REPO) --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
 				sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
-				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo $(PUB_REPO) --yes --cleanup-tag 2>/dev/null; done; \
+				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo $(PUB_REPO) --yes --cleanup-tag 2>/dev/null || true; done; \
 		fi; \
 	else \
 		echo "Koda: up to date ($$KODA_LAST)"; \
@@ -190,7 +190,7 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 			sleep 3; \
 			GH_HOST=github.com gh release list --repo rsanchez-disney/steer-runtime --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
 				sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
-				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-runtime --yes --cleanup-tag 2>/dev/null; done; \
+				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-runtime --yes --cleanup-tag 2>/dev/null || true; done; \
 		fi; \
 	else \
 		echo "steer-runtime: up to date ($$STEER_LAST)"; \
@@ -221,7 +221,7 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 				sleep 3; \
 				GH_HOST=github.com gh release list --repo rsanchez-disney/steer-autopilot --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
 					sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
-					while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-autopilot --yes --cleanup-tag 2>/dev/null; done; \
+					while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-autopilot --yes --cleanup-tag 2>/dev/null || true; done; \
 			fi; \
 		else \
 			echo "steer-autopilot: up to date ($$AP_LAST)"; \
