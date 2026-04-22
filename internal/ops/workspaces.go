@@ -206,8 +206,9 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 		}
 	}
 
-	// Install profiles: global base first, then workspace specialization overlay
+	// Install profiles: core (always), then selected profiles with workspace overlays
 	InstallShared(steerRoot, targetDir)
+	InstallProfile(steerRoot, "core", targetDir)
 	for _, p := range profiles {
 		InstallProfile(steerRoot, p, targetDir)
 		if wsDir, ok := wsOverrides[p]; ok {
