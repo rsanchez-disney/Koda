@@ -149,7 +149,9 @@ func GenerateMcpJson(nodeExe string) error {
 				env["JIRA_CUSTOM_FIELDS"] = cf
 			}
 			servers["jira-"+inst.Name] = mcpServer{Command: nodeExe, Args: []string{jiraBundle}, Env: env}
-			servers[inst.Name] = servers["jira-"+inst.Name]
+			if inst.Name != "jira" {
+				servers[inst.Name] = servers["jira-"+inst.Name]
+			}
 			if i == 0 {
 				servers["jira"] = servers["jira-"+inst.Name]
 			}
@@ -168,9 +170,11 @@ func GenerateMcpJson(nodeExe string) error {
 				Env: map[string]string{"CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}}
 			// Register instance name as alias (e.g., "mywiki" → confluence-mywiki)
 			// so @mywiki/* works in agent configs
-			servers[inst.Name] = servers["confluence-"+inst.Name]
+			if inst.Name != "confluence" {
+				servers[inst.Name] = servers["confluence-"+inst.Name]
+			}
 			if i == 0 {
-				servers["confluence"] = servers["confluence-"+inst.Name] // alias so @confluence/* always works
+				servers["confluence"] = servers["confluence-"+inst.Name]
 			}
 		}
 	}
