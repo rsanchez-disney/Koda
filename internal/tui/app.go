@@ -927,9 +927,9 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mcpInput = ""
 			m.mcpEditField = 0
 		case "tab":
-			// Jira has 3 fields (url, email, token); others have 2 (url, token)
+			// Jira has 4 fields (url, email, custom fields, token); others have 2 (url, token)
 			maxField := 2
-			if m.mcpSection == 1 { maxField = 3 }
+			if m.mcpSection == 1 { maxField = 4 }
 			m.mcpEditField = (m.mcpEditField + 1) % maxField
 			m.mcpInput = ""
 		case "enter":
@@ -950,8 +950,10 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				case 0:
 					if val != "" { inst.URL = val }
 				case 1:
-					inst.Email = val // empty = Server mode, non-empty = Cloud
+					inst.Email = val
 				case 2:
+					inst.CustomFields = val
+				case 3:
 					if val != "" { inst.Token = val }
 				}
 				ops.WriteJiraInstance(inst)
@@ -1225,6 +1227,13 @@ func (m model) mcpConfRow(row int) mdl.ConfluenceInstance {
 	return mdl.ConfluenceInstance{}
 }
 
+func (m model) mcpJiraCustomFields() string {
+	if m.mcpRow < len(m.jiraInstances) {
+		return m.jiraInstances[m.mcpRow].CustomFields
+	}
+	return ""
+}
+
 func (m model) viewMCP() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("MCP Instances") + dimStyle.Render("  enter=edit  n=add  d=delete  ctrl+d=clear  r=regenerate  tab=section  esc=back"))
@@ -1414,14 +1423,16 @@ func (m model) renderEditPromptFull(currentURL, currentEmail, currentToken strin
 	emailLabel := "  Email: "
 	tokLabel := "  Token: "
 
-	// Jira has 3 fields (url, email, token); others have 2 (url, token)
-	hasEmail := m.mcpSection == 1
+	// Jira has 4 fields (url, email, custom fields, token); others have 2 (url, token)
+	isJira := m.mcpSection == 1
 	fields := []struct{ label, current string; isCurrent bool }{
 		{urlLabel, currentURL, m.mcpEditField == 0},
 	}
-	if hasEmail {
+	if isJira {
+		cfLabel := "  Fields:"
 		fields = append(fields, struct{ label, current string; isCurrent bool }{emailLabel, currentEmail, m.mcpEditField == 1})
-		fields = append(fields, struct{ label, current string; isCurrent bool }{tokLabel, ops.MaskToken(currentToken), m.mcpEditField == 2})
+		fields = append(fields, struct{ label, current string; isCurrent bool }{cfLabel, m.mcpJiraCustomFields(), m.mcpEditField == 2})
+		fields = append(fields, struct{ label, current string; isCurrent bool }{tokLabel, ops.MaskToken(currentToken), m.mcpEditField == 3})
 	} else {
 		fields = append(fields, struct{ label, current string; isCurrent bool }{tokLabel, ops.MaskToken(currentToken), m.mcpEditField == 1})
 	}
@@ -1438,7 +1449,7 @@ func (m model) renderEditPromptFull(currentURL, currentEmail, currentToken strin
 		}
 	}
 	hint := "tab=switch field  enter=save  esc=cancel"
-	if hasEmail {
+	if isJira {
 		hint = "tab=switch field  enter=save  esc=cancel  (email empty=Server, set=Cloud)"
 	}
 	b.WriteString("    " + dimStyle.Render(hint) + "\n")
