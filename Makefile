@@ -183,6 +183,10 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 		git -C $(STEER_ROOT) log $$STEER_LAST..HEAD --oneline 2>/dev/null | head -5; \
 		read -p "  Publish steer-runtime $$NEXT? [y/N]: " ans; \
 		if [ "$$ans" = "y" ]; then \
+			echo "  Rebuilding MCP bundles..."; \
+			$(MAKE) -C $(STEER_ROOT) mcp-build 2>&1 | grep -E "✅|⚠"; \
+			git -C $(STEER_ROOT) add -A 2>/dev/null; \
+			git -C $(STEER_ROOT) diff --cached --quiet || git -C $(STEER_ROOT) commit -m "chore: rebuild MCP bundles" 2>/dev/null; \
 			git -C $(STEER_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
 			git -C $(STEER_ROOT) push origin $$NEXT 2>/dev/null; \
 			$(MAKE) publish-steer TAG=$$NEXT STEER_ROOT=$(STEER_ROOT); \
