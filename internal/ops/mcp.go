@@ -517,28 +517,40 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 			}
 
 		case srv.Name == "jira":
-			// Jira: per-instance entries (same pattern as GitHub).
 			jiraBundle := filepath.Join(bundleDir, "jira-mcp", "dist", "index.cjs")
 			if len(jiraInstances) == 1 {
 				servers["jira"] = mcpServer{Command: "node", Args: []string{jiraBundle},
 					Env: map[string]string{"JIRA_PAT": jiraInstances[0].Token, "JIRA_URL": jiraInstances[0].URL}}
 			} else {
-				for _, inst := range jiraInstances {
-					servers["jira-"+inst.Name] = mcpServer{Command: "node", Args: []string{jiraBundle},
+				for i, inst := range jiraInstances {
+					entry := mcpServer{Command: "node", Args: []string{jiraBundle},
 						Env: map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL}}
+					servers["jira-"+inst.Name] = entry
+					if inst.Name != "jira" {
+						servers[inst.Name] = entry
+					}
+					if i == 0 {
+						servers["jira"] = entry
+					}
 				}
 			}
 
 		case srv.Name == "confluence":
-			// Confluence: per-instance entries (same pattern as GitHub).
 			confBundle := filepath.Join(bundleDir, "confluence-mcp", "dist", "index.cjs")
 			if len(confInstances) == 1 {
 				servers["confluence"] = mcpServer{Command: "node", Args: []string{confBundle},
 					Env: map[string]string{"CONFLUENCE_PAT": confInstances[0].Token, "CONFLUENCE_URL": confInstances[0].URL}}
 			} else {
-				for _, inst := range confInstances {
-					servers["confluence-"+inst.Name] = mcpServer{Command: "node", Args: []string{confBundle},
+				for i, inst := range confInstances {
+					entry := mcpServer{Command: "node", Args: []string{confBundle},
 						Env: map[string]string{"CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}}
+					servers["confluence-"+inst.Name] = entry
+					if inst.Name != "confluence" {
+						servers[inst.Name] = entry
+					}
+					if i == 0 {
+						servers["confluence"] = entry
+					}
 				}
 			}
 
