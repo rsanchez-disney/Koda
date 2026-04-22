@@ -60,6 +60,7 @@ func SyncSteerRuntime(steerRoot, targetDir string) error {
 	// Re-install profiles, respecting active workspace overrides
 	installed := DetectInstalled(steerRoot, targetDir)
 	InstallShared(steerRoot, targetDir)
+	InstallProfile(steerRoot, "core", targetDir)
 	for _, p := range installed {
 		srcDir, _ := ResolveProfileSource(steerRoot, p)
 		InstallProfileFrom(srcDir, targetDir)
