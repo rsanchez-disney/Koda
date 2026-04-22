@@ -566,7 +566,14 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 			}
 
 		default:
-			// Regular node-based server.
+			// Regular node-based server — skip if no required tokens are set.
+			if len(srv.TokenKeys) > 0 {
+				hasToken := false
+				for _, tk := range srv.TokenKeys {
+					if tokens[tk] != "" { hasToken = true; break }
+				}
+				if !hasToken { continue }
+			}
 			cmd := "node"
 			if srv.Command != "" {
 				cmd = srv.Command
@@ -575,14 +582,13 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 				Command: cmd,
 				Args:    []string{filepath.Join(bundleDir, srv.BundleDir, "dist", "index.cjs")},
 			}
-			// Build env from TokenKeys and EnvKeys.
 			if len(srv.TokenKeys) > 0 || len(srv.EnvKeys) > 0 {
 				env := make(map[string]string)
 				for _, tk := range srv.TokenKeys {
-					env[tk] = tokens[tk]
+					if v := tokens[tk]; v != "" { env[tk] = v }
 				}
 				for _, ek := range srv.EnvKeys {
-					env[ek] = envVars[ek]
+					if v := envVars[ek]; v != "" { env[ek] = v }
 				}
 				entry.Env = env
 			}
