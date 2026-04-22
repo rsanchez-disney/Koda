@@ -127,7 +127,11 @@ func GenerateMcpJson(nodeExe string) error {
 		if jiraInstances[0].Email != "" {
 			env["JIRA_EMAIL"] = jiraInstances[0].Email
 		}
-		if cf := envVars["JIRA_CUSTOM_FIELDS"]; cf != "" {
+		if cf := jiraInstances[0].CustomFields; cf != "" {
+			env["JIRA_CUSTOM_FIELDS"] = cf
+		} else if cf := tokens["JIRA_CUSTOM_FIELDS_"+jiraInstances[0].Name]; cf != "" {
+			env["JIRA_CUSTOM_FIELDS"] = cf
+		} else if cf := envVars["JIRA_CUSTOM_FIELDS"]; cf != "" {
 			env["JIRA_CUSTOM_FIELDS"] = cf
 		}
 		servers["jira"] = mcpServer{Command: nodeExe, Args: []string{jiraBundle}, Env: env}
@@ -137,7 +141,11 @@ func GenerateMcpJson(nodeExe string) error {
 			if inst.Email != "" {
 				env["JIRA_EMAIL"] = inst.Email
 			}
-			if cf := envVars["JIRA_CUSTOM_FIELDS"]; cf != "" {
+			if cf := inst.CustomFields; cf != "" {
+				env["JIRA_CUSTOM_FIELDS"] = cf
+			} else if cf := tokens["JIRA_CUSTOM_FIELDS_"+inst.Name]; cf != "" {
+				env["JIRA_CUSTOM_FIELDS"] = cf
+			} else if cf := envVars["JIRA_CUSTOM_FIELDS"]; cf != "" {
 				env["JIRA_CUSTOM_FIELDS"] = cf
 			}
 			servers["jira-"+inst.Name] = mcpServer{Command: nodeExe, Args: []string{jiraBundle}, Env: env}

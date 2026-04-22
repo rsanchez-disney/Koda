@@ -78,10 +78,11 @@ type GitHubRemote struct {
 
 // JiraInstance represents a configured Jira instance.
 type JiraInstance struct {
-	Name  string // e.g., "myjira", "jira", "cloud"
-	URL   string // e.g., "https://myjira.disney.com"
-	Token string // JIRA PAT or API Token (Cloud)
-	Email string // Jira Cloud only — enables Basic Auth + API v3
+	Name         string // e.g., "myjira", "jira", "cloud"
+	URL          string // e.g., "https://myjira.disney.com"
+	Token        string // JIRA PAT or API Token (Cloud)
+	Email        string // Jira Cloud only — enables Basic Auth + API v3
+	CustomFields string // comma-separated custom field IDs (per-instance override)
 }
 
 // ConfluenceInstance represents a configured Confluence instance.
