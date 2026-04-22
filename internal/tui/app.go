@@ -927,8 +927,10 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mcpInput = ""
 			m.mcpEditField = 0
 		case "tab":
-			// Toggle between url/host (0) and token (1)
-			m.mcpEditField = (m.mcpEditField + 1) % 2
+			// Jira has 4 fields (url, email, custom fields, token); others have 2 (url, token)
+			maxField := 2
+			if m.mcpSection == 1 { maxField = 4 }
+			m.mcpEditField = (m.mcpEditField + 1) % maxField
 			m.mcpInput = ""
 		case "enter":
 			val := strings.TrimSpace(m.mcpInput)
@@ -944,10 +946,15 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				ops.WriteGitHubRemote(r)
 			case 1:
 				inst := m.mcpJiraRow(m.mcpRow)
-				if m.mcpEditField == 0 && val != "" {
-					inst.URL = val
-				} else if m.mcpEditField == 1 && val != "" {
-					inst.Token = val
+				switch m.mcpEditField {
+				case 0:
+					if val != "" { inst.URL = val }
+				case 1:
+					inst.Email = val
+				case 2:
+					inst.CustomFields = val
+				case 3:
+					if val != "" { inst.Token = val }
 				}
 				ops.WriteJiraInstance(inst)
 			case 2:
@@ -1220,6 +1227,13 @@ func (m model) mcpConfRow(row int) mdl.ConfluenceInstance {
 	return mdl.ConfluenceInstance{}
 }
 
+func (m model) mcpJiraCustomFields() string {
+	if m.mcpRow < len(m.jiraInstances) {
+		return m.jiraInstances[m.mcpRow].CustomFields
+	}
+	return ""
+}
+
 func (m model) viewMCP() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("MCP Instances") + dimStyle.Render("  enter=edit  n=add  d=delete  ctrl+d=clear  r=regenerate  tab=section  esc=back"))
@@ -1297,9 +1311,13 @@ func (m model) viewMCP() string {
 				if inst.Token != "" {
 					tok = checkStyle.Render(ops.MaskToken(inst.Token))
 				}
-				b.WriteString(fmt.Sprintf("%s%-12s %s  %s\n", cur, inst.Name, dimStyle.Render(inst.URL), tok))
+				label := inst.Name
+				if inst.Email != "" {
+					label += " ☁"
+				}
+				b.WriteString(fmt.Sprintf("%s%-12s %s  %s\n", cur, label, dimStyle.Render(inst.URL), tok))
 				if isActive && m.mcpEditing && m.mcpRow == row {
-					b.WriteString(m.renderEditPrompt(inst.URL, inst.Token))
+					b.WriteString(m.renderEditPromptFull(inst.URL, inst.Email, inst.Token))
 				}
 				row++
 			}
@@ -1393,26 +1411,48 @@ func (m model) viewMCP() string {
 }
 
 func (m model) renderEditPrompt(currentURL, currentToken string) string {
+	return m.renderEditPromptFull(currentURL, "", currentToken)
+}
+
+func (m model) renderEditPromptFull(currentURL, currentEmail, currentToken string) string {
 	var b strings.Builder
 	urlLabel := "  URL:   "
 	if m.mcpSection == 0 {
 		urlLabel = "  Host:  "
 	}
+	emailLabel := "  Email: "
 	tokLabel := "  Token: "
 
-	if m.mcpEditField == 0 {
-		b.WriteString("    " + activeStyle.Render("▸ "+urlLabel) + activeStyle.Render(m.mcpInput+"█"))
-		b.WriteString(dimStyle.Render("  (current: "+currentURL+")") + "\n")
-		b.WriteString("    " + dimStyle.Render("  "+tokLabel+ops.MaskToken(currentToken)) + "\n")
-	} else {
-		b.WriteString("    " + dimStyle.Render("  "+urlLabel+currentURL) + "\n")
-		b.WriteString("    " + activeStyle.Render("▸ "+tokLabel) + activeStyle.Render(m.mcpInput+"█"))
-		if currentToken != "" {
-			b.WriteString(dimStyle.Render("  (current: "+ops.MaskToken(currentToken)+")"))
-		}
-		b.WriteString("\n")
+	// Jira has 4 fields (url, email, custom fields, token); others have 2 (url, token)
+	isJira := m.mcpSection == 1
+	fields := []struct{ label, current string; isCurrent bool }{
+		{urlLabel, currentURL, m.mcpEditField == 0},
 	}
-	b.WriteString("    " + dimStyle.Render("tab=switch field  enter=save  esc=cancel") + "\n")
+	if isJira {
+		cfLabel := "  Fields:"
+		fields = append(fields, struct{ label, current string; isCurrent bool }{emailLabel, currentEmail, m.mcpEditField == 1})
+		fields = append(fields, struct{ label, current string; isCurrent bool }{cfLabel, m.mcpJiraCustomFields(), m.mcpEditField == 2})
+		fields = append(fields, struct{ label, current string; isCurrent bool }{tokLabel, ops.MaskToken(currentToken), m.mcpEditField == 3})
+	} else {
+		fields = append(fields, struct{ label, current string; isCurrent bool }{tokLabel, ops.MaskToken(currentToken), m.mcpEditField == 1})
+	}
+
+	for _, f := range fields {
+		if f.isCurrent {
+			b.WriteString("    " + activeStyle.Render("▸ "+f.label) + activeStyle.Render(m.mcpInput+"█"))
+			if f.current != "" {
+				b.WriteString(dimStyle.Render("  (current: "+f.current+")"))
+			}
+			b.WriteString("\n")
+		} else {
+			b.WriteString("    " + dimStyle.Render("  "+f.label+f.current) + "\n")
+		}
+	}
+	hint := "tab=switch field  enter=save  esc=cancel"
+	if isJira {
+		hint = "tab=switch field  enter=save  esc=cancel  (email empty=Server, set=Cloud)"
+	}
+	b.WriteString("    " + dimStyle.Render(hint) + "\n")
 	return b.String()
 }
 

@@ -123,12 +123,32 @@ func GenerateMcpJson(nodeExe string) error {
 	jiraInstances := ReadJiraInstances()
 	jiraBundle := filepath.Join(bundleDir, "jira-mcp", "dist", "index.cjs")
 	if len(jiraInstances) == 1 {
-		servers["jira"] = mcpServer{Command: nodeExe, Args: []string{jiraBundle},
-			Env: map[string]string{"JIRA_PAT": jiraInstances[0].Token, "JIRA_URL": jiraInstances[0].URL}}
+		env := map[string]string{"JIRA_PAT": jiraInstances[0].Token, "JIRA_URL": jiraInstances[0].URL}
+		if jiraInstances[0].Email != "" {
+			env["JIRA_EMAIL"] = jiraInstances[0].Email
+		}
+		if cf := jiraInstances[0].CustomFields; cf != "" {
+			env["JIRA_CUSTOM_FIELDS"] = cf
+		} else if cf := tokens["JIRA_CUSTOM_FIELDS_"+jiraInstances[0].Name]; cf != "" {
+			env["JIRA_CUSTOM_FIELDS"] = cf
+		} else if cf := envVars["JIRA_CUSTOM_FIELDS"]; cf != "" {
+			env["JIRA_CUSTOM_FIELDS"] = cf
+		}
+		servers["jira"] = mcpServer{Command: nodeExe, Args: []string{jiraBundle}, Env: env}
 	} else {
 		for i, inst := range jiraInstances {
-			servers["jira-"+inst.Name] = mcpServer{Command: nodeExe, Args: []string{jiraBundle},
-				Env: map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL}}
+			env := map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL}
+			if inst.Email != "" {
+				env["JIRA_EMAIL"] = inst.Email
+			}
+			if cf := inst.CustomFields; cf != "" {
+				env["JIRA_CUSTOM_FIELDS"] = cf
+			} else if cf := tokens["JIRA_CUSTOM_FIELDS_"+inst.Name]; cf != "" {
+				env["JIRA_CUSTOM_FIELDS"] = cf
+			} else if cf := envVars["JIRA_CUSTOM_FIELDS"]; cf != "" {
+				env["JIRA_CUSTOM_FIELDS"] = cf
+			}
+			servers["jira-"+inst.Name] = mcpServer{Command: nodeExe, Args: []string{jiraBundle}, Env: env}
 			servers[inst.Name] = servers["jira-"+inst.Name]
 			if i == 0 {
 				servers["jira"] = servers["jira-"+inst.Name]

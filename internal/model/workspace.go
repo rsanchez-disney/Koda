@@ -78,9 +78,11 @@ type GitHubRemote struct {
 
 // JiraInstance represents a configured Jira instance.
 type JiraInstance struct {
-	Name  string // e.g., "myjira", "jira"
-	URL   string // e.g., "https://myjira.disney.com"
-	Token string // JIRA PAT
+	Name         string // e.g., "myjira", "jira", "cloud"
+	URL          string // e.g., "https://myjira.disney.com"
+	Token        string // JIRA PAT or API Token (Cloud)
+	Email        string // Jira Cloud only — enables Basic Auth + API v3
+	CustomFields string // comma-separated custom field IDs (per-instance override)
 }
 
 // ConfluenceInstance represents a configured Confluence instance.
@@ -100,6 +102,7 @@ var DefaultGitHubRemotes = []GitHubRemote{
 var DefaultJiraInstances = []JiraInstance{
 	{Name: "myjira", URL: "https://myjira.disney.com"},
 	{Name: "jira", URL: "https://jira.disney.com"},
+	{Name: "cloud", URL: "https://your-domain.atlassian.net"},
 }
 
 // DefaultConfluenceInstances defines the pre-populated Confluence instances.
@@ -113,6 +116,7 @@ var KnownEnvVars = []EnvVar{
 	{Key: "COMPASS_URL", Default: "", Description: "Compass MCP endpoint URL"},
 	{Key: "QTEST_BASE_URL", Default: "https://qtest.disney.com", Description: "qTest Manager base URL"},
 	{Key: "QTEST_PROJECT_ID", Default: "", Description: "Default qTest project ID (optional)"},
+	{Key: "JIRA_CUSTOM_FIELDS", Default: "", Description: "Custom Jira field IDs to fetch (comma-separated, e.g., customfield_10003,customfield_10014)"},
 	{Key: "CONTAINER_RUNTIME", Default: "", Description: "Container runtime (docker, nerdctl, podman) — auto-detected if empty"},
 	{Key: "SPLUNK_BASE_URL", Default: "https://splunk.wdprapps.disney.com:8089", Description: "Splunk REST API base URL"},
 	{Key: "APPD_CONTROLLER_URL", Default: "https://disney-prod.saas.appdynamics.com", Description: "AppDynamics controller URL"},

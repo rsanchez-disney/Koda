@@ -129,6 +129,12 @@ func ReadJiraInstances() []model.JiraInstance {
 		if u := tokens["JIRA_URL_"+name]; u != "" {
 			inst.URL = u
 		}
+		if e := tokens["JIRA_EMAIL_"+name]; e != "" {
+			inst.Email = e
+		}
+		if cf := tokens["JIRA_CUSTOM_FIELDS_"+name]; cf != "" {
+			inst.CustomFields = cf
+		}
 		instances[name] = inst
 	}
 
