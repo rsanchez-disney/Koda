@@ -78,9 +78,10 @@ type GitHubRemote struct {
 
 // JiraInstance represents a configured Jira instance.
 type JiraInstance struct {
-	Name  string // e.g., "myjira", "jira"
+	Name  string // e.g., "myjira", "jira", "cloud"
 	URL   string // e.g., "https://myjira.disney.com"
-	Token string // JIRA PAT
+	Token string // JIRA PAT or API Token (Cloud)
+	Email string // Jira Cloud only — enables Basic Auth + API v3
 }
 
 // ConfluenceInstance represents a configured Confluence instance.
@@ -100,6 +101,7 @@ var DefaultGitHubRemotes = []GitHubRemote{
 var DefaultJiraInstances = []JiraInstance{
 	{Name: "myjira", URL: "https://myjira.disney.com"},
 	{Name: "jira", URL: "https://jira.disney.com"},
+	{Name: "cloud", URL: "https://your-domain.atlassian.net"},
 }
 
 // DefaultConfluenceInstances defines the pre-populated Confluence instances.
