@@ -2,6 +2,7 @@ package ops
 
 import (
 	"fmt"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,35 @@ var (
 
 // FindKiroCLI returns the absolute path to kiro-cli, checking PATH first
 // then common Windows install locations. Result is cached.
+// CleanStaleKiroConfig removes keys from ~/.kiro/config.json that override
+// agent tool lists and break subagent delegation.
+func CleanStaleKiroConfig() {
+	home, _ := os.UserHomeDir()
+	path := filepath.Join(home, ".kiro", "config.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return
+	}
+	stale := []string{"allowedTools", "tools"}
+	changed := false
+	for _, k := range stale {
+		if _, ok := raw[k]; ok {
+			delete(raw, k)
+			changed = true
+		}
+	}
+	if changed {
+		if out, err := json.MarshalIndent(raw, "", "  "); err == nil {
+			os.WriteFile(path, append(out, '\n'), 0644)
+			fmt.Println("  ✓ Cleaned stale allowedTools/tools from kiro config")
+		}
+	}
+}
+
 func FindKiroCLI() string {
 	kiroCLIOnce.Do(func() {
 		if p, err := exec.LookPath("kiro-cli"); err == nil {
