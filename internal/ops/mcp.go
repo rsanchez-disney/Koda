@@ -149,9 +149,6 @@ func GenerateMcpJson(nodeExe string) error {
 				env["JIRA_CUSTOM_FIELDS"] = cf
 			}
 			servers["jira-"+inst.Name] = mcpServer{Command: nodeExe, Args: []string{jiraBundle}, Env: env}
-			if inst.Name != "jira" {
-				servers[inst.Name] = servers["jira-"+inst.Name]
-			}
 			if i == 0 {
 				servers["jira"] = servers["jira-"+inst.Name]
 			}
@@ -170,9 +167,6 @@ func GenerateMcpJson(nodeExe string) error {
 				Env: map[string]string{"CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}}
 			// Register instance name as alias (e.g., "mywiki" → confluence-mywiki)
 			// so @mywiki/* works in agent configs
-			if inst.Name != "confluence" {
-				servers[inst.Name] = servers["confluence-"+inst.Name]
-			}
 			if i == 0 {
 				servers["confluence"] = servers["confluence-"+inst.Name]
 			}
@@ -526,9 +520,6 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 					entry := mcpServer{Command: "node", Args: []string{jiraBundle},
 						Env: map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL}}
 					servers["jira-"+inst.Name] = entry
-					if inst.Name != "jira" {
-						servers[inst.Name] = entry
-					}
 					if i == 0 {
 						servers["jira"] = entry
 					}
@@ -545,9 +536,6 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 					entry := mcpServer{Command: "node", Args: []string{confBundle},
 						Env: map[string]string{"CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}}
 					servers["confluence-"+inst.Name] = entry
-					if inst.Name != "confluence" {
-						servers[inst.Name] = entry
-					}
 					if i == 0 {
 						servers["confluence"] = entry
 					}
