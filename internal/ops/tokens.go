@@ -154,10 +154,20 @@ func ReadJiraInstances() []model.JiraInstance {
 		}
 	}
 
-	// Return only instances with tokens set
+	// Return in default order (myjira first), then any extras
 	var result []model.JiraInstance
-	for _, inst := range instances {
-		if inst.Token != "" {
+	for _, d := range model.DefaultJiraInstances {
+		if inst, ok := instances[d.Name]; ok && inst.Token != "" {
+			result = append(result, inst)
+		}
+	}
+	// Append non-default instances
+	for name, inst := range instances {
+		isDefault := false
+		for _, d := range model.DefaultJiraInstances {
+			if d.Name == name { isDefault = true; break }
+		}
+		if !isDefault && inst.Token != "" {
 			result = append(result, inst)
 		}
 	}
@@ -234,10 +244,19 @@ func ReadConfluenceInstances() []model.ConfluenceInstance {
 		}
 	}
 
-	// Return only instances with tokens set
+	// Return in default order (confluence first), then any extras
 	var result []model.ConfluenceInstance
-	for _, inst := range instances {
-		if inst.Token != "" {
+	for _, d := range model.DefaultConfluenceInstances {
+		if inst, ok := instances[d.Name]; ok && inst.Token != "" {
+			result = append(result, inst)
+		}
+	}
+	for name, inst := range instances {
+		isDefault := false
+		for _, d := range model.DefaultConfluenceInstances {
+			if d.Name == name { isDefault = true; break }
+		}
+		if !isDefault && inst.Token != "" {
 			result = append(result, inst)
 		}
 	}
