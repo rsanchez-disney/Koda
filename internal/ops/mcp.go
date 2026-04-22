@@ -127,12 +127,18 @@ func GenerateMcpJson(nodeExe string) error {
 		if jiraInstances[0].Email != "" {
 			env["JIRA_EMAIL"] = jiraInstances[0].Email
 		}
+		if cf := envVars["JIRA_CUSTOM_FIELDS"]; cf != "" {
+			env["JIRA_CUSTOM_FIELDS"] = cf
+		}
 		servers["jira"] = mcpServer{Command: nodeExe, Args: []string{jiraBundle}, Env: env}
 	} else {
 		for i, inst := range jiraInstances {
 			env := map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL}
 			if inst.Email != "" {
 				env["JIRA_EMAIL"] = inst.Email
+			}
+			if cf := envVars["JIRA_CUSTOM_FIELDS"]; cf != "" {
+				env["JIRA_CUSTOM_FIELDS"] = cf
 			}
 			servers["jira-"+inst.Name] = mcpServer{Command: nodeExe, Args: []string{jiraBundle}, Env: env}
 			servers[inst.Name] = servers["jira-"+inst.Name]
