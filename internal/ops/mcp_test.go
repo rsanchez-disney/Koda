@@ -313,23 +313,35 @@ func TestGeneratedConfigContainsExactlySelectedServers(t *testing.T) {
 
 		// --- Build dummy tokens and envVars for all possible keys ---
 		tokens := map[string]string{
-			"JIRA_PAT":       "tok-jira",
-			"CONFLUENCE_PAT": "tok-confluence",
-			"MYWIKI_PAT":     "tok-mywiki",
-			"FIGMA_TOKEN":    "tok-figma",
-			"COMPASS_TOKEN":  "",
-			"HARNESS_API_KEY": "tok-harness",
-			"SONARQUBE_TOKEN": "tok-sonar",
+			"JIRA_PAT":            "tok-jira",
+			"CONFLUENCE_PAT":      "tok-confluence",
+			"MYWIKI_PAT":          "tok-mywiki",
+			"FIGMA_TOKEN":         "tok-figma",
+			"COMPASS_TOKEN":       "",
+			"HARNESS_API_KEY":     "tok-harness",
+			"SONARQUBE_TOKEN":     "tok-sonar",
+			"QTEST_BEARER_TOKEN":  "tok-qtest",
+			"SPLUNK_USERNAME":     "tok-splunk-user",
+			"SPLUNK_PASSWORD":     "tok-splunk-pass",
+			"APPD_CLIENT_ID":      "tok-appd-id",
+			"APPD_CLIENT_SECRET":  "tok-appd-secret",
+			"SNOW_USERNAME":       "tok-snow-user",
+			"SNOW_PASSWORD":       "tok-snow-pass",
 		}
 		if input.CompassToken {
 			tokens["COMPASS_TOKEN"] = "tok-compass"
 		}
 
 		envVars := map[string]string{
-			"CONFLUENCE_URL": "https://confluence.example.com",
-			"MYWIKI_URL":     "https://mywiki.example.com",
-			"JIRA_URL":       "https://jira.example.com",
-			"COMPASS_URL":    "https://compass.example.com/api/mcp",
+			"CONFLUENCE_URL":    "https://confluence.example.com",
+			"MYWIKI_URL":        "https://mywiki.example.com",
+			"JIRA_URL":          "https://jira.example.com",
+			"COMPASS_URL":       "https://compass.example.com/api/mcp",
+			"QTEST_BASE_URL":    "https://qtest.example.com",
+			"QTEST_PROJECT_ID":  "12345",
+			"SPLUNK_BASE_URL":   "https://splunk.example.com",
+			"APPD_CONTROLLER_URL": "https://appd.example.com",
+			"SNOW_INSTANCE":     "example",
 		}
 
 		// --- Build GitHub remotes ---
@@ -643,20 +655,32 @@ func TestServerEntryStructureCorrectness(t *testing.T) {
 
 		// --- Provide dummy tokens and envVars for all possible keys ---
 		tokens := map[string]string{
-			"JIRA_PAT":        "tok-jira",
-			"CONFLUENCE_PAT":  "tok-confluence",
-			"MYWIKI_PAT":      "tok-mywiki",
-			"FIGMA_TOKEN":     "tok-figma",
-			"COMPASS_TOKEN":   "tok-compass",
-			"HARNESS_API_KEY":  "tok-harness",
-			"SONARQUBE_TOKEN":  "tok-sonar",
+			"JIRA_PAT":            "tok-jira",
+			"CONFLUENCE_PAT":      "tok-confluence",
+			"MYWIKI_PAT":          "tok-mywiki",
+			"FIGMA_TOKEN":         "tok-figma",
+			"COMPASS_TOKEN":       "tok-compass",
+			"HARNESS_API_KEY":     "tok-harness",
+			"SONARQUBE_TOKEN":     "tok-sonar",
+			"QTEST_BEARER_TOKEN":  "tok-qtest",
+			"SPLUNK_USERNAME":     "tok-splunk-user",
+			"SPLUNK_PASSWORD":     "tok-splunk-pass",
+			"APPD_CLIENT_ID":      "tok-appd-id",
+			"APPD_CLIENT_SECRET":  "tok-appd-secret",
+			"SNOW_USERNAME":       "tok-snow-user",
+			"SNOW_PASSWORD":       "tok-snow-pass",
 		}
 
 		envVars := map[string]string{
-			"CONFLUENCE_URL": "https://confluence.example.com",
-			"MYWIKI_URL":     "https://mywiki.example.com",
-			"JIRA_URL":       "https://jira.example.com",
-			"COMPASS_URL":    "https://compass.example.com/api/mcp",
+			"CONFLUENCE_URL":    "https://confluence.example.com",
+			"MYWIKI_URL":        "https://mywiki.example.com",
+			"JIRA_URL":          "https://jira.example.com",
+			"COMPASS_URL":       "https://compass.example.com/api/mcp",
+			"QTEST_BASE_URL":    "https://qtest.example.com",
+			"QTEST_PROJECT_ID":  "12345",
+			"SPLUNK_BASE_URL":   "https://splunk.example.com",
+			"APPD_CONTROLLER_URL": "https://appd.example.com",
+			"SNOW_INSTANCE":     "example",
 		}
 
 		// No GitHub remotes (github excluded from selection).
@@ -825,23 +849,35 @@ func TestConfigGenerationIsIdempotent(t *testing.T) {
 
 		// --- Build tokens and envVars ---
 		tokens := map[string]string{
-			"JIRA_PAT":        "tok-jira",
-			"CONFLUENCE_PAT":  "tok-confluence",
-			"MYWIKI_PAT":      "tok-mywiki",
-			"FIGMA_TOKEN":     "tok-figma",
-			"COMPASS_TOKEN":   "",
-			"HARNESS_API_KEY":  "tok-harness",
-			"SONARQUBE_TOKEN":  "tok-sonar",
+			"JIRA_PAT":            "tok-jira",
+			"CONFLUENCE_PAT":      "tok-confluence",
+			"MYWIKI_PAT":          "tok-mywiki",
+			"FIGMA_TOKEN":         "tok-figma",
+			"COMPASS_TOKEN":       "",
+			"HARNESS_API_KEY":     "tok-harness",
+			"SONARQUBE_TOKEN":     "tok-sonar",
+			"QTEST_BEARER_TOKEN":  "tok-qtest",
+			"SPLUNK_USERNAME":     "tok-splunk-user",
+			"SPLUNK_PASSWORD":     "tok-splunk-pass",
+			"APPD_CLIENT_ID":      "tok-appd-id",
+			"APPD_CLIENT_SECRET":  "tok-appd-secret",
+			"SNOW_USERNAME":       "tok-snow-user",
+			"SNOW_PASSWORD":       "tok-snow-pass",
 		}
 		if input.CompassToken {
 			tokens["COMPASS_TOKEN"] = "tok-compass"
 		}
 
 		envVars := map[string]string{
-			"CONFLUENCE_URL": "https://confluence.example.com",
-			"MYWIKI_URL":     "https://mywiki.example.com",
-			"JIRA_URL":       "https://jira.example.com",
-			"COMPASS_URL":    "https://compass.example.com/api/mcp",
+			"CONFLUENCE_URL":    "https://confluence.example.com",
+			"MYWIKI_URL":        "https://mywiki.example.com",
+			"JIRA_URL":          "https://jira.example.com",
+			"COMPASS_URL":       "https://compass.example.com/api/mcp",
+			"QTEST_BASE_URL":    "https://qtest.example.com",
+			"QTEST_PROJECT_ID":  "12345",
+			"SPLUNK_BASE_URL":   "https://splunk.example.com",
+			"APPD_CONTROLLER_URL": "https://appd.example.com",
+			"SNOW_INSTANCE":     "example",
 		}
 
 		// --- Build GitHub remotes (0, 1, or 2) ---
