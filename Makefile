@@ -5,7 +5,7 @@ VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev
 RELEASE_KEY ?= $(STEER_RELEASE_KEY)
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X github.disney.com/SANCR225/koda/internal/ops.releaseKey=$(RELEASE_KEY)
 BIN      := ./bin/$(APP)
-YAX_REPO := github.disney.com-sancr225:SANCR225/yax.git
+YAX_REPO := github.disney.com-sancr225:QUINJ327/yax.git
 YAX_SRC  ?= /tmp/yax
 
 .PHONY: build run clean test lint fmt vet tidy install cross release help yax-fetch yax-cross
