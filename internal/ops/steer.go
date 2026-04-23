@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.disney.com/SANCR225/koda/internal/config"
 	"golang.org/x/crypto/pbkdf2"
@@ -71,6 +72,88 @@ func SyncSteerRuntime(steerRoot, targetDir string) error {
 }
 
 func syncGit(steerRoot string) error {
+	// Check for local uncommitted changes before pulling
+	status := exec.Command("git", "-C", steerRoot, "status", "--porcelain")
+	out, _ := status.Output()
+	dirty := strings.TrimSpace(string(out))
+
+	if dirty != "" {
+		lines := strings.Split(dirty, "\n")
+		fmt.Printf("\n⚠️  Local changes detected in steer-runtime (%d files):\n", len(lines))
+		for _, line := range lines {
+			if len(lines) <= 10 {
+				fmt.Printf("   %s\n", line)
+			}
+		}
+		if len(lines) > 10 {
+			fmt.Printf("   ... and %d more\n", len(lines)-10)
+		}
+		fmt.Println()
+		fmt.Println("Options:")
+		fmt.Println("  1. Stash changes and sync (changes preserved, restored after)")
+		fmt.Println("  2. Skip sync (keep local changes, no update)")
+		fmt.Println("  3. Commit changes to a branch (creates feat/local-changes branch)")
+		fmt.Print("\nChoice [1/2/3]: ")
+
+		var choice string
+		fmt.Scanln(&choice)
+
+		switch strings.TrimSpace(choice) {
+		case "2":
+			fmt.Println("  ⏭ Sync skipped — local changes preserved")
+			return nil
+		case "3":
+			return commitLocalChanges(steerRoot)
+		default:
+			// Stash, pull, pop
+			exec.Command("git", "-C", steerRoot, "stash", "push", "-m", "koda-sync-auto-stash").Run()
+			defer func() {
+				exec.Command("git", "-C", steerRoot, "stash", "pop").Run()
+				fmt.Println("  ✓ Local changes restored from stash")
+			}()
+		}
+	}
+
+	cmd := exec.Command("git", "-C", steerRoot, "pull", "--ff-only")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if err := cmd.Run(); err != nil {
+		// ff-only failed — try rebase
+		cmd2 := exec.Command("git", "-C", steerRoot, "pull", "--rebase")
+		cmd2.Stdout = nil
+		cmd2.Stderr = nil
+		return cmd2.Run()
+	}
+	return nil
+}
+
+// commitLocalChanges creates a branch, commits local changes, and optionally creates a PR.
+func commitLocalChanges(steerRoot string) error {
+	ts := fmt.Sprintf("%d", time.Now().Unix())
+	branch := "feat/local-changes-" + ts
+	
+	// Create branch
+	exec.Command("git", "-C", steerRoot, "checkout", "-b", branch).Run()
+	
+	// Stage and commit
+	exec.Command("git", "-C", steerRoot, "add", "-A").Run()
+	msg := "feat: local workspace/agent changes"
+	exec.Command("git", "-C", steerRoot, "commit", "-m", msg).Run()
+	
+	// Push
+	if err := exec.Command("git", "-C", steerRoot, "push", "-u", "origin", branch).Run(); err != nil {
+		fmt.Printf("  ⚠ Push failed: %v\n", err)
+		fmt.Printf("  Changes committed to local branch: %s\n", branch)
+		return nil
+	}
+	
+	fmt.Printf("  ✓ Changes committed and pushed to branch: %s\n", branch)
+	fmt.Println("  💡 Create a PR with: gh pr create --base main")
+	
+	// Return to main for sync
+	exec.Command("git", "-C", steerRoot, "checkout", "main").Run()
+	
+	// Now pull
 	cmd := exec.Command("git", "-C", steerRoot, "pull", "--ff-only")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
