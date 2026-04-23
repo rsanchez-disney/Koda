@@ -31,24 +31,73 @@ type KiroIDEResult struct {
 	Skills   int
 	Hooks    int
 	MCP      int
+	Agents   int
+	Prompts  int
+	Context  int
+	Rules    int
 }
 
-// InstallKiroIDE installs steering + skills (user-level) and hooks (workspace-level).
-func InstallKiroIDE(steerRoot, workspaceDir string) (KiroIDEResult, error) {
+// resolveKiroProfiles returns the profile IDs to use for kiro-ide operations.
+// Priority: explicit args > active workspace profiles > all discovered profiles.
+// Returns an error if any explicit profile name doesn't match a discovered profile.
+func resolveKiroProfiles(steerRoot string, explicit []string) ([]string, error) {
+	available, _ := config.ProfileDirs(steerRoot)
+	valid := make(map[string]bool, len(available))
+	for _, d := range available {
+		valid[filepath.Base(d)] = true
+	}
+
+	if len(explicit) > 0 {
+		expanded := ExpandAliases(explicit)
+		for _, p := range expanded {
+			if !valid[p] {
+				return nil, fmt.Errorf("unknown profile: %s", p)
+			}
+		}
+		return expanded, nil
+	}
+	s := config.ReadSteerSettings()
+	if s.ActiveWorkspace != "" {
+		if ws, err := GetWorkspace(steerRoot, s.ActiveWorkspace); err == nil && len(ws.Profiles) > 0 {
+			return ExpandAliases(ws.Profiles), nil
+		}
+	}
+	// Fallback: all discovered profiles
+	var all []string
+	for _, d := range available {
+		all = append(all, filepath.Base(d))
+	}
+	return all, nil
+}
+
+// InstallKiroIDE installs steering + skills (user-level), agents + prompts +
+// context + rules + hooks (workspace-level), and MCP config.
+func InstallKiroIDE(steerRoot, workspaceDir string, profiles []string) (KiroIDEResult, error) {
 	var r KiroIDEResult
+	selected, err := resolveKiroProfiles(steerRoot, profiles)
+	if err != nil {
+		return r, err
+	}
 
 	// Steering + skills → ~/.kiro/ (user-level)
 	kiroRoot := config.KiroRoot()
-	r.Steering = installSteering(steerRoot, kiroRoot)
-	r.Skills = installSkills(steerRoot, kiroRoot)
+	r.Steering = installSteering(steerRoot, kiroRoot, selected)
+	r.Skills = installSkills(steerRoot, kiroRoot, selected)
 
-	// Hooks → <workspace>/.kiro/hooks/ (workspace-level)
+	// Workspace-level → <project>/.kiro/
 	if workspaceDir != "" {
+		wsDotKiro := filepath.Join(workspaceDir, ".kiro")
+		r.Agents, r.Prompts = installKiroAgents(steerRoot, wsDotKiro, selected)
+		r.Context = installKiroContext(steerRoot, wsDotKiro, selected)
+		r.Rules = installKiroRules(steerRoot, wsDotKiro)
 		var err error
 		r.Hooks, err = installKiroHooks(workspaceDir)
 		if err != nil {
 			return r, err
 		}
+		addToGitignore(workspaceDir, ".kiro/agents/")
+		addToGitignore(workspaceDir, ".kiro/prompts/")
+		addToGitignore(workspaceDir, ".kiro/context/")
 	}
 
 	// MCP bundles + mcp.json
@@ -58,19 +107,31 @@ func InstallKiroIDE(steerRoot, workspaceDir string) (KiroIDEResult, error) {
 	return r, nil
 }
 
-// SyncKiroIDE updates steering + skills from latest profiles.
-func SyncKiroIDE(steerRoot string) KiroIDEResult {
-	kiroRoot := config.KiroRoot()
-	return KiroIDEResult{
-		Steering: installSteering(steerRoot, kiroRoot),
-		Skills:   installSkills(steerRoot, kiroRoot),
+// SyncKiroIDE updates steering + skills (user-level) and agents + prompts +
+// context + rules (workspace-level) from latest profiles.
+func SyncKiroIDE(steerRoot, workspaceDir string, profiles []string) (KiroIDEResult, error) {
+	selected, err := resolveKiroProfiles(steerRoot, profiles)
+	if err != nil {
+		return KiroIDEResult{}, err
 	}
+	kiroRoot := config.KiroRoot()
+	r := KiroIDEResult{
+		Steering: installSteering(steerRoot, kiroRoot, selected),
+		Skills:   installSkills(steerRoot, kiroRoot, selected),
+	}
+	if workspaceDir != "" {
+		wsDotKiro := filepath.Join(workspaceDir, ".kiro")
+		r.Agents, r.Prompts = installKiroAgents(steerRoot, wsDotKiro, selected)
+		r.Context = installKiroContext(steerRoot, wsDotKiro, selected)
+		r.Rules = installKiroRules(steerRoot, wsDotKiro)
+	}
+	return r, nil
 }
 
-// RemoveKiroIDE removes hooks from a workspace directory.
+// RemoveKiroIDE removes generated .kiro content from a workspace directory.
 func RemoveKiroIDE(workspaceDir string) int {
 	removed := 0
-	for _, sub := range []string{"hooks"} {
+	for _, sub := range []string{"hooks", "agents", "prompts", "context"} {
 		p := filepath.Join(workspaceDir, ".kiro", sub)
 		if _, err := os.Stat(p); err == nil {
 			os.RemoveAll(p)
@@ -80,15 +141,129 @@ func RemoveKiroIDE(workspaceDir string) int {
 	return removed
 }
 
-func installSteering(steerRoot, targetRoot string) int {
+// installKiroAgents copies profile agents + prompts into <project>/.kiro/ with
+// resource paths rewritten from file://~/.kiro/ to file://.kiro/ for Kiro IDE.
+func installKiroAgents(steerRoot, dotKiro string, profiles []string) (int, int) {
+	agentsDst := filepath.Join(dotKiro, config.AgentsDir)
+	promptsDst := filepath.Join(dotKiro, config.PromptsDir)
+	os.MkdirAll(agentsDst, 0755)
+	os.MkdirAll(promptsDst, 0755)
+
+	home, _ := os.UserHomeDir()
+	jsonHome := strings.ReplaceAll(home, "\\", "/")
+	agents, prompts := 0, 0
+
+	for _, p := range profiles {
+		srcDir, _ := ResolveProfileSource(steerRoot, p)
+
+		// Agents: copy JSON with path rewriting
+		entries, _ := os.ReadDir(filepath.Join(srcDir, config.AgentsDir))
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), "._") {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(srcDir, config.AgentsDir, e.Name()))
+			if err != nil {
+				continue
+			}
+			content := strings.ReplaceAll(string(data), "$HOME", jsonHome)
+			// Rewrite resource paths for Kiro IDE (relative to project)
+			content = strings.ReplaceAll(content, "file://~/.kiro/", "file://.kiro/")
+			content = strings.ReplaceAll(content, "file://"+home+"/.kiro/", "file://.kiro/")
+			// Rewrite prompt paths to relative
+			content = strings.ReplaceAll(content, jsonHome+"/.kiro/prompts/", "../prompts/")
+			if runtime.GOOS == "windows" {
+				content = strings.ReplaceAll(content, ".sh\"", ".ps1\"")
+			}
+			os.WriteFile(filepath.Join(agentsDst, e.Name()), []byte(content), 0644)
+			agents++
+		}
+
+		// Prompts
+		entries, _ = os.ReadDir(filepath.Join(srcDir, config.PromptsDir))
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || strings.HasPrefix(e.Name(), "._") {
+				continue
+			}
+			copyFile(filepath.Join(srcDir, config.PromptsDir, e.Name()), filepath.Join(promptsDst, e.Name()))
+			prompts++
+		}
+	}
+	return agents, prompts
+}
+
+// installKiroContext copies context files from shared + profiles into <project>/.kiro/context/.
+func installKiroContext(steerRoot, dotKiro string, profiles []string) int {
+	dst := filepath.Join(dotKiro, config.ContextDir)
+	os.MkdirAll(dst, 0755)
+
+	// Shared context first
+	copyDirContents(filepath.Join(steerRoot, "shared", config.ContextDir), dst)
+
+	// Profile-specific context (profile wins over shared on conflict)
+	for _, p := range profiles {
+		srcDir, _ := ResolveProfileSource(steerRoot, p)
+		src := filepath.Join(srcDir, config.ContextDir)
+		entries, err := os.ReadDir(src)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || strings.HasPrefix(e.Name(), "._") {
+				continue
+			}
+			copyFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name()))
+		}
+	}
+
+	// Workspace service/channel banks
+	s := config.ReadSteerSettings()
+	if s.ActiveWorkspace != "" {
+		if ws, err := GetWorkspace(steerRoot, s.ActiveWorkspace); err == nil {
+			InstallBanks(steerRoot, dotKiro, ws.Services, ws.Channels)
+		}
+	}
+
+	// Count actual files on disk (avoids double-counting overwrites)
+	entries, _ := os.ReadDir(dst)
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			count++
+		}
+	}
+	return count
+}
+
+// installKiroRules copies workspace-configured rules into <project>/.kiro/rules/.
+func installKiroRules(steerRoot, dotKiro string) int {
+	s := config.ReadSteerSettings()
+	if s.ActiveWorkspace == "" {
+		return 0
+	}
+	ws, err := GetWorkspace(steerRoot, s.ActiveWorkspace)
+	if err != nil || len(ws.Rules) == 0 {
+		return 0
+	}
+	return InstallRules(steerRoot, dotKiro, ws.Rules)
+}
+
+func installSteering(steerRoot, targetRoot string, profiles []string) int {
 	dst := filepath.Join(targetRoot, "steering")
 	os.MkdirAll(dst, 0755)
 	count := 0
+	allowed := make(map[string]bool, len(profiles))
+	for _, p := range profiles {
+		allowed[p] = true
+	}
 	profileDirs, err := config.ProfileDirs(steerRoot)
 	if err != nil {
 		return 0
 	}
 	for _, profileDir := range profileDirs {
+		if !allowed[filepath.Base(profileDir)] {
+			continue
+		}
 		// Check for steering-map.json first
 		mapFile := filepath.Join(profileDir, "steering-map.json")
 		if _, err := os.Stat(mapFile); err == nil {
@@ -142,16 +317,22 @@ func generateSteeringFromMap(profileDir, mapFile, dstDir string) int {
 	return count
 }
 
-func installSkills(steerRoot, targetRoot string) int {
+func installSkills(steerRoot, targetRoot string, profiles []string) int {
 	dst := filepath.Join(targetRoot, "skills")
 	os.MkdirAll(dst, 0755)
 	count := 0
+	allowed := make(map[string]bool, len(profiles))
+	for _, p := range profiles {
+		allowed[p] = true
+	}
 
-	// Collect all skill source directories: common/skills + each profile's skills/
+	// Collect skill source directories: common/skills + selected profiles' skills/
 	skillDirs := []string{filepath.Join(steerRoot, "common", "skills")}
 	if profileDirs, err := config.ProfileDirs(steerRoot); err == nil {
 		for _, pd := range profileDirs {
-			skillDirs = append(skillDirs, filepath.Join(pd, config.SkillsDir))
+			if allowed[filepath.Base(pd)] {
+				skillDirs = append(skillDirs, filepath.Join(pd, config.SkillsDir))
+			}
 		}
 	}
 

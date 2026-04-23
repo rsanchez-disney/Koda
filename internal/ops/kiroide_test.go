@@ -102,7 +102,7 @@ func TestInstallSteering_MixedProfiles(t *testing.T) {
 	root := setupFakeSteerRoot(t)
 	target := t.TempDir()
 
-	count := installSteering(root, target)
+	count := installSteering(root, target, []string{"dev-core", "dev-dotnet"})
 
 	// dev-core: 1 traditional steering file
 	// dev-dotnet: 2 from steering-map.json
@@ -127,7 +127,7 @@ func TestInstallSkills_FlatAndDirs(t *testing.T) {
 	root := setupFakeSteerRoot(t)
 	target := t.TempDir()
 
-	count := installSkills(root, target)
+	count := installSkills(root, target, []string{"dev-core", "dev-dotnet"})
 
 	// common/skills: ship-it.md (README.md skipped) = 1
 	// dev-dotnet/skills: dotnet-api-skill/ dir = 1

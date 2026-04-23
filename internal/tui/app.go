@@ -311,7 +311,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case kiroIDEDoneMsg:
-		m.statusMsg = fmt.Sprintf("\u2705 Kiro IDE %s: %d steering, %d skills, %d hooks, %d MCP", msg.action, msg.result.Steering, msg.result.Skills, msg.result.Hooks, msg.result.MCP)
+		m.statusMsg = fmt.Sprintf("\u2705 Kiro IDE %s: %d steering, %d skills, %d agents, %d hooks, %d MCP", msg.action, msg.result.Steering, msg.result.Skills, msg.result.Agents, msg.result.Hooks, msg.result.MCP)
 		return m, nil
 	case mcpRegenDoneMsg:
 		m.refresh()
@@ -2570,7 +2570,7 @@ func (m model) updateKiroIDE(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.statusMsg = "⏳ Installing Kiro IDE..."
 		return m, func() tea.Msg {
-			r, err := ops.InstallKiroIDE(steerRoot, wsDir)
+			r, err := ops.InstallKiroIDE(steerRoot, wsDir, nil)
 			action := "install"
 			if err != nil {
 				return kiroIDEDoneMsg{result: r, action: action + " (error: " + err.Error() + ")"}
@@ -2581,7 +2581,7 @@ func (m model) updateKiroIDE(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		steerRoot := m.steerRoot
 		m.statusMsg = "\u23f3 Syncing Kiro IDE..."
 		return m, func() tea.Msg {
-			r := ops.SyncKiroIDE(steerRoot)
+			r, _ := ops.SyncKiroIDE(steerRoot, "", nil)
 			return kiroIDEDoneMsg{result: r, action: "sync"}
 		}
 	case "r":
