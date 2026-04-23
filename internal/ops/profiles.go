@@ -162,7 +162,14 @@ func InstallProfileFrom(srcDir, targetDir string) (int, error) {
 		if runtime.GOOS == "windows" {
 			expanded = strings.ReplaceAll(expanded, ".sh\"", ".ps1\"")
 		}
-		os.WriteFile(filepath.Join(agentsDst, e.Name()), []byte(expanded), 0644)
+		dstPath := filepath.Join(agentsDst, e.Name())
+		// If agent already exists in target, merge instead of overwrite
+		if existing, err := os.ReadFile(dstPath); err == nil {
+			if merged, err := mergeAgentJSON(existing, []byte(expanded)); err == nil {
+				expanded = string(merged)
+			}
+		}
+		os.WriteFile(dstPath, []byte(expanded), 0644)
 		count++
 	}
 
@@ -546,4 +553,82 @@ func EnrichWelcomeMessages(targetDir string) {
 		out, _ := json.MarshalIndent(raw, "", "  ")
 		os.WriteFile(path, out, 0644)
 	}
+}
+
+// mergeAgentJSON merges a workspace agent JSON on top of a global agent JSON.
+// Arrays (tools, allowedTools, resources): append unique.
+// Scalars (prompt, description, welcomeMessage): workspace wins if non-empty.
+// Objects (hooks, toolsSettings): deep merge (workspace keys override).
+func mergeAgentJSON(globalData, wsData []byte) ([]byte, error) {
+	var global, ws map[string]json.RawMessage
+	if err := json.Unmarshal(globalData, &global); err != nil {
+		return wsData, nil // can't parse global, use workspace as-is
+	}
+	if err := json.Unmarshal(wsData, &ws); err != nil {
+		return globalData, nil // can't parse workspace, use global as-is
+	}
+
+	// Merge each key from workspace into global
+	for key, wsVal := range ws {
+		globalVal, exists := global[key]
+		if !exists {
+			global[key] = wsVal
+			continue
+		}
+
+		// Try array merge for known array fields
+		switch key {
+		case "tools", "allowedTools", "resources", "rules":
+			merged := mergeJSONArrays(globalVal, wsVal)
+			if merged != nil {
+				global[key] = merged
+				continue
+			}
+		case "hooks", "toolsSettings", "mcpServers":
+			merged := mergeJSONObjects(globalVal, wsVal)
+			if merged != nil {
+				global[key] = merged
+				continue
+			}
+		}
+
+		// Scalar: workspace wins if non-empty
+		wsStr := strings.Trim(string(wsVal), "\" \t\n")
+		if wsStr != "" && wsStr != "null" {
+			global[key] = wsVal
+		}
+	}
+
+	return json.MarshalIndent(global, "", "  ")
+}
+
+func mergeJSONArrays(a, b json.RawMessage) json.RawMessage {
+	var arrA, arrB []string
+	if json.Unmarshal(a, &arrA) != nil || json.Unmarshal(b, &arrB) != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, v := range arrA {
+		seen[v] = true
+	}
+	for _, v := range arrB {
+		if !seen[v] {
+			arrA = append(arrA, v)
+			seen[v] = true
+		}
+	}
+	out, _ := json.Marshal(arrA)
+	return out
+}
+
+func mergeJSONObjects(a, b json.RawMessage) json.RawMessage {
+	var objA, objB map[string]json.RawMessage
+	if json.Unmarshal(a, &objA) != nil || json.Unmarshal(b, &objB) != nil {
+		return nil
+	}
+	for k, v := range objB {
+		objA[k] = v
+	}
+	out, _ := json.Marshal(objA)
+	return out
 }
