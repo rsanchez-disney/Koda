@@ -131,22 +131,7 @@ func Upgrade(currentVersion string) error {
 
 // RestartTray kills any running "koda tray" process and restarts it with the new binary.
 func RestartTray(exePath string) {
-	// Find running tray process
-	out, err := exec.Command("pgrep", "-f", "koda tray").Output()
-	if err != nil {
-		return // no tray running
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		pid, err := strconv.Atoi(strings.TrimSpace(line))
-		if err != nil || pid == os.Getpid() {
-			continue
-		}
-		// Kill old tray
-		if p, err := os.FindProcess(pid); err == nil {
-			p.Signal(syscall.SIGTERM)
-			fmt.Printf("  \u2713 Stopped old tray (pid %d)\n", pid)
-		}
-	}
+	killOldTray()
 	// Start new tray in background
 	cmd := exec.Command(exePath, "tray")
 	cmd.Stdout = nil
@@ -155,5 +140,43 @@ func RestartTray(exePath string) {
 	if cmd.Start() == nil {
 		fmt.Printf("  \u2713 Started new tray (pid %d)\n", cmd.Process.Pid)
 		cmd.Process.Release()
+	}
+}
+
+func killOldTray() {
+	if runtime.GOOS == "windows" {
+		// Windows: taskkill /IM koda.exe /F filters by window title not possible,
+		// so we use wmic to find "koda tray" command line
+		out, err := exec.Command("wmic", "process", "where",
+			"commandline like '%koda%tray%' and not commandline like '%wmic%'",
+			"get", "processid").Output()
+		if err != nil {
+			return
+		}
+		for _, line := range strings.Split(string(out), "\n") {
+			line = strings.TrimSpace(line)
+			pid, err := strconv.Atoi(line)
+			if err != nil || pid == os.Getpid() {
+				continue
+			}
+			exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/F").Run()
+			fmt.Printf("  \u2713 Stopped old tray (pid %d)\n", pid)
+		}
+	} else {
+		// macOS / Linux: pgrep + SIGTERM
+		out, err := exec.Command("pgrep", "-f", "koda tray").Output()
+		if err != nil {
+			return
+		}
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			pid, err := strconv.Atoi(strings.TrimSpace(line))
+			if err != nil || pid == os.Getpid() {
+				continue
+			}
+			if p, err := os.FindProcess(pid); err == nil {
+				p.Signal(syscall.SIGTERM)
+				fmt.Printf("  \u2713 Stopped old tray (pid %d)\n", pid)
+			}
+		}
 	}
 }
