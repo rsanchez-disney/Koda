@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"os/exec"
 	"strings"
+	"strconv"
+	"syscall"
 )
 
 const releaseURL = "https://api.github.com/repos/rsanchez-disney/Koda/releases/latest"
@@ -113,6 +116,9 @@ func Upgrade(currentVersion string) error {
 
 	fmt.Printf("\u2705 Upgraded: %s \u2192 %s\n", currentVersion, rel.TagName)
 
+	// Restart tray process if running
+	RestartTray(exePath)
+
 	// Install yax if not present
 	if !YaxInstalled() {
 		if err := YaxInstall(); err != nil {
@@ -121,4 +127,33 @@ func Upgrade(currentVersion string) error {
 	}
 
 	return nil
+}
+
+// RestartTray kills any running "koda tray" process and restarts it with the new binary.
+func RestartTray(exePath string) {
+	// Find running tray process
+	out, err := exec.Command("pgrep", "-f", "koda tray").Output()
+	if err != nil {
+		return // no tray running
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		pid, err := strconv.Atoi(strings.TrimSpace(line))
+		if err != nil || pid == os.Getpid() {
+			continue
+		}
+		// Kill old tray
+		if p, err := os.FindProcess(pid); err == nil {
+			p.Signal(syscall.SIGTERM)
+			fmt.Printf("  \u2713 Stopped old tray (pid %d)\n", pid)
+		}
+	}
+	// Start new tray in background
+	cmd := exec.Command(exePath, "tray")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+	if cmd.Start() == nil {
+		fmt.Printf("  \u2713 Started new tray (pid %d)\n", cmd.Process.Pid)
+		cmd.Process.Release()
+	}
 }
