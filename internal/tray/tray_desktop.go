@@ -3,6 +3,7 @@
 package tray
 
 import (
+	"time"
 	_ "embed"
 	"fmt"
 	"os"
@@ -90,6 +91,7 @@ func onReady() {
 			case <-mQuit.ClickedCh:
 				systray.Quit()
 			default:
+				time.Sleep(100 * time.Millisecond)
 				for _, wi := range wsItems {
 					select {
 					case <-wi.item.ClickedCh:
