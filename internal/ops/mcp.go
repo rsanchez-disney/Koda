@@ -57,7 +57,9 @@ func CopyMcpBundles(steerRoot string) int {
 		srcSet[e.Name()] = true
 		bundle := filepath.Join(srcDir, e.Name(), "dist", "index.cjs")
 		if _, err := os.Stat(bundle); err == nil {
-			dst := filepath.Join(dstBase, e.Name(), "dist")
+			dstDir := filepath.Join(dstBase, e.Name())
+			os.RemoveAll(dstDir) // clean stale files from previous installs
+			dst := filepath.Join(dstDir, "dist")
 			os.MkdirAll(dst, 0755)
 			copyFile(bundle, filepath.Join(dst, "index.cjs"))
 			count++
@@ -137,7 +139,7 @@ func GenerateMcpJson(nodeExe string) error {
 		servers["jira"] = mcpServer{Command: nodeExe, Args: []string{jiraBundle}, Env: env}
 	} else {
 		for _, inst := range jiraInstances {
-			env := map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL}
+			env := map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL, "JIRA_INSTANCE_PREFIX": inst.Name + "_"}
 			if inst.Email != "" {
 				env["JIRA_EMAIL"] = inst.Email
 			}
@@ -511,7 +513,7 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 			} else {
 				for _, inst := range jiraInstances {
 					entry := mcpServer{Command: "node", Args: []string{jiraBundle},
-						Env: map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL}}
+						Env: map[string]string{"JIRA_PAT": inst.Token, "JIRA_URL": inst.URL, "JIRA_INSTANCE_PREFIX": inst.Name + "_"}}
 					servers["jira-"+inst.Name] = entry
 				}
 			}
