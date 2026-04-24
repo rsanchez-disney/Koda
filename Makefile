@@ -136,10 +136,11 @@ publish-steer: pack-steer ## Upload steer-runtime tarball to public repo (make p
 	fi
 	@echo "Uploaded steer-runtime tarball to rsanchez-disney/steer-runtime $(TAG)"
 
-STEER_ROOT    ?= ../steer-runtime
+STEER_ROOT     ?= ../steer-runtime
 AUTOPILOT_ROOT ?= ../steer-autopilot
+KITESTREAM_ROOT ?= ../KiteStream
 
-publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime + steer-autopilot
+publish-all: ## Pull, detect changes, auto-version, publish all repos with changes
 	@echo "=== Pulling latest ==="
 	@git pull --ff-only 2>/dev/null || true
 	@git -C $(STEER_ROOT) checkout main 2>/dev/null && git -C $(STEER_ROOT) pull --ff-only 2>/dev/null || true
@@ -153,15 +154,12 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 		PATCH=$$(echo $$KODA_LAST | sed 's/v//' | cut -d. -f3); \
 		NEXT="v$$MAJOR.$$MINOR.$$((PATCH + 1))"; \
 		echo "Koda: $$KODA_COMMITS commits since $$KODA_LAST → $$NEXT"; \
-		read -p "  Publish Koda $$NEXT? [y/N]: " ans; \
-		if [ "$$ans" = "y" ]; then \
-			$(MAKE) release TAG=$$NEXT; \
-			echo "  Cleaning old Koda releases (keeping last 3)..."; \
-			sleep 3; \
-			GH_HOST=github.com gh release list --repo $(PUB_REPO) --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
-				sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
-				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo $(PUB_REPO) --yes --cleanup-tag 2>/dev/null || true; done; \
-		fi; \
+		$(MAKE) release TAG=$$NEXT; \
+		echo "  Cleaning old Koda releases (keeping last 3)..."; \
+		sleep 3; \
+		GH_HOST=github.com gh release list --repo $(PUB_REPO) --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
+			sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
+			while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo $(PUB_REPO) --yes --cleanup-tag 2>/dev/null || true; done; \
 	else \
 		echo "Koda: up to date ($$KODA_LAST)"; \
 	fi
@@ -181,21 +179,18 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 		NEXT="v$$MAJOR.$$MINOR.$$((PATCH + 1))"; \
 		echo "steer-runtime: $$STEER_COMMITS commits since $$STEER_LAST → $$NEXT"; \
 		git -C $(STEER_ROOT) log $$STEER_LAST..HEAD --oneline 2>/dev/null | head -5; \
-		read -p "  Publish steer-runtime $$NEXT? [y/N]: " ans; \
-		if [ "$$ans" = "y" ]; then \
-			echo "  Rebuilding MCP bundles..."; \
-			$(MAKE) -C $(STEER_ROOT) mcp-build 2>&1 | grep -E "✅|⚠"; \
-			git -C $(STEER_ROOT) add -A 2>/dev/null; \
-			git -C $(STEER_ROOT) diff --cached --quiet || git -C $(STEER_ROOT) commit -m "chore: rebuild MCP bundles" 2>/dev/null; \
-			git -C $(STEER_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
-			git -C $(STEER_ROOT) push origin $$NEXT 2>/dev/null; \
-			$(MAKE) publish-steer TAG=$$NEXT STEER_ROOT=$(STEER_ROOT); \
-			echo "  Cleaning old steer-runtime releases (keeping last 3)..."; \
-			sleep 3; \
-			GH_HOST=github.com gh release list --repo rsanchez-disney/steer-runtime --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
-				sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
-				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-runtime --yes --cleanup-tag 2>/dev/null || true; done; \
-		fi; \
+		echo "  Rebuilding MCP bundles..."; \
+		$(MAKE) -C $(STEER_ROOT) mcp-build 2>&1 | grep -E "✅|⚠"; \
+		git -C $(STEER_ROOT) add -A 2>/dev/null; \
+		git -C $(STEER_ROOT) diff --cached --quiet || git -C $(STEER_ROOT) commit -m "chore: rebuild MCP bundles" 2>/dev/null; \
+		git -C $(STEER_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
+		git -C $(STEER_ROOT) push origin $$NEXT 2>/dev/null; \
+		$(MAKE) publish-steer TAG=$$NEXT STEER_ROOT=$(STEER_ROOT); \
+		echo "  Cleaning old steer-runtime releases (keeping last 3)..."; \
+		sleep 3; \
+		GH_HOST=github.com gh release list --repo rsanchez-disney/steer-runtime --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
+			sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
+			while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-runtime --yes --cleanup-tag 2>/dev/null || true; done; \
 	else \
 		echo "steer-runtime: up to date ($$STEER_LAST)"; \
 	fi
@@ -216,22 +211,57 @@ publish-all: ## Pull, detect changes, auto-version, publish Koda + steer-runtime
 			NEXT="v$$MAJOR.$$MINOR.$$((PATCH + 1))"; \
 			echo "steer-autopilot: $$AP_COMMITS commits since $$AP_LAST → $$NEXT"; \
 			git -C $(AUTOPILOT_ROOT) log $$AP_LAST..HEAD --oneline 2>/dev/null | head -5; \
-			read -p "  Publish steer-autopilot $$NEXT? [y/N]: " ans; \
-			if [ "$$ans" = "y" ]; then \
-				git -C $(AUTOPILOT_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
-				git -C $(AUTOPILOT_ROOT) push origin $$NEXT 2>/dev/null; \
-				$(MAKE) -C $(AUTOPILOT_ROOT) release TAG=$$NEXT; \
-				echo "  Cleaning old autopilot releases (keeping last 3)..."; \
-				sleep 3; \
-				GH_HOST=github.com gh release list --repo rsanchez-disney/steer-autopilot --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
-					sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
-					while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-autopilot --yes --cleanup-tag 2>/dev/null || true; done; \
-			fi; \
+			git -C $(AUTOPILOT_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
+			git -C $(AUTOPILOT_ROOT) push origin $$NEXT 2>/dev/null; \
+			$(MAKE) -C $(AUTOPILOT_ROOT) release TAG=$$NEXT; \
+			echo "  Cleaning old autopilot releases (keeping last 3)..."; \
+			sleep 3; \
+			GH_HOST=github.com gh release list --repo rsanchez-disney/steer-autopilot --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
+				sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
+				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/steer-autopilot --yes --cleanup-tag 2>/dev/null || true; done; \
 		else \
 			echo "steer-autopilot: up to date ($$AP_LAST)"; \
 		fi; \
 	else \
 		echo "steer-autopilot: not found at $(AUTOPILOT_ROOT) — skipping"; \
+	fi
+	@echo ""
+	@# --- KiteStream ---
+	@if [ -d "$(KITESTREAM_ROOT)" ]; then \
+		git -C $(KITESTREAM_ROOT) checkout main 2>/dev/null && git -C $(KITESTREAM_ROOT) pull --ff-only 2>/dev/null || true; \
+		KS_LAST=$$(GH_HOST=github.com gh release list --repo rsanchez-disney/KiteStream --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null); \
+		git -C $(KITESTREAM_ROOT) fetch --tags 2>/dev/null; \
+		if [ -n "$$KS_LAST" ] && git -C $(KITESTREAM_ROOT) rev-parse "$$KS_LAST" >/dev/null 2>&1; then \
+			KS_COMMITS=$$(git -C $(KITESTREAM_ROOT) log $$KS_LAST..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
+		else \
+			KS_COMMITS=999; \
+		fi; \
+		if [ "$$KS_COMMITS" -gt 0 ]; then \
+			if [ -n "$$KS_LAST" ]; then \
+				MAJOR=$$(echo $$KS_LAST | sed 's/v//' | cut -d. -f1); \
+				MINOR=$$(echo $$KS_LAST | sed 's/v//' | cut -d. -f2); \
+				PATCH=$$(echo $$KS_LAST | sed 's/v//' | cut -d. -f3); \
+				NEXT="v$$MAJOR.$$MINOR.$$((PATCH + 1))"; \
+			else \
+				NEXT="v0.1.0"; \
+			fi; \
+			echo "KiteStream: $$KS_COMMITS commits since $${KS_LAST:-none} → $$NEXT"; \
+			git -C $(KITESTREAM_ROOT) log $${KS_LAST:+$$KS_LAST..}HEAD --oneline 2>/dev/null | head -5; \
+			git -C $(KITESTREAM_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
+			git -C $(KITESTREAM_ROOT) push origin $$NEXT 2>/dev/null; \
+			if [ -f "$(KITESTREAM_ROOT)/Makefile" ]; then \
+				$(MAKE) -C $(KITESTREAM_ROOT) release TAG=$$NEXT 2>/dev/null || true; \
+			fi; \
+			echo "  Cleaning old KiteStream releases (keeping last 3)..."; \
+			sleep 3; \
+			GH_HOST=github.com gh release list --repo rsanchez-disney/KiteStream --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
+				sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
+				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/KiteStream --yes --cleanup-tag 2>/dev/null || true; done; \
+		else \
+			echo "KiteStream: up to date ($$KS_LAST)"; \
+		fi; \
+	else \
+		echo "KiteStream: not found at $(KITESTREAM_ROOT) — skipping"; \
 	fi
 	@echo ""
 	@echo "Done."
