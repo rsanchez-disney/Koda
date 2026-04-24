@@ -142,13 +142,18 @@ type mcpItem struct {
 	hasBundle bool
 }
 
-// cleanKey strips terminal bracket-paste markers from pasted text.
-// Bubbletea wraps pasted text in [...] when Paste=true on KeyMsg.
+// cleanKey returns printable text from a key event.
+// For pasted text (bracketed paste), returns the full pasted string.
+// For normal keypresses, returns the rune only if it's a regular character
+// (filters out ctrl+*, arrow keys, function keys, etc.).
 func cleanKey(msg tea.KeyMsg) string {
 	if msg.Paste {
 		return string(msg.Runes)
 	}
-	return msg.String()
+	if msg.Type == tea.KeyRunes {
+		return string(msg.Runes)
+	}
+	return ""
 }
 
 type editorFinishedMsg struct{ err error }
