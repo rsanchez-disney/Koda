@@ -19,6 +19,7 @@ run: build ## Build and launch TUI
 install: build ## Copy binary to ~/.local/bin
 	mkdir -p ~/.local/bin
 	cp $(BIN) ~/.local/bin/$(APP)
+	-codesign -s - -f ~/.local/bin/$(APP) 2>/dev/null
 	@echo "Installed to ~/.local/bin/$(APP)"
 
 test: ## Run tests
