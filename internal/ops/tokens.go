@@ -446,12 +446,21 @@ func expandToolRefs(path string, expansions map[string][]string) {
 			continue
 		}
 		expanded := make([]string, 0, len(items))
+		seen := map[string]bool{}
 		for _, t := range items {
 			if replacements, ok := expansions[t]; ok {
-				expanded = append(expanded, replacements...)
+				for _, r := range replacements {
+					if !seen[r] {
+						expanded = append(expanded, r)
+						seen[r] = true
+					}
+				}
 				changed = true
 			} else {
-				expanded = append(expanded, t)
+				if !seen[t] {
+					expanded = append(expanded, t)
+					seen[t] = true
+				}
 			}
 		}
 		if b, err := json.Marshal(expanded); err == nil {
