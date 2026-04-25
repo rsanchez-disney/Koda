@@ -153,4 +153,5 @@ func init() {
 	rootCmd.AddCommand(memoryCmd)
 	rootCmd.AddCommand(kiroIDECmd)
 	rootCmd.AddCommand(autopilotCmd)
+	rootCmd.AddCommand(kitestreamCmd)
 }

@@ -194,10 +194,15 @@ func spawnInternal(agent, cwd string) (*Client, error) {
 }
 
 // CreateSession creates a new ACP session.
-func (c *Client) CreateSession(agent string) error {
+// cwd sets the working directory context; if empty, defaults to ~/.kiro.
+func (c *Client) CreateSession(agent string, cwd ...string) error {
 	home, _ := os.UserHomeDir()
+	dir := home + "/.kiro"
+	if len(cwd) > 0 && cwd[0] != "" {
+		dir = cwd[0]
+	}
 	params := map[string]interface{}{
-		"cwd":        home + "/.kiro",
+		"cwd":        dir,
 		"mcpServers": []interface{}{},
 	}
 	if agent != "" {
@@ -239,6 +244,11 @@ func (c *Client) SendMessage(content string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.stdin.Encode(req)
+}
+
+// SessionID returns the current session ID.
+func (c *Client) SessionID() string {
+	return c.sessionID
 }
 
 // Close kills the subprocess.

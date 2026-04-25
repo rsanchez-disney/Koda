@@ -14,6 +14,8 @@ import (
 	"github.com/getlantern/systray"
 
 	"github.disney.com/SANCR225/koda/internal/config"
+	"github.disney.com/SANCR225/koda/internal/kitestream"
+	"github.disney.com/SANCR225/koda/internal/pkg"
 	"github.disney.com/SANCR225/koda/internal/ops"
 )
 
@@ -66,6 +68,12 @@ func onReady() {
 	mWorkspaces := systray.AddMenuItem("Workspaces", "Switch workspace")
 	wsItems := refreshWorkspaces(mWorkspaces)
 
+	// KiteStream
+	var mKiteStream *systray.MenuItem
+	if pkg.IsInstalled("kitestream") {
+		mKiteStream = systray.AddMenuItem("🪁 Open KiteStream", "Launch KiteStream in browser")
+	}
+
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Quit", "")
 
@@ -88,6 +96,18 @@ func onReady() {
 					}
 					wsItems = refreshWorkspaces(mWorkspaces)
 				}
+			default:
+			}
+			// KiteStream click (outside select to avoid nil channel)
+			if mKiteStream != nil {
+				select {
+				case <-mKiteStream.ClickedCh:
+					target := config.TargetDir("")
+					kitestream.Launch(steerRoot, target, kitestream.DefaultPort)
+				default:
+				}
+			}
+			select {
 			case <-mQuit.ClickedCh:
 				systray.Quit()
 			default:
