@@ -177,7 +177,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	resolved, wsNames := ResolveWorkspace(steerRoot, ws)
 
 	// Fetch latest steer-runtime before installing so profiles use updated source
-	fmt.Println("  Syncing steer-runtime...")
+	logln("  Syncing steer-runtime...")
 	s := config.ReadSteerSettings()
 	if s.Source == "git" {
 		syncGit(steerRoot)
@@ -189,7 +189,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 
 	// If switching from a different workspace, clean up its files first
 	if s.ActiveWorkspace != "" && s.ActiveWorkspace != ws.Name {
-		fmt.Printf("  Deactivating workspace '%s'...\n", s.ActiveWorkspace)
+		logf("  Deactivating workspace '%s'...\n", s.ActiveWorkspace)
 		DeactivateWorkspace(targetDir)
 	}
 
@@ -249,7 +249,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	if len(resolved.Services) > 0 || len(resolved.Channels) > 0 {
 		svcN, chN := InstallBanks(steerRoot, targetDir, resolved.Services, resolved.Channels)
 		if svcN > 0 || chN > 0 {
-			fmt.Printf("  \u2713 %d service banks, %d channel banks\n", svcN, chN)
+			logf("  \u2713 %d service banks, %d channel banks\n", svcN, chN)
 		}
 	}
 
@@ -258,21 +258,21 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 		projPath := resolveProjectPath(resolved.WorkspacePath, p.Path, steerRoot)
 		if _, err := os.Stat(filepath.Join(projPath, ".git")); err != nil {
 			if p.Repo != "" && resolved.WorkspacePath != "" {
-				fmt.Printf("  Cloning %s...\n", p.Name)
+				logf("  Cloning %s...\n", p.Name)
 				url := GitCloneURL(p.Repo)
 				if err := exec.Command("git", "clone", url, projPath).Run(); err != nil {
-					fmt.Printf("  ✗ %s (clone failed: %v)\n", p.Name, err)
+					logf("  ✗ %s (clone failed: %v)\n", p.Name, err)
 					continue
 				}
-				fmt.Printf("  ✓ %s cloned\n", p.Name)
+				logf("  ✓ %s cloned\n", p.Name)
 			} else {
-				fmt.Printf("  ⏭ %s (not cloned)\n", p.Name)
+				logf("  ⏭ %s (not cloned)\n", p.Name)
 				continue
 			}
 		}
 		mbPath := filepath.Join(projPath, ".kiro", config.RulesDir, "memory-bank")
 		if entries, _ := os.ReadDir(mbPath); len(entries) == 0 {
-			fmt.Printf("  Initializing memory bank for %s...\n", p.Name)
+			logf("  Initializing memory bank for %s...\n", p.Name)
 			from := p.MemoryBank
 			if from == "" {
 				from = p.Name
@@ -297,7 +297,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	// Update default agent for this workspace
 	if agent := SuggestDefaultAgent(steerRoot, targetDir); agent != "" {
 		SetKiroSetting("chat.defaultAgent", agent)
-		fmt.Printf("  ✓ kiro: chat.defaultAgent = %s\n", agent)
+		logf("  ✓ kiro: chat.defaultAgent = %s\n", agent)
 	}
 
 	return nil

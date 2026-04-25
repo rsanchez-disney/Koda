@@ -79,11 +79,11 @@ func syncGit(steerRoot string) error {
 
 	if dirty != "" {
 		lines := strings.Split(dirty, "\n")
-		fmt.Printf("  ⚠️  %d local changes detected — auto-stashing\n", len(lines))
+		logf("  ⚠️  %d local changes detected — auto-stashing\n", len(lines))
 		exec.Command("git", "-C", steerRoot, "stash", "push", "-m", "koda-sync-auto-stash").Run()
 		defer func() {
 			exec.Command("git", "-C", steerRoot, "stash", "pop").Run()
-			fmt.Println("  ✓ Local changes restored from stash")
+			logln("  ✓ Local changes restored from stash")
 		}()
 	}
 
@@ -115,13 +115,13 @@ func commitLocalChanges(steerRoot string) error {
 	
 	// Push
 	if err := exec.Command("git", "-C", steerRoot, "push", "-u", "origin", branch).Run(); err != nil {
-		fmt.Printf("  ⚠ Push failed: %v\n", err)
-		fmt.Printf("  Changes committed to local branch: %s\n", branch)
+		logf("  ⚠ Push failed: %v\n", err)
+		logf("  Changes committed to local branch: %s\n", branch)
 		return nil
 	}
 	
-	fmt.Printf("  ✓ Changes committed and pushed to branch: %s\n", branch)
-	fmt.Println("  💡 Create a PR with: gh pr create --base main")
+	logf("  ✓ Changes committed and pushed to branch: %s\n", branch)
+	logln("  💡 Create a PR with: gh pr create --base main")
 	
 	// Return to main for sync
 	exec.Command("git", "-C", steerRoot, "checkout", "main").Run()

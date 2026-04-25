@@ -159,9 +159,11 @@ func cleanKey(msg tea.KeyMsg) string {
 type editorFinishedMsg struct{ err error }
 
 func Run(steerRoot, targetDir, version string) (bool, error) {
+	ops.Quiet = true
 	m := initialModel(steerRoot, targetDir, version)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	finalModel, err := p.Run()
+	ops.Quiet = false
 	if err != nil {
 		return false, err
 	}

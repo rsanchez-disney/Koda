@@ -12,6 +12,21 @@ import (
 	"github.disney.com/SANCR225/koda/internal/model"
 )
 
+// Quiet suppresses stdout output from ops functions. Set to true when running inside the TUI.
+var Quiet bool
+
+func logf(format string, a ...interface{}) {
+	if !Quiet {
+		fmt.Printf(format, a...)
+	}
+}
+
+func logln(a ...interface{}) {
+	if !Quiet {
+		fmt.Println(a...)
+	}
+}
+
 // ExpandAliases expands profile aliases (e.g., "dev" → dev-core, dev-web, dev-mobile)
 // and deduplicates the result.
 func ExpandAliases(names []string) []string {
