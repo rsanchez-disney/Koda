@@ -79,39 +79,12 @@ func syncGit(steerRoot string) error {
 
 	if dirty != "" {
 		lines := strings.Split(dirty, "\n")
-		fmt.Printf("\n⚠️  Local changes detected in steer-runtime (%d files):\n", len(lines))
-		for _, line := range lines {
-			if len(lines) <= 10 {
-				fmt.Printf("   %s\n", line)
-			}
-		}
-		if len(lines) > 10 {
-			fmt.Printf("   ... and %d more\n", len(lines)-10)
-		}
-		fmt.Println()
-		fmt.Println("Options:")
-		fmt.Println("  1. Stash changes and sync (changes preserved, restored after)")
-		fmt.Println("  2. Skip sync (keep local changes, no update)")
-		fmt.Println("  3. Commit changes to a branch (creates feat/local-changes branch)")
-		fmt.Print("\nChoice [1/2/3]: ")
-
-		var choice string
-		fmt.Scanln(&choice)
-
-		switch strings.TrimSpace(choice) {
-		case "2":
-			fmt.Println("  ⏭ Sync skipped — local changes preserved")
-			return nil
-		case "3":
-			return commitLocalChanges(steerRoot)
-		default:
-			// Stash, pull, pop
-			exec.Command("git", "-C", steerRoot, "stash", "push", "-m", "koda-sync-auto-stash").Run()
-			defer func() {
-				exec.Command("git", "-C", steerRoot, "stash", "pop").Run()
-				fmt.Println("  ✓ Local changes restored from stash")
-			}()
-		}
+		fmt.Printf("  ⚠️  %d local changes detected — auto-stashing\n", len(lines))
+		exec.Command("git", "-C", steerRoot, "stash", "push", "-m", "koda-sync-auto-stash").Run()
+		defer func() {
+			exec.Command("git", "-C", steerRoot, "stash", "pop").Run()
+			fmt.Println("  ✓ Local changes restored from stash")
+		}()
 	}
 
 	cmd := exec.Command("git", "-C", steerRoot, "pull", "--ff-only")
