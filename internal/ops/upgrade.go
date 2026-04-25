@@ -131,19 +131,53 @@ func Upgrade(currentVersion string) error {
 
 // RestartTray kills any running "koda tray" process and restarts it with the new binary.
 func RestartTray(exePath string) {
-	killOldTray()
-	// Start new tray in background
+	KillTray()
+	LaunchTray(exePath)
+}
+
+// LaunchTray starts the tray process in the background.
+func LaunchTray(exePath string) {
 	cmd := exec.Command(exePath, "tray")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Stdin = nil
 	if cmd.Start() == nil {
-		fmt.Printf("  \u2713 Started new tray (pid %d)\n", cmd.Process.Pid)
 		cmd.Process.Release()
 	}
 }
 
-func killOldTray() {
+// IsTrayRunning checks if a "koda tray" process is alive.
+func IsTrayRunning() bool {
+	if runtime.GOOS == "windows" {
+		out, err := exec.Command("wmic", "process", "where",
+			"commandline like '%koda%tray%' and not commandline like '%wmic%'",
+			"get", "processid").Output()
+		if err != nil {
+			return false
+		}
+		for _, line := range strings.Split(string(out), "\n") {
+			pid, err := strconv.Atoi(strings.TrimSpace(line))
+			if err == nil && pid != os.Getpid() {
+				return true
+			}
+		}
+		return false
+	}
+	out, err := exec.Command("pgrep", "-f", "koda tray").Output()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		pid, err := strconv.Atoi(strings.TrimSpace(line))
+		if err == nil && pid != os.Getpid() {
+			return true
+		}
+	}
+	return false
+}
+
+// KillTray stops any running "koda tray" process.
+func KillTray() {
 	if runtime.GOOS == "windows" {
 		// Windows: taskkill /IM koda.exe /F filters by window title not possible,
 		// so we use wmic to find "koda tray" command line

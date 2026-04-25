@@ -2631,10 +2631,15 @@ func (m model) updateKiroIDE(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "t":
 		if tray.AutoStartEnabled() {
 			tray.DisableAutoStart()
-			m.statusMsg = "Tray auto-start disabled"
+			ops.KillTray()
+			m.statusMsg = "Tray stopped and auto-start disabled"
 		} else {
 			if err := tray.EnableAutoStart(); err == nil {
-				m.statusMsg = "Tray auto-start enabled"
+				if !ops.IsTrayRunning() {
+					bin, _ := os.Executable()
+					ops.LaunchTray(bin)
+				}
+				m.statusMsg = "Tray launched and auto-start enabled"
 			} else {
 				m.statusMsg = "Tray: " + err.Error()
 			}
