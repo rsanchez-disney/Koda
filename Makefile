@@ -198,9 +198,8 @@ publish-all: ## Pull, detect changes, auto-version, publish all repos with chang
 	@echo ""
 	@# --- steer-autopilot ---
 	@if [ -d "$(AUTOPILOT_ROOT)" ]; then \
-		AP_LAST=$$(GH_HOST=github.com gh release list --repo rsanchez-disney/steer-autopilot --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null); \
-		git -C $(AUTOPILOT_ROOT) fetch --tags 2>/dev/null; \
-		if git -C $(AUTOPILOT_ROOT) rev-parse "$$AP_LAST" >/dev/null 2>&1; then \
+		AP_LAST=$$(git -C $(AUTOPILOT_ROOT) tag --sort=-v:refname | head -1); \
+		if [ -n "$$AP_LAST" ]; then \
 			AP_COMMITS=$$(git -C $(AUTOPILOT_ROOT) log $$AP_LAST..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
 		else \
 			AP_COMMITS=999; \
