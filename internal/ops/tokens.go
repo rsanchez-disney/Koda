@@ -445,7 +445,7 @@ func expandToolRefs(path string, expansions map[string][]string) {
 		if json.Unmarshal(fieldRaw, &items) != nil {
 			continue
 		}
-		var expanded []string
+		expanded := make([]string, 0, len(items))
 		for _, t := range items {
 			if replacements, ok := expansions[t]; ok {
 				expanded = append(expanded, replacements...)
