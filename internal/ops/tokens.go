@@ -406,8 +406,9 @@ func InjectAgentTokens(targetDir string) error {
 	if len(confInstances) > 1 {
 		for _, inst := range confInstances {
 			toolExpansions["@confluence/*"] = append(toolExpansions["@confluence/*"], "@confluence-"+inst.Name+"/*")
-			toolExpansions["@mywiki/*"] = append(toolExpansions["@mywiki/*"], "@confluence-"+inst.Name+"/*")
 		}
+		// @mywiki/* is an alias for the "mywiki" confluence instance only
+		toolExpansions["@mywiki/*"] = []string{"@confluence-mywiki/*"}
 	}
 
 	for _, e := range entries {
@@ -434,28 +435,30 @@ func expandToolRefs(path string, expansions map[string][]string) {
 	if json.Unmarshal(data, &raw) != nil {
 		return
 	}
-	toolsRaw, ok := raw["tools"]
-	if !ok {
-		return
-	}
-	var tools []string
-	if json.Unmarshal(toolsRaw, &tools) != nil {
-		return
-	}
-	var expanded []string
 	changed := false
-	for _, t := range tools {
-		if replacements, ok := expansions[t]; ok {
-			expanded = append(expanded, replacements...)
-			changed = true
-		} else {
-			expanded = append(expanded, t)
+	for _, field := range []string{"tools", "allowedTools"} {
+		fieldRaw, ok := raw[field]
+		if !ok {
+			continue
+		}
+		var items []string
+		if json.Unmarshal(fieldRaw, &items) != nil {
+			continue
+		}
+		var expanded []string
+		for _, t := range items {
+			if replacements, ok := expansions[t]; ok {
+				expanded = append(expanded, replacements...)
+				changed = true
+			} else {
+				expanded = append(expanded, t)
+			}
+		}
+		if b, err := json.Marshal(expanded); err == nil {
+			raw[field] = b
 		}
 	}
 	if changed {
-		if b, err := json.Marshal(expanded); err == nil {
-			raw["tools"] = b
-		}
 		if out, err := json.MarshalIndent(raw, "", "  "); err == nil {
 			os.WriteFile(path, append(out, '\n'), 0644)
 		}
