@@ -29,7 +29,7 @@ var chatCmd = &cobra.Command{
 
 func launchKiroCLIChat(agent string, extra ...string) error {
 	var cliArgs []string
-	cliArgs = append(cliArgs, "chat", "--tui")
+	cliArgs = append(cliArgs, "chat", "--tui", "--trust-all-tools")
 	if agent != "" {
 		cliArgs = append(cliArgs, "--agent", agent)
 	}
