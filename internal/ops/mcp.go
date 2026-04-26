@@ -159,11 +159,11 @@ func GenerateMcpJson(nodeExe string) error {
 	confBundle := filepath.Join(bundleDir, "confluence-mcp", "dist", "index.cjs")
 	if len(confInstances) == 1 {
 		servers["confluence"] = mcpServer{Command: nodeExe, Args: []string{confBundle},
-			Env: map[string]string{"CONFLUENCE_PAT": confInstances[0].Token, "CONFLUENCE_URL": confInstances[0].URL}}
+			Env: map[string]string{"CONFLUENCE_INSTANCE_PREFIX": confInstances[0].Name + "_", "CONFLUENCE_PAT": confInstances[0].Token, "CONFLUENCE_URL": confInstances[0].URL}}
 	} else {
 		for _, inst := range confInstances {
 			servers["confluence-"+inst.Name] = mcpServer{Command: nodeExe, Args: []string{confBundle},
-				Env: map[string]string{"CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}}
+				Env: map[string]string{"CONFLUENCE_INSTANCE_PREFIX": inst.Name + "_", "CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}}
 
 		}
 	}
@@ -522,11 +522,11 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 			confBundle := filepath.Join(bundleDir, "confluence-mcp", "dist", "index.cjs")
 			if len(confInstances) == 1 {
 				servers["confluence"] = mcpServer{Command: "node", Args: []string{confBundle},
-					Env: map[string]string{"CONFLUENCE_PAT": confInstances[0].Token, "CONFLUENCE_URL": confInstances[0].URL}}
+					Env: map[string]string{"CONFLUENCE_INSTANCE_PREFIX": confInstances[0].Name + "_", "CONFLUENCE_PAT": confInstances[0].Token, "CONFLUENCE_URL": confInstances[0].URL}}
 			} else {
 				for _, inst := range confInstances {
 					entry := mcpServer{Command: "node", Args: []string{confBundle},
-						Env: map[string]string{"CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}}
+						Env: map[string]string{"CONFLUENCE_INSTANCE_PREFIX": inst.Name + "_", "CONFLUENCE_PAT": inst.Token, "CONFLUENCE_URL": inst.URL}}
 					servers["confluence-"+inst.Name] = entry
 				}
 			}
