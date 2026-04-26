@@ -79,50 +79,81 @@ func onReady() {
 
 	// Event loop
 	go func() {
+		// Build a ticker for polling workspace clicks
+		tick := time.NewTicker(100 * time.Millisecond)
+		defer tick.Stop()
+
 		for {
-			select {
-			case <-mSync.ClickedCh:
-				mStatus.SetTitle("⏳ Syncing...")
-				target := config.TargetDir("")
-				if err := ops.SyncSteerRuntime(steerRoot, target); err != nil {
-					mStatus.SetTitle("✗ Sync failed")
-				} else {
-					refreshStatus(mStatus)
-					refreshVersions(mVer)
-					refreshHealth(mHealth)
-					// Rebuild workspace submenu after sync
-					for _, wi := range wsItems {
-						wi.item.Hide()
-					}
-					wsItems = refreshWorkspaces(mWorkspaces)
-				}
-			default:
-			}
-			// KiteStream click (outside select to avoid nil channel)
+			// Primary select: handle all menu clicks
 			if mKiteStream != nil {
 				select {
+				case <-mQuit.ClickedCh:
+					systray.Quit()
+					return
+				case <-mSync.ClickedCh:
+					mStatus.SetTitle("⏳ Syncing...")
+					target := config.TargetDir("")
+					if err := ops.SyncSteerRuntime(steerRoot, target); err != nil {
+						mStatus.SetTitle("✗ Sync failed")
+					} else {
+						refreshStatus(mStatus)
+						refreshVersions(mVer)
+						refreshHealth(mHealth)
+						for _, wi := range wsItems {
+							wi.item.Hide()
+						}
+						wsItems = refreshWorkspaces(mWorkspaces)
+					}
 				case <-mKiteStream.ClickedCh:
 					target := config.TargetDir("")
 					kitestream.Launch(steerRoot, target, kitestream.DefaultPort)
-				default:
-				}
-			}
-			select {
-			case <-mQuit.ClickedCh:
-				systray.Quit()
-			default:
-				time.Sleep(100 * time.Millisecond)
-				for _, wi := range wsItems {
-					select {
-					case <-wi.item.ClickedCh:
-						mStatus.SetTitle("⏳ Applying " + wi.name + "...")
-						target := config.TargetDir("")
-						ws, err := ops.GetWorkspace(steerRoot, wi.name)
-						if err == nil {
-							ops.ApplyWorkspace(steerRoot, target, ws)
-							refreshStatus(mStatus)
+				case <-tick.C:
+					for _, wi := range wsItems {
+						select {
+						case <-wi.item.ClickedCh:
+							mStatus.SetTitle("⏳ Applying " + wi.name + "...")
+							target := config.TargetDir("")
+							ws, err := ops.GetWorkspace(steerRoot, wi.name)
+							if err == nil {
+								ops.ApplyWorkspace(steerRoot, target, ws)
+								refreshStatus(mStatus)
+							}
+						default:
 						}
-					default:
+					}
+				}
+			} else {
+				select {
+				case <-mQuit.ClickedCh:
+					systray.Quit()
+					return
+				case <-mSync.ClickedCh:
+					mStatus.SetTitle("⏳ Syncing...")
+					target := config.TargetDir("")
+					if err := ops.SyncSteerRuntime(steerRoot, target); err != nil {
+						mStatus.SetTitle("✗ Sync failed")
+					} else {
+						refreshStatus(mStatus)
+						refreshVersions(mVer)
+						refreshHealth(mHealth)
+						for _, wi := range wsItems {
+							wi.item.Hide()
+						}
+						wsItems = refreshWorkspaces(mWorkspaces)
+					}
+				case <-tick.C:
+					for _, wi := range wsItems {
+						select {
+						case <-wi.item.ClickedCh:
+							mStatus.SetTitle("⏳ Applying " + wi.name + "...")
+							target := config.TargetDir("")
+							ws, err := ops.GetWorkspace(steerRoot, wi.name)
+							if err == nil {
+								ops.ApplyWorkspace(steerRoot, target, ws)
+								refreshStatus(mStatus)
+							}
+						default:
+						}
 					}
 				}
 			}
