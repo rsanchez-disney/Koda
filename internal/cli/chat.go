@@ -19,6 +19,46 @@ var (
 	chatNoTrust  bool
 )
 
+// resolveTrust returns whether to trust all tools, consulting saved preference
+// and prompting the user if needed. Flags override everything.
+func resolveTrust(flagTrustAll, flagNoTrust bool) bool {
+	if flagTrustAll {
+		return true
+	}
+	if flagNoTrust {
+		return false
+	}
+
+	s := config.ReadSteerSettings()
+	switch s.TrustTools {
+	case "all":
+		return true
+	case "none":
+		return false
+	}
+
+	// No saved preference — prompt
+	fmt.Print("Trust all tools? (Y/n/always/never): ")
+	var answer string
+	fmt.Scanln(&answer)
+	answer = strings.TrimSpace(strings.ToLower(answer))
+
+	switch answer {
+	case "always":
+		s.TrustTools = "all"
+		config.SaveSteerSettings(s)
+		fmt.Println("  ✓ Saved: always trust tools (reset with: koda chat --no-trust)")
+		return true
+	case "never":
+		s.TrustTools = "none"
+		config.SaveSteerSettings(s)
+		fmt.Println("  ✓ Saved: never trust tools (reset with: koda chat --trust-all)")
+		return false
+	default:
+		return answer == "" || strings.HasPrefix(answer, "y")
+	}
+}
+
 var chatCmd = &cobra.Command{
 	Use:   "chat [message]",
 	Short: "Start an interactive chat with a Kiro agent (proxies to kiro-cli --tui)",
@@ -28,14 +68,7 @@ var chatCmd = &cobra.Command{
 			agent = ops.SuggestDefaultAgent(steerRoot, config.TargetDir(projectDir))
 		}
 
-		trustAll := chatTrustAll
-		if !chatTrustAll && !chatNoTrust {
-			fmt.Print("Trust all tools? (Y/n): ")
-			var answer string
-			fmt.Scanln(&answer)
-			trustAll = answer == "" || strings.HasPrefix(strings.ToLower(answer), "y")
-		}
-
+		trustAll := resolveTrust(chatTrustAll, chatNoTrust)
 		return launchKiroCLIChat(agent, trustAll, args...)
 	},
 }

@@ -33,6 +33,7 @@ type SteerSettings struct {
 	AutoUpgrade     bool   `json:"autoUpgrade"`
 	ActiveWorkspace     string `json:"activeWorkspace"`
 	KiroSettingsApplied bool   `json:"kiroSettingsApplied,omitempty"`
+	TrustTools          string `json:"trustTools,omitempty"` // "all", "none", or "" (prompt)
 }
 
 func ReadSteerSettings() SteerSettings {
