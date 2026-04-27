@@ -325,8 +325,10 @@ func TestGeneratedConfigContainsExactlySelectedServers(t *testing.T) {
 			"SPLUNK_API_PASSWORD":     "tok-splunk-pass",
 			"APPD_CLIENT_ID":      "tok-appd-id",
 			"APPD_CLIENT_SECRET":  "tok-appd-secret",
-			"SNOW_API_USERNAME":       "tok-snow-user",
+"SNOW_API_USERNAME":       "tok-snow-user",
 			"SNOW_API_PASSWORD":       "tok-snow-pass",
+			"SHAREPOINT_CLIENT_ID":    "tok-sp-id",
+			"SHAREPOINT_CLIENT_SECRET": "tok-sp-secret",
 		}
 		if input.CompassToken {
 			tokens["COMPASS_TOKEN"] = "tok-compass"
@@ -342,6 +344,8 @@ func TestGeneratedConfigContainsExactlySelectedServers(t *testing.T) {
 			"SPLUNK_BASE_URL":   "https://splunk.example.com",
 			"APPD_CONTROLLER_URL": "https://appd.example.com",
 			"SNOW_INSTANCE":     "example",
+			"SHAREPOINT_TENANT_ID": "test-tenant-id",
+			"SHAREPOINT_SITE_URL":  "https://test.sharepoint.com/sites/test",
 		}
 
 		// --- Build GitHub remotes ---
@@ -667,8 +671,10 @@ func TestServerEntryStructureCorrectness(t *testing.T) {
 			"SPLUNK_API_PASSWORD":     "tok-splunk-pass",
 			"APPD_CLIENT_ID":      "tok-appd-id",
 			"APPD_CLIENT_SECRET":  "tok-appd-secret",
-			"SNOW_API_USERNAME":       "tok-snow-user",
+"SNOW_API_USERNAME":       "tok-snow-user",
 			"SNOW_API_PASSWORD":       "tok-snow-pass",
+			"SHAREPOINT_CLIENT_ID":    "tok-sp-id",
+			"SHAREPOINT_CLIENT_SECRET": "tok-sp-secret",
 		}
 
 		envVars := map[string]string{
@@ -681,6 +687,8 @@ func TestServerEntryStructureCorrectness(t *testing.T) {
 			"SPLUNK_BASE_URL":   "https://splunk.example.com",
 			"APPD_CONTROLLER_URL": "https://appd.example.com",
 			"SNOW_INSTANCE":     "example",
+			"SHAREPOINT_TENANT_ID": "test-tenant-id",
+			"SHAREPOINT_SITE_URL":  "https://test.sharepoint.com/sites/test",
 		}
 
 		// No GitHub remotes (github excluded from selection).
@@ -861,8 +869,10 @@ func TestConfigGenerationIsIdempotent(t *testing.T) {
 			"SPLUNK_API_PASSWORD":     "tok-splunk-pass",
 			"APPD_CLIENT_ID":      "tok-appd-id",
 			"APPD_CLIENT_SECRET":  "tok-appd-secret",
-			"SNOW_API_USERNAME":       "tok-snow-user",
+"SNOW_API_USERNAME":       "tok-snow-user",
 			"SNOW_API_PASSWORD":       "tok-snow-pass",
+			"SHAREPOINT_CLIENT_ID":    "tok-sp-id",
+			"SHAREPOINT_CLIENT_SECRET": "tok-sp-secret",
 		}
 		if input.CompassToken {
 			tokens["COMPASS_TOKEN"] = "tok-compass"
@@ -878,6 +888,8 @@ func TestConfigGenerationIsIdempotent(t *testing.T) {
 			"SPLUNK_BASE_URL":   "https://splunk.example.com",
 			"APPD_CONTROLLER_URL": "https://appd.example.com",
 			"SNOW_INSTANCE":     "example",
+			"SHAREPOINT_TENANT_ID": "test-tenant-id",
+			"SHAREPOINT_SITE_URL":  "https://test.sharepoint.com/sites/test",
 		}
 
 		// --- Build GitHub remotes (0, 1, or 2) ---

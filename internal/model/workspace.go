@@ -57,8 +57,10 @@ var KnownTokens = []Token{
 	{Key: "SPLUNK_API_PASSWORD", Label: "Splunk API Password", Hint: "Splunk API service account password"},
 	{Key: "APPD_CLIENT_ID", Label: "AppDynamics Client ID", Hint: "Format: client-name@account-name"},
 	{Key: "APPD_CLIENT_SECRET", Label: "AppDynamics Client Secret", Hint: "OAuth client secret from AppDynamics"},
-	{Key: "SNOW_API_USERNAME", Label: "ServiceNow API Username", Hint: "ServiceNow API service account"},
+{Key: "SNOW_API_USERNAME", Label: "ServiceNow API Username", Hint: "ServiceNow API service account"},
 	{Key: "SNOW_API_PASSWORD", Label: "ServiceNow API Password", Hint: "ServiceNow API service account password"},
+	{Key: "SHAREPOINT_CLIENT_ID", Label: "SharePoint Client ID", Hint: "Azure AD app registration client ID"},
+	{Key: "SHAREPOINT_CLIENT_SECRET", Label: "SharePoint Client Secret", Hint: "Azure AD app registration client secret"},
 }
 
 // EnvVar represents a managed environment variable.
@@ -121,4 +123,6 @@ var KnownEnvVars = []EnvVar{
 	{Key: "SPLUNK_BASE_URL", Default: "https://splunk.wdprapps.disney.com:8089", Description: "Splunk REST API base URL"},
 	{Key: "APPD_CONTROLLER_URL", Default: "https://disney-prod.saas.appdynamics.com", Description: "AppDynamics controller URL"},
 	{Key: "SNOW_INSTANCE", Default: "https://disney.service-now.com", Description: "ServiceNow instance URL"},
+	{Key: "SHAREPOINT_TENANT_ID", Default: "", Description: "Azure AD tenant ID for SharePoint"},
+	{Key: "SHAREPOINT_SITE_URL", Default: "", Description: "Default SharePoint site URL (e.g., https://tenant.sharepoint.com/sites/mysite)"},
 }

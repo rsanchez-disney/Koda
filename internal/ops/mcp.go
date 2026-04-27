@@ -34,7 +34,9 @@ var knownServers = []MCPServer{
 	{Name: "qtest", BundleDir: "qtest-mcp", TokenKeys: []string{"QTEST_BEARER_TOKEN"}, EnvKeys: []string{"QTEST_BASE_URL", "QTEST_PROJECT_ID"}},
 	{Name: "splunk-mcp", BundleDir: "splunk-mcp", TokenKeys: []string{"SPLUNK_API_USERNAME", "SPLUNK_API_PASSWORD"}, EnvKeys: []string{"SPLUNK_BASE_URL"}},
 	{Name: "appdynamics-mcp", BundleDir: "appdynamics-mcp", TokenKeys: []string{"APPD_CLIENT_ID", "APPD_CLIENT_SECRET"}, EnvKeys: []string{"APPD_CONTROLLER_URL"}},
-	{Name: "servicenow-mcp", BundleDir: "servicenow-mcp", TokenKeys: []string{"SNOW_API_USERNAME", "SNOW_API_PASSWORD"}, EnvKeys: []string{"SNOW_INSTANCE"}},
+{Name: "servicenow-mcp", BundleDir: "servicenow-mcp", TokenKeys: []string{"SNOW_API_USERNAME", "SNOW_API_PASSWORD"}, EnvKeys: []string{"SNOW_INSTANCE"}},
+	{Name: "chrome", BundleDir: "chrome-mcp"},
+	{Name: "sharepoint", BundleDir: "sharepoint-mcp", TokenKeys: []string{"SHAREPOINT_CLIENT_ID", "SHAREPOINT_CLIENT_SECRET"}, EnvKeys: []string{"SHAREPOINT_TENANT_ID", "SHAREPOINT_SITE_URL"}},
 }
 
 // CopyMcpBundles copies pre-built MCP server bundles from steerRoot to ~/.kiro/tools/mcp-servers/.
@@ -113,6 +115,10 @@ func GenerateMcpJson(nodeExe string) error {
 			Command: nodeExe,
 			Args:    []string{filepath.Join(bundleDir, "figma-mcp", "dist", "index.cjs")},
 			Env:     map[string]string{"FIGMA_TOKEN": tokens["FIGMA_TOKEN"]},
+		},
+		"chrome": {
+			Command: nodeExe,
+			Args:    []string{filepath.Join(bundleDir, "chrome-mcp", "dist", "index.cjs")},
 		},
 	}
 
@@ -208,6 +214,24 @@ func GenerateMcpJson(nodeExe string) error {
 				env["QTEST_PROJECT_ID"] = p
 			}
 			servers["qtest"] = mcpServer{Command: nodeExe, Args: []string{qtestBundle}, Env: env}
+		}
+	}
+
+	// SharePoint: conditional on Azure AD credentials
+	if spClient := tokens["SHAREPOINT_CLIENT_ID"]; spClient != "" {
+		spBundle := filepath.Join(bundleDir, "sharepoint-mcp", "dist", "index.cjs")
+		if _, err := os.Stat(spBundle); err == nil {
+			env := map[string]string{"SHAREPOINT_CLIENT_ID": spClient}
+			if v := tokens["SHAREPOINT_CLIENT_SECRET"]; v != "" {
+				env["SHAREPOINT_CLIENT_SECRET"] = v
+			}
+			if v := envVars["SHAREPOINT_TENANT_ID"]; v != "" {
+				env["SHAREPOINT_TENANT_ID"] = v
+			}
+			if v := envVars["SHAREPOINT_SITE_URL"]; v != "" {
+				env["SHAREPOINT_SITE_URL"] = v
+			}
+			servers["sharepoint"] = mcpServer{Command: nodeExe, Args: []string{spBundle}, Env: env}
 		}
 	}
 
