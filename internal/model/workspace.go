@@ -53,12 +53,12 @@ var KnownTokens = []Token{
 	{Key: "FIGMA_TOKEN", Label: "Figma Token", Hint: "https://www.figma.com/developers/api#access-tokens"},
 	{Key: "COMPASS_TOKEN", Label: "Compass Token", Hint: "https://compass.wdprapps.disney.com — contact your team lead"},
 	{Key: "QTEST_BEARER_TOKEN", Label: "qTest Token", Hint: "https://qtest.disney.com — Settings → API Keys"},
-	{Key: "SPLUNK_USERNAME", Label: "Splunk Username", Hint: "Splunk service account username"},
-	{Key: "SPLUNK_PASSWORD", Label: "Splunk Password", Hint: "Splunk service account password"},
+	{Key: "SPLUNK_API_USERNAME", Label: "Splunk API Username", Hint: "Splunk API service account"},
+	{Key: "SPLUNK_API_PASSWORD", Label: "Splunk API Password", Hint: "Splunk API service account password"},
 	{Key: "APPD_CLIENT_ID", Label: "AppDynamics Client ID", Hint: "Format: client-name@account-name"},
 	{Key: "APPD_CLIENT_SECRET", Label: "AppDynamics Client Secret", Hint: "OAuth client secret from AppDynamics"},
-	{Key: "SNOW_USERNAME", Label: "ServiceNow Username", Hint: "ServiceNow service account"},
-	{Key: "SNOW_PASSWORD", Label: "ServiceNow Password", Hint: "ServiceNow service account password"},
+	{Key: "SNOW_API_USERNAME", Label: "ServiceNow API Username", Hint: "ServiceNow API service account"},
+	{Key: "SNOW_API_PASSWORD", Label: "ServiceNow API Password", Hint: "ServiceNow API service account password"},
 }
 
 // EnvVar represents a managed environment variable.

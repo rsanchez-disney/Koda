@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -12,7 +14,9 @@ import (
 )
 
 var (
-	chatAgent string
+	chatAgent    string
+	chatTrustAll bool
+	chatNoTrust  bool
 )
 
 var chatCmd = &cobra.Command{
@@ -23,13 +27,24 @@ var chatCmd = &cobra.Command{
 		if agent == "" {
 			agent = ops.SuggestDefaultAgent(steerRoot, config.TargetDir(projectDir))
 		}
-		return launchKiroCLIChat(agent, args...)
+
+		trustAll := chatTrustAll
+		if !chatTrustAll && !chatNoTrust {
+			fmt.Print("Trust all tools? (Y/n): ")
+			var answer string
+			fmt.Scanln(&answer)
+			trustAll = answer == "" || strings.HasPrefix(strings.ToLower(answer), "y")
+		}
+
+		return launchKiroCLIChat(agent, trustAll, args...)
 	},
 }
 
-func launchKiroCLIChat(agent string, extra ...string) error {
-	var cliArgs []string
-	cliArgs = append(cliArgs, "chat", "--tui", "--trust-all-tools")
+func launchKiroCLIChat(agent string, trustAll bool, extra ...string) error {
+	cliArgs := []string{"chat", "--tui"}
+	if trustAll {
+		cliArgs = append(cliArgs, "--trust-all-tools")
+	}
 	if agent != "" {
 		cliArgs = append(cliArgs, "--agent", agent)
 	}
@@ -55,5 +70,7 @@ var promptCmd = &cobra.Command{
 
 func init() {
 	chatCmd.Flags().StringVar(&chatAgent, "agent", "", "Agent to chat with (e.g., orchestrator, backend)")
+	chatCmd.Flags().BoolVar(&chatTrustAll, "trust-all", false, "Trust all tools without prompting")
+	chatCmd.Flags().BoolVar(&chatNoTrust, "no-trust", false, "Don't trust any tools (kiro-cli will prompt per tool)")
 	promptCmd.Flags().StringVar(&chatAgent, "agent", "", "Agent to chat with (e.g., orchestrator, backend)")
 }
