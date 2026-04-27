@@ -321,12 +321,12 @@ func TestGeneratedConfigContainsExactlySelectedServers(t *testing.T) {
 			"HARNESS_API_KEY":     "tok-harness",
 			"SONARQUBE_TOKEN":     "tok-sonar",
 			"QTEST_BEARER_TOKEN":  "tok-qtest",
-			"SPLUNK_USERNAME":     "tok-splunk-user",
-			"SPLUNK_PASSWORD":     "tok-splunk-pass",
+			"SPLUNK_API_USERNAME":     "tok-splunk-user",
+			"SPLUNK_API_PASSWORD":     "tok-splunk-pass",
 			"APPD_CLIENT_ID":      "tok-appd-id",
 			"APPD_CLIENT_SECRET":  "tok-appd-secret",
-			"SNOW_USERNAME":       "tok-snow-user",
-			"SNOW_PASSWORD":       "tok-snow-pass",
+			"SNOW_API_USERNAME":       "tok-snow-user",
+			"SNOW_API_PASSWORD":       "tok-snow-pass",
 		}
 		if input.CompassToken {
 			tokens["COMPASS_TOKEN"] = "tok-compass"
@@ -663,12 +663,12 @@ func TestServerEntryStructureCorrectness(t *testing.T) {
 			"HARNESS_API_KEY":     "tok-harness",
 			"SONARQUBE_TOKEN":     "tok-sonar",
 			"QTEST_BEARER_TOKEN":  "tok-qtest",
-			"SPLUNK_USERNAME":     "tok-splunk-user",
-			"SPLUNK_PASSWORD":     "tok-splunk-pass",
+			"SPLUNK_API_USERNAME":     "tok-splunk-user",
+			"SPLUNK_API_PASSWORD":     "tok-splunk-pass",
 			"APPD_CLIENT_ID":      "tok-appd-id",
 			"APPD_CLIENT_SECRET":  "tok-appd-secret",
-			"SNOW_USERNAME":       "tok-snow-user",
-			"SNOW_PASSWORD":       "tok-snow-pass",
+			"SNOW_API_USERNAME":       "tok-snow-user",
+			"SNOW_API_PASSWORD":       "tok-snow-pass",
 		}
 
 		envVars := map[string]string{
@@ -857,12 +857,12 @@ func TestConfigGenerationIsIdempotent(t *testing.T) {
 			"HARNESS_API_KEY":     "tok-harness",
 			"SONARQUBE_TOKEN":     "tok-sonar",
 			"QTEST_BEARER_TOKEN":  "tok-qtest",
-			"SPLUNK_USERNAME":     "tok-splunk-user",
-			"SPLUNK_PASSWORD":     "tok-splunk-pass",
+			"SPLUNK_API_USERNAME":     "tok-splunk-user",
+			"SPLUNK_API_PASSWORD":     "tok-splunk-pass",
 			"APPD_CLIENT_ID":      "tok-appd-id",
 			"APPD_CLIENT_SECRET":  "tok-appd-secret",
-			"SNOW_USERNAME":       "tok-snow-user",
-			"SNOW_PASSWORD":       "tok-snow-pass",
+			"SNOW_API_USERNAME":       "tok-snow-user",
+			"SNOW_API_PASSWORD":       "tok-snow-pass",
 		}
 		if input.CompassToken {
 			tokens["COMPASS_TOKEN"] = "tok-compass"
