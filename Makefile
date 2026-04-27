@@ -51,7 +51,8 @@ cross: ## Cross-compile Koda for macOS, Linux, Windows
 yax-fetch: ## Clone or pull latest yax source
 	@if [ -d "$(YAX_SRC)/.git" ]; then \
 		echo "  Pulling yax..."; \
-		cd $(YAX_SRC) && git pull --ff-only 2>/dev/null || true; \
+		cd $(YAX_SRC) && git pull --ff-only 2>/dev/null || \
+		(echo "  Pull failed, re-cloning..."; rm -rf $(YAX_SRC); git clone --depth 1 git@$(YAX_REPO) $(YAX_SRC)); \
 	else \
 		echo "  Cloning yax..."; \
 		rm -rf $(YAX_SRC); \
