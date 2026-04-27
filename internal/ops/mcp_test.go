@@ -416,6 +416,10 @@ func TestGeneratedConfigContainsExactlySelectedServers(t *testing.T) {
 			}
 		}
 
+		if findYax() != "" {
+			expectedKeys["yax"] = true
+		}
+
 		// --- Collect actual keys ---
 		actualKeys := make(map[string]bool)
 		for k := range parsed.MCPServers {

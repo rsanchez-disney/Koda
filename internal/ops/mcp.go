@@ -589,6 +589,11 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 		}
 	}
 
+	// yax: persistent memory via stdio MCP
+	if yaxBin := findYax(); yaxBin != "" {
+		servers["yax"] = mcpServer{Command: yaxBin, Args: []string{"mcp", "--tools=agent"}}
+	}
+
 	// Use sorted keys for deterministic output (idempotence).
 	sortedKeys := make([]string, 0, len(servers))
 	for k := range servers {

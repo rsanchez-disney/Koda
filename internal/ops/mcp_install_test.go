@@ -150,7 +150,7 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 	// With 1 remote, github should appear as "github".
 	expectedNames := map[string]bool{
 		"jira": true, "confluence": true, "mermaid": true, "bruno": true,
-		"figma": true, "compass": true, "qtest": true,
+		"figma": true, "compass": true, "qtest": true, "yax": true,
 		"splunk-mcp": true, "appdynamics-mcp": true, "servicenow-mcp": true,
 		"github": true,
 	}
@@ -253,8 +253,8 @@ func TestEmptyServerSelectionProducesEmptyConfig(t *testing.T) {
 	}
 
 	servers := readGeneratedConfig(t, mcpPath)
-	if len(servers) != 0 {
-		t.Errorf("expected empty mcpServers, got %d entries: %v", len(servers), servers)
+	if _, hasYax := servers["yax"]; len(servers) != 0 && !(len(servers) == 1 && hasYax) {
+		t.Errorf("expected only yax or empty mcpServers, got %d entries: %v", len(servers), servers)
 	}
 }
 
