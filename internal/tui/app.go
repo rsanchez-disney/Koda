@@ -2655,6 +2655,16 @@ func (m model) updateKiroIDE(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.statusMsg = "Auto-upgrade disabled"
 		}
+	case "w":
+		s := config.ReadSteerSettings()
+		if s.TrustTools == "all" {
+			s.TrustTools = ""
+			m.statusMsg = "Trust all tools disabled — will prompt each time"
+		} else {
+			s.TrustTools = "all"
+			m.statusMsg = "Trust all tools enabled"
+		}
+		config.SaveSteerSettings(s)
 	}
 	return m, nil
 }
@@ -2665,7 +2675,7 @@ func (m model) viewKiroIDE() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Kiro") + dimStyle.Render("  i=install  s=sync  r=remove hooks  t=tray  u=auto-upgrade  esc=back"))
+	b.WriteString(titleStyle.Render("Kiro") + dimStyle.Render("  i=install  s=sync  r=remove hooks  t=tray  u=auto-upgrade  w=trust  esc=back"))
 	b.WriteString("\n\n")
 
 	// IDE section
@@ -2693,6 +2703,11 @@ func (m model) viewKiroIDE() string {
 		b.WriteString("  " + checkStyle.Render("☑") + " Auto-upgrade" + dimStyle.Render("  (u to toggle)") + "\n")
 	} else {
 		b.WriteString("  ☐ Auto-upgrade" + dimStyle.Render("  (u to toggle)") + "\n")
+	}
+	if config.ReadSteerSettings().TrustTools == "all" {
+		b.WriteString("  " + checkStyle.Render("☑") + " Trust all tools" + dimStyle.Render("  (w to toggle)") + "\n")
+	} else {
+		b.WriteString("  ☐ Trust all tools" + dimStyle.Render("  (w to toggle)") + "\n")
 	}
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("  Preferences") + dimStyle.Render("  space=toggle  enter=select agent") + "\n\n")

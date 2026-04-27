@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -84,10 +83,7 @@ Run with no arguments to launch the interactive TUI.`,
 			return err
 		}
 		if launchChat {
-			fmt.Print("Trust all tools? (Y/n): ")
-			var answer string
-			fmt.Scanln(&answer)
-			trustAll := answer == "" || strings.HasPrefix(strings.ToLower(answer), "y")
+			trustAll := resolveTrust(false, false)
 			return launchKiroCLIChat("", trustAll)
 		}
 		return nil
