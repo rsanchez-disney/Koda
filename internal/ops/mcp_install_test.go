@@ -119,14 +119,18 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 		"SPLUNK_API_PASSWORD":     "tok-splunk-pass",
 		"APPD_CLIENT_ID":      "tok-appd-id",
 		"APPD_CLIENT_SECRET":  "tok-appd-secret",
-		"SNOW_API_USERNAME":       "tok-snow-user",
+"SNOW_API_USERNAME":       "tok-snow-user",
 		"SNOW_API_PASSWORD":       "tok-snow-pass",
+		"SHAREPOINT_CLIENT_ID":    "tok-sp-id",
+		"SHAREPOINT_CLIENT_SECRET": "tok-sp-secret",
 	}
 	envVars := map[string]string{
 		"CONFLUENCE_URL": "https://confluence.example.com",
 		"MYWIKI_URL":     "https://mywiki.example.com",
 		"JIRA_URL":       "https://jira.example.com",
 		"COMPASS_URL":    "https://compass.example.com/api/mcp",
+		"SHAREPOINT_TENANT_ID": "test-tenant-id",
+		"SHAREPOINT_SITE_URL":  "https://test.sharepoint.com/sites/test",
 	}
 	ghRemotes := []model.GitHubRemote{
 		{Name: "origin", Host: "github.example.com", Token: "gh-tok"},
@@ -152,7 +156,7 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 		"jira": true, "confluence": true, "mermaid": true, "bruno": true,
 		"figma": true, "compass": true, "qtest": true,
 		"splunk-mcp": true, "appdynamics-mcp": true, "servicenow-mcp": true,
-		"github": true,
+		"github": true, "chrome": true, "sharepoint": true,
 	}
 
 	for name := range expectedNames {
