@@ -349,6 +349,18 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		results = append(results, DoctorResult{Name: "yax", OK: false, Detail: "not installed (persistent memory disabled)", Fix: "koda upgrade"})
 	}
 
+	// 13. prompt-scorer
+	if scorerBin := FindScorerBin(); scorerBin != "" {
+		verOut, _ := exec.Command(scorerBin, "version").Output()
+		ver := strings.TrimSpace(string(verOut))
+		if ver == "" {
+			ver = "installed"
+		}
+		results = append(results, DoctorResult{Name: "prompt-scorer", OK: true, Detail: ver + " (" + scorerBin + ")"})
+	} else {
+		results = append(results, DoctorResult{Name: "prompt-scorer", OK: false, Detail: "not installed (prompt scoring binary unavailable)", Fix: "koda upgrade"})
+	}
+
 	return results
 }
 

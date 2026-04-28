@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-// findScorer returns the prompt-scorer binary path (PATH or known location).
-func findScorer() string {
+// FindScorerBin returns the prompt-scorer binary path (PATH or known location).
+func FindScorerBin() string {
 	if p, err := exec.LookPath("prompt-scorer"); err == nil {
 		return p
 	}

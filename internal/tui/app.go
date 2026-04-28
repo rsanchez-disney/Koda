@@ -604,6 +604,10 @@ func (m model) viewDashboard() string {
 		b.WriteString(fmt.Sprintf("  Yax:       %s\n", checkStyle.Render(detail)))
 	}
 
+	if scorerBin := ops.FindScorerBin(); scorerBin != "" {
+		b.WriteString(fmt.Sprintf("  Scorer:    %s\n", checkStyle.Render("installed")))
+	}
+
 	if m.ghIdentity.Login != "" {
 		userStr := m.ghIdentity.Login
 		if m.ghIdentity.Name != "" {
