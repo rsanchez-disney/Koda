@@ -90,8 +90,20 @@ var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Update installed profiles to latest",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// If --update or no steer-runtime found, download latest release
+		// If --update or no steer-runtime found, fetch latest
 		if syncUpdate || steerRoot == "" {
+			// If steerRoot is a git repo (fork or clone), use git pull instead of tarball
+			if steerRoot != "" {
+				if _, err := os.Stat(filepath.Join(steerRoot, ".git")); err == nil {
+					fmt.Println("📦 Git repo detected — pulling latest...")
+					if err := ops.SyncSteerRuntime(steerRoot, config.TargetDir(projectDir)); err != nil {
+						return err
+					}
+					// SyncSteerRuntime already re-installs profiles, so we're done
+					fmt.Println("✅ Sync complete")
+					return nil
+				}
+			}
 			if err := cloneSteerRuntime(); err != nil {
 				return err
 			}
