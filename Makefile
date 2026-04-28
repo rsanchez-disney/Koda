@@ -7,7 +7,7 @@ LDFLAGS  := -s -w -X main.version=$(VERSION) -X github.disney.com/SANCR225/koda/
 BIN      := ./bin/$(APP)
 YAX_REPO := github.disney.com-sancr225:QUINJ327/yax.git
 YAX_SRC  ?= /tmp/yax
-SCORER_REPO := github.disney.com:SANCR225/prompt-scorer.git
+SCORER_REPO := github.disney.com-sancr225:SANCR225/prompt-scorer.git
 SCORER_SRC  ?= /tmp/prompt-scorer
 
 .PHONY: build run clean test lint fmt vet tidy install cross release help yax-fetch yax-cross scorer-fetch scorer-cross
@@ -83,6 +83,8 @@ scorer-fetch: ## Clone or pull latest prompt-scorer source
 	fi
 
 scorer-cross: scorer-fetch ## Fetch, test, and cross-compile prompt-scorer
+	@echo "  Syncing rules..."
+	cd $(SCORER_SRC)/go-prompt-scorer && go generate ./...
 	@echo "  Testing prompt-scorer..."
 	cd $(SCORER_SRC)/go-prompt-scorer && go test ./...
 	@echo "  Building prompt-scorer..."

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	ps "github.com/disney/prompt-scorer/go-prompt-scorer"
+	"github.disney.com/SANCR225/koda/internal/ops"
 )
 
 // SessionTokens tracks cumulative token usage per session.
@@ -22,6 +23,16 @@ func ScorePrompt(prompt, sessionID string) ps.Result {
 		sessionTokens.mu.Lock()
 		sessionTokens.tokens[sessionID] += result.EstimatedTokens
 		sessionTokens.mu.Unlock()
+	}
+
+	// Log to usage.jsonl for koda stats
+	if sessionID != "" {
+		ops.LogUsage(ops.UsageEntry{
+			Agent:       sessionID,
+			SessionID:   sessionID,
+			InputTokens: result.EstimatedTokens,
+			PromptScore: result.Total,
+		})
 	}
 
 	return result
