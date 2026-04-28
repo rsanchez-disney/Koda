@@ -8,7 +8,7 @@ BIN      := ./bin/$(APP)
 YAX_REPO := github.disney.com-sancr225:QUINJ327/yax.git
 YAX_SRC  ?= /tmp/yax
 SCORER_REPO := github.disney.com-sancr225:SANCR225/prompt-scorer.git
-SCORER_SRC  ?= /tmp/prompt-scorer
+SCORER_SRC  ?= /Users/ricardo.sanchez/Workspace/Disney/SANCR225/prompt-scorer
 
 .PHONY: build run clean test lint fmt vet tidy install cross release help yax-fetch yax-cross scorer-fetch scorer-cross
 
