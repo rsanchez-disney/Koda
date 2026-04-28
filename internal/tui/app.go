@@ -1260,12 +1260,30 @@ func (m model) viewMCP() string {
 	for _, sec := range sections {
 		isActive := m.mcpSection == sec.idx
 		header := sec.title
+		count := m.mcpSectionLen()
+		switch sec.idx {
+		case 0:
+			count = len(m.ghRemotes)
+			if count < len(mdl.DefaultGitHubRemotes) { count = len(mdl.DefaultGitHubRemotes) }
+		case 1:
+			count = len(m.jiraInstances)
+			if count < len(mdl.DefaultJiraInstances) { count = len(mdl.DefaultJiraInstances) }
+		case 2:
+			count = len(m.confInstances)
+			if count < len(mdl.DefaultConfluenceInstances) { count = len(mdl.DefaultConfluenceInstances) }
+		case 3:
+			count = len(mdl.KnownTokens)
+		}
 		if isActive {
-			header = activeStyle.Render("▸ " + sec.title)
+			header = activeStyle.Render(fmt.Sprintf("▸ %s (%d)", sec.title, count))
 		} else {
-			header = dimStyle.Render("  " + sec.title)
+			header = dimStyle.Render(fmt.Sprintf("  %s (%d)", sec.title, count))
 		}
 		b.WriteString(header + "\n")
+
+		if !isActive {
+			continue
+		}
 
 		switch sec.idx {
 		case 0: // GitHub
@@ -1387,17 +1405,13 @@ func (m model) viewMCP() string {
 		b.WriteString("\n")
 	}
 
-	// Bundles footer (read-only)
+	// Bundles footer (summary)
 	if len(m.mcpServers) > 0 {
-		b.WriteString(dimStyle.Render("  Bundles") + "\n")
+		ready := 0
 		for _, s := range m.mcpServers {
-			icon := checkStyle.Render("✓")
-			if !s.hasBundle {
-				icon = errStyle.Render("✗")
-			}
-			b.WriteString(fmt.Sprintf("    %s %s\n", icon, dimStyle.Render(s.name)))
+			if s.hasBundle { ready++ }
 		}
-		b.WriteString("\n")
+		b.WriteString(dimStyle.Render(fmt.Sprintf("  Bundles: %d/%d ready", ready, len(m.mcpServers))) + "\n\n")
 	}
 
 	if m.mcpAdding {
