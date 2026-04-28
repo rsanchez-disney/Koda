@@ -7,8 +7,10 @@ LDFLAGS  := -s -w -X main.version=$(VERSION) -X github.disney.com/SANCR225/koda/
 BIN      := ./bin/$(APP)
 YAX_REPO := github.disney.com-sancr225:QUINJ327/yax.git
 YAX_SRC  ?= /tmp/yax
+SCORER_REPO := github.disney.com:SANCR225/prompt-scorer.git
+SCORER_SRC  ?= /tmp/prompt-scorer
 
-.PHONY: build run clean test lint fmt vet tidy install cross release help yax-fetch yax-cross
+.PHONY: build run clean test lint fmt vet tidy install cross release help yax-fetch yax-cross scorer-fetch scorer-cross
 
 build: ## Build binary
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/koda/
@@ -69,18 +71,44 @@ yax-cross: yax-fetch ## Fetch, test, and cross-compile yax
 	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-linux-arm64   ./cmd/yax/
 	cd $(YAX_SRC) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/yax-windows-amd64.exe ./cmd/yax/
 
-release: ## Tag + build Koda + yax + publish (make release TAG=v0.1.0)
+scorer-fetch: ## Clone or pull latest prompt-scorer source
+	@if [ -d "$(SCORER_SRC)/.git" ]; then \
+		echo "  Pulling prompt-scorer..."; \
+		cd $(SCORER_SRC) && git pull --ff-only 2>/dev/null || \
+		(echo "  Pull failed, re-cloning..."; rm -rf $(SCORER_SRC); git clone --depth 1 git@$(SCORER_REPO) $(SCORER_SRC)); \
+	else \
+		echo "  Cloning prompt-scorer..."; \
+		rm -rf $(SCORER_SRC); \
+		git clone --depth 1 git@$(SCORER_REPO) $(SCORER_SRC); \
+	fi
+
+scorer-cross: scorer-fetch ## Fetch, test, and cross-compile prompt-scorer
+	@echo "  Testing prompt-scorer..."
+	cd $(SCORER_SRC)/go-prompt-scorer && go test ./...
+	@echo "  Building prompt-scorer..."
+	cd $(SCORER_SRC)/go-prompt-scorer && CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/prompt-scorer-darwin-arm64  ./cmd/prompt-scorer/
+	cd $(SCORER_SRC)/go-prompt-scorer && CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/prompt-scorer-darwin-amd64  ./cmd/prompt-scorer/
+	cd $(SCORER_SRC)/go-prompt-scorer && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/prompt-scorer-linux-amd64   ./cmd/prompt-scorer/
+	cd $(SCORER_SRC)/go-prompt-scorer && CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/prompt-scorer-linux-arm64   ./cmd/prompt-scorer/
+	cd $(SCORER_SRC)/go-prompt-scorer && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/prompt-scorer-windows-amd64.exe ./cmd/prompt-scorer/
+
+release: ## Tag + build Koda + yax + scorer + publish (make release TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make release TAG=v0.1.0"; exit 1; }
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
 	git tag -a $(TAG) -m "Release $(TAG)"
 	git push origin $(TAG)
 	$(MAKE) cross VERSION=$(TAG)
 	-$(MAKE) yax-cross
-	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* $$(ls bin/yax-* 2>/dev/null) --latest \
+	-$(MAKE) scorer-cross
+	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* $$(ls bin/yax-* 2>/dev/null) $$(ls bin/prompt-scorer-* 2>/dev/null) --latest \
 		--repo $(PUB_REPO) \
 		--title "Koda $(TAG)" \
 		--generate-notes
 	@echo "Published $(TAG) to github.com/$(PUB_REPO)"
+
+kitestream: build ## Build Koda + KiteStream client, then launch
+	@cd $(KITESTREAM_ROOT) && npm run build --workspace=client
+	KITESTREAM_DEV_DIST=$(KITESTREAM_ROOT)/client/dist $(BIN) kitestream start
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'

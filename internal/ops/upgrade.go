@@ -126,6 +126,13 @@ func Upgrade(currentVersion string) error {
 		}
 	}
 
+	// Install prompt-scorer if not present
+	if findScorer() == "" {
+		if err := ScorerInstall(); err != nil {
+			fmt.Printf("  ⚠ prompt-scorer: %v\n", err)
+		}
+	}
+
 	return nil
 }
 
