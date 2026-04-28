@@ -90,11 +90,18 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		results = append(results, DoctorResult{Name: "mcp-servers", OK: len(missing) == 0, Detail: detail})
 
 		// Per-server diagnostics: try to start each and capture errors.
-		// Skip servers that require runtime env vars (e.g. github-mcp needs GITHUB_HOST).
-		skipDiag := map[string]bool{"github-mcp": true}
+		// Skip servers that require runtime tokens — they fail without credentials but that's expected.
+		skipDiag := map[string]string{
+			"github-mcp":       "requires GITHUB_HOST",
+			"qtest-mcp":        "requires QTEST_BEARER_TOKEN",
+			"splunk-mcp":       "requires SPLUNK_API_USERNAME",
+			"appdynamics-mcp":  "requires APPD_CLIENT_ID",
+			"servicenow-mcp":   "requires SNOW_API_USERNAME",
+			"sharepoint-mcp":   "requires SHAREPOINT_CLIENT_ID",
+		}
 		for _, name := range ready {
-			if skipDiag[name] {
-				results = append(results, DoctorResult{Name: "  " + name, OK: true, Detail: "bundle ok (env checked separately)"})
+			if reason, skip := skipDiag[name]; skip {
+				results = append(results, DoctorResult{Name: "  " + name, OK: true, Detail: "bundle ok — " + reason})
 				continue
 			}
 			var cmd *exec.Cmd
