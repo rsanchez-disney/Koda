@@ -13,13 +13,15 @@ import (
 
 // MCPServer describes an available MCP server and its requirements.
 type MCPServer struct {
-	Name      string   // display name (e.g., "jira", "confluence")
-	BundleDir string   // directory name under mcp-servers/ (e.g., "jira-mcp")
-	TokenKeys []string // required token keys from KnownTokens (e.g., ["JIRA_PAT"])
-	EnvKeys   []string // required env var keys (e.g., ["CONFLUENCE_URL"])
-	Command   string   // override command (default: "node"); set from mcp-meta.json
-	IsNPM     bool     // true for context7 (npm install required)
-	IsSSE     bool     // true for compass (SSE transport)
+	Name       string   // display name (e.g., "jira", "confluence")
+	BundleDir  string   // directory name under mcp-servers/ (e.g., "jira-mcp")
+	TokenKeys  []string // required token keys from KnownTokens (e.g., ["JIRA_PAT"])
+	EnvKeys    []string // required env var keys (e.g., ["CONFLUENCE_URL"])
+	Command    string   // override command (default: "node"); set from mcp-meta.json
+	IsNPM      bool     // true for context7 (npm install required)
+	IsSSE      bool     // true for compass (SSE transport)
+	IsNPX      bool     // true for npx-based servers (no bundle, no npm install)
+	NPXPackage string   // npm package spec for npx (e.g., "@anthropic-ai/chrome-devtools-mcp@latest")
 }
 
 // knownServers defines all MCP servers Koda can install.
@@ -36,6 +38,7 @@ var knownServers = []MCPServer{
 	{Name: "appdynamics-mcp", BundleDir: "appdynamics-mcp", TokenKeys: []string{"APPD_CLIENT_ID", "APPD_CLIENT_SECRET"}, EnvKeys: []string{"APPD_CONTROLLER_URL"}},
 {Name: "servicenow-mcp", BundleDir: "servicenow-mcp", TokenKeys: []string{"SNOW_API_USERNAME", "SNOW_API_PASSWORD"}, EnvKeys: []string{"SNOW_INSTANCE"}},
 	{Name: "chrome", BundleDir: "chrome-mcp"},
+	{Name: "chrome-devtools", IsNPX: true, NPXPackage: "@anthropic-ai/chrome-devtools-mcp@latest"},
 	{Name: "sharepoint", BundleDir: "sharepoint-mcp", TokenKeys: []string{"SHAREPOINT_CLIENT_ID", "SHAREPOINT_CLIENT_SECRET"}, EnvKeys: []string{"SHAREPOINT_TENANT_ID", "SHAREPOINT_SITE_URL"}},
 }
 
@@ -119,6 +122,10 @@ func GenerateMcpJson(nodeExe string) error {
 		"chrome": {
 			Command: nodeExe,
 			Args:    []string{filepath.Join(bundleDir, "chrome-mcp", "dist", "index.cjs")},
+		},
+		"chrome-devtools": {
+			Command: "npx",
+			Args:    []string{"-y", "@anthropic-ai/chrome-devtools-mcp@latest"},
 		},
 	}
 
@@ -303,6 +310,13 @@ func DiscoverServers(targetDir string) (available []MCPServer, verified map[stri
 	for _, srv := range knownServers {
 		if srv.IsSSE {
 			// SSE servers (compass) are always available and verified.
+			available = append(available, srv)
+			verified[srv.Name] = true
+			continue
+		}
+
+		if srv.IsNPX {
+			// NPX servers (chrome-devtools) need no local bundle.
 			available = append(available, srv)
 			verified[srv.Name] = true
 			continue
@@ -527,6 +541,13 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 			servers[srv.Name] = mcpServer{
 				Command: "npx",
 				Args:    []string{"-y", "@upstash/context7-mcp"},
+			}
+
+		case srv.IsNPX:
+			// NPX-based servers (no bundle, no npm install).
+			servers[srv.Name] = mcpServer{
+				Command: "npx",
+				Args:    []string{"-y", srv.NPXPackage},
 			}
 
 		case srv.Name == "jira":

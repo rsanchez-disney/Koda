@@ -156,7 +156,7 @@ func TestNonTTYFallbackAllVerifiedServers(t *testing.T) {
 		"jira": true, "confluence": true, "mermaid": true, "bruno": true,
 		"figma": true, "compass": true, "qtest": true, "yax": true,
 		"splunk-mcp": true, "appdynamics-mcp": true, "servicenow-mcp": true,
-		"github": true, "chrome": true, "sharepoint": true,
+		"github": true, "chrome": true, "chrome-devtools": true, "sharepoint": true,
 	}
 
 	for name := range expectedNames {

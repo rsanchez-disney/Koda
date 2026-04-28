@@ -114,6 +114,19 @@ func TestDiscoverServersMatchesBundleDirs(t *testing.T) {
 				continue
 			}
 
+			if srv.IsNPX {
+				// NPX servers must always be available and verified.
+				if !availableSet[srv.Name] {
+					t.Logf("NPX server %q missing from available", srv.Name)
+					return false
+				}
+				if !verified[srv.Name] {
+					t.Logf("NPX server %q not verified", srv.Name)
+					return false
+				}
+				continue
+			}
+
 			if input.DirPresent[i] {
 				// Directory exists → server must be available.
 				if !availableSet[srv.Name] {
@@ -169,12 +182,12 @@ func TestDiscoverServersMatchesBundleDirs(t *testing.T) {
 
 // tokenSubsetInput uses a bitmask to select a random subset of knownServers.
 type tokenSubsetInput struct {
-	Mask uint16 // bit i selects knownServers[i]
+	Mask uint32 // bit i selects knownServers[i]
 }
 
 // Generate implements quick.Generator for random bitmask generation.
 func (tokenSubsetInput) Generate(r *rand.Rand, size int) reflect.Value {
-	return reflect.ValueOf(tokenSubsetInput{Mask: uint16(r.Intn(1 << len(knownServers)))})
+	return reflect.ValueOf(tokenSubsetInput{Mask: uint32(r.Intn(1 << len(knownServers)))})
 }
 
 // TestRequiredTokensEqualsSelectedServerRequirements verifies that for any subset
@@ -267,7 +280,7 @@ func TestRequiredTokensEqualsSelectedServerRequirements(t *testing.T) {
 // choosing a random number of GitHub remotes (0-2), and toggling whether
 // COMPASS_TOKEN is non-empty.
 type configInput struct {
-	Mask          uint16 // bit i selects knownServers[i]
+	Mask          uint32 // bit i selects knownServers[i]
 	GitHubRemotes uint8  // 0, 1, or 2 remotes
 	CompassToken  bool   // whether COMPASS_TOKEN is non-empty
 }
@@ -275,7 +288,7 @@ type configInput struct {
 // Generate implements quick.Generator for configInput.
 func (configInput) Generate(r *rand.Rand, size int) reflect.Value {
 	return reflect.ValueOf(configInput{
-		Mask:          uint16(r.Intn(1 << len(knownServers))),
+		Mask:          uint32(r.Intn(1 << len(knownServers))),
 		GitHubRemotes: uint8(r.Intn(3)), // 0, 1, or 2
 		CompassToken:  r.Intn(2) == 1,
 	})
@@ -606,12 +619,12 @@ type parsedEntry struct {
 // entryStructureInput uses a bitmask to select a random subset of knownServers
 // (excluding github) for property testing of server entry structure.
 type entryStructureInput struct {
-	Mask uint16 // bit i selects knownServers[i] (github bit is ignored)
+	Mask uint32 // bit i selects knownServers[i] (github bit is ignored)
 }
 
 // Generate implements quick.Generator for entryStructureInput.
 func (entryStructureInput) Generate(r *rand.Rand, size int) reflect.Value {
-	return reflect.ValueOf(entryStructureInput{Mask: uint16(r.Intn(1 << len(knownServers)))})
+	return reflect.ValueOf(entryStructureInput{Mask: uint32(r.Intn(1 << len(knownServers)))})
 }
 
 // TestServerEntryStructureCorrectness verifies that for any subset of selected
@@ -778,6 +791,31 @@ func TestServerEntryStructureCorrectness(t *testing.T) {
 				}
 				if !hasPkg {
 					t.Logf("NPM server %q: args %v missing '@upstash/context7-mcp'", srv.Name, entry.Args)
+					return false
+				}
+
+			case srv.IsNPX:
+				// NPX servers (chrome-devtools): command=="npx", args contains "-y" and NPXPackage
+				if entry.Command != "npx" {
+					t.Logf("NPX server %q: expected command 'npx', got %q", srv.Name, entry.Command)
+					return false
+				}
+				hasY := false
+				hasPkg := false
+				for _, arg := range entry.Args {
+					if arg == "-y" {
+						hasY = true
+					}
+					if arg == srv.NPXPackage {
+						hasPkg = true
+					}
+				}
+				if !hasY {
+					t.Logf("NPX server %q: args %v missing '-y'", srv.Name, entry.Args)
+					return false
+				}
+				if !hasPkg {
+					t.Logf("NPX server %q: args %v missing %q", srv.Name, entry.Args, srv.NPXPackage)
 					return false
 				}
 
