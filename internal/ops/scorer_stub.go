@@ -1,4 +1,4 @@
-//go:build scorer
+//go:build !scorer
 
 package ops
 
@@ -7,43 +7,30 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	ps "github.com/disney/prompt-scorer/go-prompt-scorer"
 )
 
-// ScoreResult wraps the Go library result with session tracking.
+// ScoreResult wraps the scoring result with session tracking.
 type ScoreResult struct {
-	Total           float64                    `json:"total"`
-	EstimatedTokens int                        `json:"estimated_tokens"`
-	SessionTokens   int                        `json:"session_tokens"`
-	Dimensions      map[string]ps.DimensionResult `json:"dimensions"`
+	Total           float64                `json:"total"`
+	EstimatedTokens int                    `json:"estimated_tokens"`
+	SessionTokens   int                    `json:"session_tokens"`
+	Dimensions      map[string]interface{} `json:"dimensions"`
 }
 
-// sessionTokens tracks cumulative tokens per session in-process.
-var sessionTokens = map[string]int{}
-
-// ScorePrompt scores a prompt using the Go library (no HTTP, no Python).
+// ScorePrompt returns a basic token estimate when the scorer library is not available.
 func ScorePrompt(prompt string, sessionID string) (*ScoreResult, error) {
-	result := ps.Score(prompt, nil)
-
-	st := 0
-	if sessionID != "" {
-		sessionTokens[sessionID] += result.EstimatedTokens
-		st = sessionTokens[sessionID]
-	}
-
 	return &ScoreResult{
-		Total:           result.Total,
-		EstimatedTokens: result.EstimatedTokens,
-		SessionTokens:   st,
-		Dimensions:      result.Dimensions,
+		Total:           0,
+		EstimatedTokens: EstimateTokens(prompt),
+		SessionTokens:   0,
+		Dimensions:      nil,
 	}, nil
 }
 
-// ScorerRunning always returns true since scoring is now in-process.
-func ScorerRunning() bool { return true }
+// ScorerRunning returns false when the scorer library is not available.
+func ScorerRunning() bool { return false }
 
-// StartScorer is a no-op — scoring is now in-process via the Go library.
+// StartScorer is a no-op.
 func StartScorer(_ string) error { return nil }
 
 // EstimateTokens estimates token count using ~4 chars per token.

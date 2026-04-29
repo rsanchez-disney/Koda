@@ -1,3 +1,5 @@
+//go:build scorer
+
 package kitestream
 
 import (

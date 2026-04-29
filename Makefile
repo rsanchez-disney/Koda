@@ -4,6 +4,7 @@ PUB_REPO := rsanchez-disney/Koda
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 RELEASE_KEY ?= $(STEER_RELEASE_KEY)
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X github.disney.com/SANCR225/koda/internal/ops.releaseKey=$(RELEASE_KEY)
+TAGS     ?=## Build tags (use TAGS=scorer for prompt-scorer support)
 BIN      := ./bin/$(APP)
 YAX_REPO := github.disney.com-sancr225:QUINJ327/yax.git
 YAX_SRC  ?= /tmp/yax
@@ -12,8 +13,8 @@ SCORER_SRC  ?= /Users/ricardo.sanchez/Workspace/Disney/SANCR225/prompt-scorer
 
 .PHONY: build run clean test lint fmt vet tidy install cross release help yax-fetch yax-cross scorer-fetch scorer-cross
 
-build: ## Build binary
-	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/koda/
+build: ## Build binary (use TAGS=scorer for prompt-scorer support)
+	go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/koda/
 
 run: build ## Build and launch TUI
 	$(BIN) --steer-root ../steer-runtime

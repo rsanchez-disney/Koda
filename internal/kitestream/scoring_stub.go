@@ -1,13 +1,23 @@
-//go:build scorer
+//go:build !scorer
 
 package kitestream
 
 import (
 	"sync"
 
-	ps "github.com/disney/prompt-scorer/go-prompt-scorer"
 	"github.disney.com/SANCR225/koda/internal/ops"
 )
+
+// ScorerResult is a minimal result when the scorer library is not available.
+type ScorerResult struct {
+	Total           float64
+	EstimatedTokens int
+}
+
+// Score returns a basic token estimate.
+func Score(prompt string, _ interface{}) ScorerResult {
+	return ScorerResult{EstimatedTokens: ops.EstimateTokens(prompt)}
+}
 
 // SessionTokens tracks cumulative token usage per session.
 type SessionTokens struct {
@@ -18,17 +28,14 @@ type SessionTokens struct {
 var sessionTokens = &SessionTokens{tokens: make(map[string]int)}
 
 // ScorePrompt scores a prompt and tracks tokens for the session.
-func ScorePrompt(prompt, sessionID string) ps.Result {
-	result := ps.Score(prompt, nil)
+func ScorePrompt(prompt, sessionID string) ScorerResult {
+	result := Score(prompt, nil)
 
 	if sessionID != "" {
 		sessionTokens.mu.Lock()
 		sessionTokens.tokens[sessionID] += result.EstimatedTokens
 		sessionTokens.mu.Unlock()
-	}
 
-	// Log to usage.jsonl for koda stats
-	if sessionID != "" {
 		ops.LogUsage(ops.UsageEntry{
 			Agent:       sessionID,
 			SessionID:   sessionID,
