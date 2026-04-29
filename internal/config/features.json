@@ -1,0 +1,18 @@
+{
+  "tui": {
+    "profiles": true,
+    "agents": true,
+    "workspaces": true,
+    "rules": true,
+    "mcp": true,
+    "env_vars": true,
+    "kiro": true,
+    "yax": true,
+    "sync": true,
+    "doctor": true,
+    "fork": true,
+    "reset": true,
+    "chat": true,
+    "scorer": false
+  }
+}

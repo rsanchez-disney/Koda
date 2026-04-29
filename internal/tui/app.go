@@ -70,6 +70,7 @@ type model struct {
 	tokenInput  string
 	workspaces      []mdl.Workspace
 	wsDisplayOrder  []int // visual row → slice index for tree navigation
+	profileDisplayOrder []int // visual row → slice index for profiles navigation
 	agents      []ops.AgentInfo
 	agentFilter string
 	statusMsg     string
@@ -390,6 +391,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // --- Dashboard ---
 
 func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Gate keybindings by feature flags
+	keyFeature := map[string]string{
+		"p": "profiles", "a": "agents", "w": "workspaces", "r": "rules",
+		"m": "mcp", "e": "env_vars", "k": "kiro", "y": "yax",
+		"s": "sync", "d": "doctor", "f": "fork", "c": "reset",
+		"enter": "chat",
+	}
+	if feat, ok := keyFeature[msg.String()]; ok && !config.IsTUIEnabled(feat) {
+		return m, nil
+	}
 	switch msg.String() {
 	case "q", "ctrl+c":
 		m.quitting = true
@@ -400,6 +411,7 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "p":
 		m.screen = screenProfiles
 		m.cursor = 0
+		m.buildProfileDisplayOrder()
 		m.scrollOffset = 0
 	case "t":
 		m.buildWSDisplayOrder()
@@ -604,8 +616,10 @@ func (m model) viewDashboard() string {
 		b.WriteString(fmt.Sprintf("  Yax:       %s\n", checkStyle.Render(detail)))
 	}
 
-	if scorerBin := ops.FindScorerBin(); scorerBin != "" {
-		b.WriteString(fmt.Sprintf("  Scorer:    %s\n", checkStyle.Render("installed")))
+	if config.IsTUIEnabled("scorer") {
+		if scorerBin := ops.FindScorerBin(); scorerBin != "" {
+			b.WriteString(fmt.Sprintf("  Scorer:    %s\n", checkStyle.Render("installed")))
+		}
 	}
 
 	if m.ghIdentity.Login != "" {
@@ -626,20 +640,51 @@ func (m model) viewDashboard() string {
 	if settings.Source == "git" {
 		forkLabel = "Unfork"
 	}
-	b.WriteString(activeStyle.Render("  [p]") + " Profiles    ")
-	b.WriteString(activeStyle.Render("[a]") + " Agents      ")
-	b.WriteString(activeStyle.Render("[w]") + " Workspaces  ")
-	b.WriteString(activeStyle.Render("[r]") + " Rules\n")
-	b.WriteString(activeStyle.Render("  [m]") + fmt.Sprintf(" MCP (%d)     ", mcpCount))
-	b.WriteString(activeStyle.Render("[e]") + " Env Vars    ")
-	b.WriteString(activeStyle.Render("[k]") + " Kiro        ")
-	b.WriteString(activeStyle.Render("[y]") + " " + yaxLabel + "\n")
-	b.WriteString(activeStyle.Render("  [s]") + " Sync        ")
-	b.WriteString(activeStyle.Render("[d]") + " Doctor      ")
-	b.WriteString(activeStyle.Render("[f]") + " " + forkLabel + "       ")
-	b.WriteString(activeStyle.Render("[c]") + " Reset\n")
+
+	// Build menu items gated by features.json
+	type menuEntry struct {
+		key, label, feature string
+	}
+	rows := [][]menuEntry{
+		{
+			{"p", "Profiles", "profiles"},
+			{"a", "Agents", "agents"},
+			{"w", "Workspaces", "workspaces"},
+			{"r", "Rules", "rules"},
+		},
+		{
+			{"m", fmt.Sprintf("MCP (%d)", mcpCount), "mcp"},
+			{"e", "Env Vars", "env_vars"},
+			{"k", "Kiro", "kiro"},
+			{"y", yaxLabel, "yax"},
+		},
+		{
+			{"s", "Sync", "sync"},
+			{"d", "Doctor", "doctor"},
+			{"f", forkLabel, "fork"},
+			{"c", "Reset", "reset"},
+		},
+	}
+	for _, row := range rows {
+		first := true
+		for _, item := range row {
+			if !config.IsTUIEnabled(item.feature) {
+				continue
+			}
+			if first {
+				b.WriteString("  ")
+				first = false
+			}
+			b.WriteString(activeStyle.Render("["+item.key+"]") + " " + fmt.Sprintf("%-12s", item.label))
+		}
+		if !first {
+			b.WriteString("\n")
+		}
+	}
 	b.WriteString("\n")
-	b.WriteString(activeStyle.Render("  [enter]") + " Chat       ")
+	if config.IsTUIEnabled("chat") {
+		b.WriteString(activeStyle.Render("  [enter]") + " Chat       ")
+	}
 	b.WriteString(activeStyle.Render("[q]") + " Quit\n")
 
 	if m.statusMsg != "" {
@@ -1702,16 +1747,17 @@ func (m model) updateProfiles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
-			m.adjustScroll(len(m.profiles))
+			m.adjustScroll(len(m.profileDisplayOrder))
 		}
 	case "down", "j":
-		if m.cursor < len(m.profiles)-1 {
+		if m.cursor < len(m.profileDisplayOrder)-1 {
 			m.cursor++
-			m.adjustScroll(len(m.profiles))
+			m.adjustScroll(len(m.profileDisplayOrder))
 		}
 	case " ":
-		if m.cursor < len(m.profiles) {
-			m.profiles[m.cursor].selected = !m.profiles[m.cursor].selected
+		if m.cursor < len(m.profileDisplayOrder) {
+			idx := m.profileDisplayOrder[m.cursor]
+			m.profiles[idx].selected = !m.profiles[idx].selected
 		}
 	case "enter":
 		m.applyProfileChanges()
@@ -1724,22 +1770,57 @@ func (m model) updateProfiles(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *model) applyProfileChanges() {
 	ops.InstallShared(m.steerRoot, m.targetDir)
+	// Remove ALL installed profiles first to avoid orphaned files from previous installs
 	for _, p := range m.profiles {
-		if p.selected && !p.installed {
+		if p.installed {
 			if p.workspace != "" {
-				// Install global base first, then workspace specialization
+				ops.RemoveProfileFrom(m.steerRoot, p.sourceDir, m.targetDir)
+				globalDir := filepath.Join(m.steerRoot, config.ProfilePrefix+p.id)
+				ops.RemoveProfileFrom(m.steerRoot, globalDir, m.targetDir)
+			} else {
+				ops.RemoveProfileFrom(m.steerRoot, p.sourceDir, m.targetDir)
+			}
+		}
+	}
+	// Reinstall only selected profiles from scratch
+	for _, p := range m.profiles {
+		if p.selected {
+			if p.workspace != "" {
 				ops.InstallProfile(m.steerRoot, p.id, m.targetDir)
 				ops.InstallProfileFrom(p.sourceDir, m.targetDir)
+				ops.RemoveGlobalOrphans(m.steerRoot, p.id, p.sourceDir, m.targetDir)
 			} else {
 				ops.InstallProfile(m.steerRoot, p.id, m.targetDir)
 			}
-		} else if !p.selected && p.installed {
-			ops.RemoveProfile(m.steerRoot, p.id, m.targetDir)
+		}
+	}
+	// Reinstall workspace-level files (common, rules, context, steering, MCP bundles)
+	if wsName := config.ReadSteerSettings().ActiveWorkspace; wsName != "" {
+		if ws, err := ops.GetWorkspace(m.steerRoot, wsName); err == nil {
+			_, wsNames := ops.ResolveWorkspace(m.steerRoot, ws)
+			ops.InstallWorkspaceCommon(m.steerRoot, m.targetDir, wsNames)
+			ops.InstallWorkspaceSteering(m.steerRoot, m.targetDir, wsNames)
+			ops.InstallWorkspaceMCPBundles(m.steerRoot, m.targetDir, wsNames)
 		}
 	}
 	ops.InjectAgentTokens(m.targetDir)
 	ops.EnrichWelcomeMessages(m.targetDir)
 	ops.WriteProfilesManifest(m.steerRoot, m.targetDir)
+}
+
+func (m *model) buildProfileDisplayOrder() {
+	m.profileDisplayOrder = nil
+	// Globals first, then workspace profiles — matches visual render order
+	for i, p := range m.profiles {
+		if p.workspace == "" {
+			m.profileDisplayOrder = append(m.profileDisplayOrder, i)
+		}
+	}
+	for i, p := range m.profiles {
+		if p.workspace != "" {
+			m.profileDisplayOrder = append(m.profileDisplayOrder, i)
+		}
+	}
 }
 
 func (m model) viewProfiles() string {
@@ -1748,7 +1829,31 @@ func (m model) viewProfiles() string {
 	b.WriteString(titleStyle.Render("Profiles") + dimStyle.Render("  space=toggle  enter=apply  esc=back"))
 	b.WriteString("\n\n")
 
-	// Separate global and workspace profiles
+	// Map slice index → visual row for cursor highlight
+	sliceToRow := map[int]int{}
+	for row, idx := range m.profileDisplayOrder {
+		sliceToRow[idx] = row
+	}
+
+	renderItem := func(i int) string {
+		p := m.profiles[i]
+		row := sliceToRow[i]
+		cursor := "  "
+		if row == m.cursor {
+			cursor = activeStyle.Render("▸ ")
+		}
+		check := dimStyle.Render("[ ]")
+		if p.selected {
+			check = checkStyle.Render("[✓]")
+		}
+		name := fmt.Sprintf("%-14s", p.id)
+		if row == m.cursor {
+			name = activeStyle.Render(name)
+		}
+		return fmt.Sprintf("%s%s %s %s", cursor, check, name, dimStyle.Render(fmt.Sprintf("%d agents", p.agentCount)))
+	}
+
+	// Separate global-only profiles from workspace-overridden ones
 	var globals, wsProfiles []int
 	for i, p := range m.profiles {
 		if p.workspace != "" {
@@ -1758,44 +1863,16 @@ func (m model) viewProfiles() string {
 		}
 	}
 
-	renderItem := func(i int) string {
-		p := m.profiles[i]
-		cursor := "  "
-		if i == m.cursor {
-			cursor = activeStyle.Render("▸ ")
-		}
-		check := dimStyle.Render("[ ]")
-		if p.selected {
-			check = checkStyle.Render("[✓]")
-		}
-		name := fmt.Sprintf("%-14s", p.id)
-		if i == m.cursor {
-			name = activeStyle.Render(name)
-		}
-		return fmt.Sprintf("%s%s %s %s", cursor, check, name, dimStyle.Render(fmt.Sprintf("%d agents", p.agentCount)))
-	}
-
 	b.WriteString(dimStyle.Render("  ── Global ──") + "\n")
 	for _, i := range globals {
 		b.WriteString(renderItem(i) + "\n")
 	}
 
 	if len(wsProfiles) > 0 {
-		// Group by workspace name
-		wsGroups := map[string][]int{}
-		var wsOrder []string
+		wsName := m.profiles[wsProfiles[0]].workspace
+		b.WriteString("\n" + warnStyle.Render("  ── "+wsName+" ──") + "\n")
 		for _, i := range wsProfiles {
-			ws := m.profiles[i].workspace
-			if _, seen := wsGroups[ws]; !seen {
-				wsOrder = append(wsOrder, ws)
-			}
-			wsGroups[ws] = append(wsGroups[ws], i)
-		}
-		for _, ws := range wsOrder {
-			b.WriteString("\n" + warnStyle.Render("  ── "+ws+" ──") + "\n")
-			for _, i := range wsGroups[ws] {
-				b.WriteString(renderItem(i) + "\n")
-			}
+			b.WriteString(renderItem(i) + "\n")
 		}
 	}
 

@@ -49,11 +49,14 @@ func ExpandAliases(names []string) []string {
 }
 
 // ListProfiles discovers all available profiles under steerRoot.
+// Global profiles and active-workspace profiles are returned as separate entries
+// so the TUI can show them in distinct sections.
 func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 	dirs, err := config.ProfileDirs(steerRoot)
 	if err != nil {
 		return nil, err
 	}
+
 	// Global profiles
 	var profiles []model.Profile
 	globalAgents := map[string][]model.Agent{} // id -> agents (for inheritance)
@@ -72,6 +75,7 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 	}
 
 	// Workspace profiles as separate entries with inherited agent count
+	s := config.ReadSteerSettings()
 	wsGlob := filepath.Join(steerRoot, config.WorkspacesDir, "*", "profiles", "*")
 	wsDirs, _ := filepath.Glob(wsGlob)
 	for _, d := range wsDirs {
@@ -81,6 +85,11 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 		}
 		id := filepath.Base(d)
 		wsName := filepath.Base(filepath.Dir(filepath.Dir(d)))
+
+		if s.ActiveWorkspace != "" && s.ActiveWorkspace != wsName {
+			continue
+		}
+
 		wsAgents, _ := discoverAgents(d)
 
 		// Merge global base + workspace agents for count
@@ -212,22 +221,17 @@ func ResolveProfileSource(steerRoot, profileID string) (string, string) {
 // RemoveProfile removes a profile's agents, prompts, and all profile-owned files
 // (powers, context, rules, skills, steering) from targetDir.
 // Files installed by InstallShared (from steer-runtime/shared/) are not touched.
-// NOTE: Agent resolution uses the currently active workspace at the time of removal.
-// If the active workspace changed since installation (or is no longer active), the resolved
-// agent list may differ from what was installed, leaving orphaned agent files in targetDir.
-// The recommended path for profile removal is the TUI (koda → p), which always operates
-// with the correct workspace context.
-// TODO: Persist the install source (global vs workspace) in the profiles manifest so that
-// RemoveProfile can always resolve the correct agent list regardless of active workspace state.
-// This requires a manifest schema change and is considered a major breaking change.
 func RemoveProfile(steerRoot, profileID, targetDir string) (int, error) {
-	srcDir, wsName := ResolveProfileSource(steerRoot, profileID)
-	if wsName != "" {
-		fmt.Printf("  ℹ Resolving %s from workspace '%s'\n", profileID, wsName)
-	}
+	srcDir, _ := ResolveProfileSource(steerRoot, profileID)
+	return RemoveProfileFrom(steerRoot, srcDir, targetDir)
+}
+
+// RemoveProfileFrom removes a profile using an explicit source directory.
+// Use this when the caller already knows the correct sourceDir (e.g. from ListProfiles).
+func RemoveProfileFrom(steerRoot, srcDir, targetDir string) (int, error) {
 	agentNames, err := agentNames(srcDir)
 	if err != nil {
-		return 0, fmt.Errorf("no agents found for profile: %s", profileID)
+		return 0, fmt.Errorf("no agents found in source: %s", srcDir)
 	}
 
 	removed := 0
@@ -311,9 +315,9 @@ func InstallShared(steerRoot, targetDir string) error {
 	return nil
 }
 
-// removeGlobalOrphans removes files installed by the global profile that are NOT
+// RemoveGlobalOrphans removes files installed by the global profile that are NOT
 // present in the workspace override, preventing stale files from leaking through.
-func removeGlobalOrphans(steerRoot, profileID, wsDir, targetDir string) {
+func RemoveGlobalOrphans(steerRoot, profileID, wsDir, targetDir string) {
 	globalSrc := filepath.Join(steerRoot, config.ProfilePrefix+profileID)
 
 	// Agents (keyed by name, stored as <name>.json)

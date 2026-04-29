@@ -155,4 +155,5 @@ func init() {
 	rootCmd.AddCommand(kiroIDECmd)
 	rootCmd.AddCommand(autopilotCmd)
 	rootCmd.AddCommand(kitestreamCmd)
+	rootCmd.AddCommand(featuresCmd)
 }

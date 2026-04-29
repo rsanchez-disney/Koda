@@ -727,6 +727,8 @@ func WriteProfilesManifest(steerRoot, targetDir string) error {
 		Agents     []string `json:"agents"`
 		AgentCount int      `json:"agent_count"`
 		Installed  bool     `json:"installed"`
+		Workspace  string   `json:"workspace,omitempty"`
+		SourceDir  string   `json:"source_dir,omitempty"`
 	}
 
 	var mProfiles []manifestProfile
@@ -740,6 +742,8 @@ func WriteProfilesManifest(steerRoot, targetDir string) error {
 			Agents:     agentNames,
 			AgentCount: p.AgentCount,
 			Installed:  p.Installed,
+			Workspace:  p.WorkspaceName,
+			SourceDir:  p.SourceDir,
 		})
 	}
 
