@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 
@@ -65,21 +66,35 @@ func CanWriteRepo(repo string) bool {
 }
 
 // ListForks returns the full_name of all forks of the upstream steer-runtime repo.
+// Paginates through all pages (100 per page) to handle large fork counts.
 func ListForks() ([]string, string) {
-	cmd := exec.Command("gh", "api", "repos/"+config.DefaultSteerRepo+"/forks?per_page=100", "--jq", ".[].full_name")
-	cmd.Env = append(cmd.Environ(), "GH_HOST="+config.GHHost)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		detail := strings.TrimSpace(string(out))
-		if detail == "" {
-			detail = err.Error()
-		}
-		return nil, "gh api failed: " + detail
-	}
 	var forks []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line != "" {
-			forks = append(forks, line)
+	for page := 1; ; page++ {
+		endpoint := fmt.Sprintf("repos/%s/forks?per_page=100&page=%d", config.DefaultSteerRepo, page)
+		cmd := exec.Command("gh", "api", endpoint, "--jq", ".[].full_name")
+		cmd.Env = append(cmd.Environ(), "GH_HOST="+config.GHHost)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			if page == 1 {
+				detail := strings.TrimSpace(string(out))
+				if detail == "" {
+					detail = err.Error()
+				}
+				return nil, "gh api failed: " + detail
+			}
+			break
+		}
+		batch := strings.TrimSpace(string(out))
+		if batch == "" {
+			break
+		}
+		for _, line := range strings.Split(batch, "\n") {
+			if line != "" {
+				forks = append(forks, line)
+			}
+		}
+		if len(strings.Split(batch, "\n")) < 100 {
+			break // last page
 		}
 	}
 	if len(forks) == 0 {

@@ -57,6 +57,13 @@ const (
 	screenYax
 )
 
+// Fork list scroll parameters.
+const (
+	forkPageSize        = 30 // visible items in fork list
+	forkScrollThreshold = 20 // cursor position before scrolling starts
+	forkScrollMargin    = 8  // items to keep above cursor when scrolling
+)
+
 type model struct {
 	steerRoot   string
 	targetDir   string
@@ -2502,10 +2509,10 @@ func (m model) viewFork() string {
 			b.WriteString("  Select fork:\n")
 		}
 		start := 0
-		if m.forkCursor > 20 {
-			start = m.forkCursor - 8
+		if m.forkCursor > forkScrollThreshold {
+			start = m.forkCursor - forkScrollMargin
 		}
-		end := start + 30
+		end := start + forkPageSize
 		if end > len(m.forkForks) {
 			end = len(m.forkForks)
 		}
