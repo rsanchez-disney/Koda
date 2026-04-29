@@ -66,7 +66,7 @@ func CanWriteRepo(repo string) bool {
 
 // ListForks returns the full_name of all forks of the upstream steer-runtime repo.
 func ListForks() ([]string, string) {
-	cmd := exec.Command("gh", "api", "repos/"+config.DefaultSteerRepo+"/forks", "--jq", ".[].full_name")
+	cmd := exec.Command("gh", "api", "repos/"+config.DefaultSteerRepo+"/forks?per_page=100", "--jq", ".[].full_name")
 	cmd.Env = append(cmd.Environ(), "GH_HOST="+config.GHHost)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

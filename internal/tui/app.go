@@ -2502,10 +2502,10 @@ func (m model) viewFork() string {
 			b.WriteString("  Select fork:\n")
 		}
 		start := 0
-		if m.forkCursor > 8 {
+		if m.forkCursor > 20 {
 			start = m.forkCursor - 8
 		}
-		end := start + 12
+		end := start + 30
 		if end > len(m.forkForks) {
 			end = len(m.forkForks)
 		}
