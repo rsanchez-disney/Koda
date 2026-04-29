@@ -144,6 +144,14 @@ func ResolveWorkspace(steerRoot string, ws model.Workspace) (model.Workspace, []
 		if child.JiraPrefix != "" {
 			merged.JiraPrefix = child.JiraPrefix
 		}
+		if len(child.JiraCustomFields) > 0 {
+			if merged.JiraCustomFields == nil {
+				merged.JiraCustomFields = map[string]string{}
+			}
+			for k, v := range child.JiraCustomFields {
+				merged.JiraCustomFields[k] = v
+			}
+		}
 		if child.WorkspacePath != "" {
 			merged.WorkspacePath = child.WorkspacePath
 		}

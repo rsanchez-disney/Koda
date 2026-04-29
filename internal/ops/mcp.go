@@ -94,6 +94,15 @@ func GenerateMcpJson(nodeExe string) error {
 	envVars := ReadEnvVars()
 	home, _ := os.UserHomeDir()
 
+	// Read workspace-level Jira custom fields (if active workspace defines them)
+	wsCustomFields := map[string]string{}
+	steerRoot := filepath.Join(home, ".kiro", "steer-runtime")
+	if s := config.ReadSteerSettings(); s.ActiveWorkspace != "" {
+		if ws, err := GetWorkspace(steerRoot, s.ActiveWorkspace); err == nil {
+			wsCustomFields = ws.JiraCustomFields
+		}
+	}
+
 	type mcpServer struct {
 		Command string            `json:"command,omitempty"`
 		Args    []string          `json:"args,omitempty"`
@@ -144,6 +153,8 @@ func GenerateMcpJson(nodeExe string) error {
 		}
 		if cf := jiraInstances[0].CustomFields; cf != "" {
 			env["JIRA_CUSTOM_FIELDS"] = cf
+		} else if cf := wsCustomFields[jiraInstances[0].Name]; cf != "" {
+			env["JIRA_CUSTOM_FIELDS"] = cf
 		} else if cf := tokens["JIRA_CUSTOM_FIELDS_"+jiraInstances[0].Name]; cf != "" {
 			env["JIRA_CUSTOM_FIELDS"] = cf
 		} else if cf := envVars["JIRA_CUSTOM_FIELDS"]; cf != "" {
@@ -157,6 +168,8 @@ func GenerateMcpJson(nodeExe string) error {
 				env["JIRA_EMAIL"] = inst.Email
 			}
 			if cf := inst.CustomFields; cf != "" {
+				env["JIRA_CUSTOM_FIELDS"] = cf
+			} else if cf := wsCustomFields[inst.Name]; cf != "" {
 				env["JIRA_CUSTOM_FIELDS"] = cf
 			} else if cf := tokens["JIRA_CUSTOM_FIELDS_"+inst.Name]; cf != "" {
 				env["JIRA_CUSTOM_FIELDS"] = cf
@@ -249,7 +262,7 @@ func GenerateMcpJson(nodeExe string) error {
 	}
 
 	// Workspace MCP servers (from steer-runtime mcp-meta.json)
-	steerRoot := filepath.Join(home, ".kiro", "steer-runtime")
+	steerRoot = filepath.Join(home, ".kiro", "steer-runtime")
 	for _, wm := range walkWorkspaceMCPMetas(steerRoot) {
 		bundle := filepath.Join(bundleDir, wm.DirName, "dist", "index.cjs")
 		if _, err := os.Stat(bundle); err != nil {
