@@ -439,13 +439,40 @@ Key design: `ops/`, `team/`, and `eval/` have zero UI dependencies. `cli/` and `
 
 ```bash
 make help                     # All targets
-make build                    # Build
+make build                    # Build (without prompt-scorer)
+make build TAGS=scorer        # Build with prompt-scorer (requires local repo)
 make test                     # Run tests
 make lint                     # golangci-lint
-make cross                    # macOS/Linux/Windows
+make cross                    # macOS/Linux/Windows (uses TAGS if set)
+make release TAG=v0.x.x       # Tag + cross-compile + publish Koda (includes scorer)
+make publish-all              # Auto-version + publish all repos with changes
 make publish-steer TAG=v0.x.x STEER_ROOT=../steer-runtime  # Publish steer-runtime tarball
-make release TAG=v0.x.x       # Tag + cross-compile + publish Koda
 ```
+
+### Build Tags
+
+| Tag | Effect | When to use |
+|-----|--------|-------------|
+| (none) | Stub scorer, basic token estimation | Contributors without `prompt-scorer` access |
+| `scorer` | Full prompt scoring via `go-prompt-scorer` | Release builds, maintainers with local repo |
+
+`make release` and `make publish-all` automatically set `TAGS=scorer`.
+
+### publish-all
+
+Detects changes across all repos, auto-increments patch version, and publishes:
+
+```bash
+make publish-all
+```
+
+Repos checked (in order):
+1. **Koda** — tags + cross-compiles + uploads to `rsanchez-disney/Koda`
+2. **steer-runtime** — rebuilds MCP bundles + packs tarball + uploads to `rsanchez-disney/steer-runtime`
+3. **steer-autopilot** — tags + publishes (if `../steer-autopilot` exists)
+4. **KiteStream** — tags + publishes (if `../KiteStream` exists)
+
+Each repo is skipped if no commits since last tag. Old releases are cleaned (keeps last 3).
 
 ## Requirements
 

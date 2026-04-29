@@ -45,11 +45,11 @@ clean: ## Remove build artifacts
 	rm -rf bin/
 
 cross: ## Cross-compile Koda for macOS, Linux, Windows
-	CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-darwin-arm64  ./cmd/koda/
-	CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-darwin-amd64  ./cmd/koda/
-	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-linux-amd64   ./cmd/koda/
-	CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-linux-arm64   ./cmd/koda/
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/$(APP)-windows-amd64.exe ./cmd/koda/
+	CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o bin/$(APP)-darwin-arm64  ./cmd/koda/
+	CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o bin/$(APP)-darwin-amd64  ./cmd/koda/
+	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o bin/$(APP)-linux-amd64   ./cmd/koda/
+	CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o bin/$(APP)-linux-arm64   ./cmd/koda/
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o bin/$(APP)-windows-amd64.exe ./cmd/koda/
 
 yax-fetch: ## Clone or pull latest yax source
 	@if [ -d "$(YAX_SRC)/.git" ]; then \
@@ -95,6 +95,7 @@ scorer-cross: scorer-fetch ## Fetch, test, and cross-compile prompt-scorer
 	cd $(SCORER_SRC)/go-prompt-scorer && CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags "-s -w" -o $(CURDIR)/bin/prompt-scorer-linux-arm64   ./cmd/prompt-scorer/
 	cd $(SCORER_SRC)/go-prompt-scorer && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/prompt-scorer-windows-amd64.exe ./cmd/prompt-scorer/
 
+release: TAGS=scorer
 release: ## Tag + build Koda + yax + scorer + publish (make release TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make release TAG=v0.1.0"; exit 1; }
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
