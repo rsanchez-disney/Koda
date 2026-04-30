@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/quick"
 
@@ -795,28 +796,36 @@ func TestServerEntryStructureCorrectness(t *testing.T) {
 				}
 
 			case srv.IsNPX:
-				// NPX servers (chrome-devtools): command=="npx", args contains "-y" and NPXPackage
-				if entry.Command != "npx" {
-					t.Logf("NPX server %q: expected command 'npx', got %q", srv.Name, entry.Command)
-					return false
-				}
-				hasY := false
-				hasPkg := false
-				for _, arg := range entry.Args {
-					if arg == "-y" {
-						hasY = true
+				if srv.DisabledByDefault {
+					// Wrapper script: command ends with "-mcp.sh", no args
+					if !strings.HasSuffix(entry.Command, srv.Name+"-mcp.sh") {
+						t.Logf("NPX wrapper server %q: expected command ending with %q, got %q", srv.Name, srv.Name+"-mcp.sh", entry.Command)
+						return false
 					}
-					if arg == srv.NPXPackage {
-						hasPkg = true
+				} else {
+					// Pure NPX: command=="npx", args contains "-y" and NPXPackage
+					if entry.Command != "npx" {
+						t.Logf("NPX server %q: expected command 'npx', got %q", srv.Name, entry.Command)
+						return false
 					}
-				}
-				if !hasY {
-					t.Logf("NPX server %q: args %v missing '-y'", srv.Name, entry.Args)
-					return false
-				}
-				if !hasPkg {
-					t.Logf("NPX server %q: args %v missing %q", srv.Name, entry.Args, srv.NPXPackage)
-					return false
+					hasY := false
+					hasPkg := false
+					for _, arg := range entry.Args {
+						if arg == "-y" {
+							hasY = true
+						}
+						if arg == srv.NPXPackage {
+							hasPkg = true
+						}
+					}
+					if !hasY {
+						t.Logf("NPX server %q: args %v missing '-y'", srv.Name, entry.Args)
+						return false
+					}
+					if !hasPkg {
+						t.Logf("NPX server %q: args %v missing %q", srv.Name, entry.Args, srv.NPXPackage)
+						return false
+					}
 				}
 
 			default:

@@ -135,9 +135,7 @@ func GenerateMcpJson(nodeExe string) error {
 			Args:    []string{filepath.Join(bundleDir, "chrome-mcp", "dist", "index.cjs")},
 		},
 		"chrome-devtools": {
-			Command:  "npx",
-			Args:     []string{"-y", "@anthropic-ai/chrome-devtools-mcp@latest"},
-			Disabled: true,
+			Command: filepath.Join(home, ".kiro", "hooks", "chrome-devtools-mcp.sh"),
 		},
 	}
 
@@ -562,10 +560,16 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 
 		case srv.IsNPX:
 			// NPX-based servers (no bundle, no npm install).
-			servers[srv.Name] = mcpServer{
-				Command:  "npx",
-				Args:     []string{"-y", srv.NPXPackage},
-				Disabled: srv.DisabledByDefault,
+			if srv.DisabledByDefault {
+				// Server needs an external process — use wrapper script that launches it first.
+				servers[srv.Name] = mcpServer{
+					Command: filepath.Join(home, ".kiro", "hooks", srv.Name+"-mcp.sh"),
+				}
+			} else {
+				servers[srv.Name] = mcpServer{
+					Command: "npx",
+					Args:    []string{"-y", srv.NPXPackage},
+				}
 			}
 
 		case srv.Name == "jira":
