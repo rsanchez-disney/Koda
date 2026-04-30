@@ -22,6 +22,7 @@ type MCPServer struct {
 	IsSSE      bool     // true for compass (SSE transport)
 	IsNPX      bool     // true for npx-based servers (no bundle, no npm install)
 	NPXPackage string   // npm package spec for npx (e.g., "@anthropic-ai/chrome-devtools-mcp@latest")
+	DisabledByDefault bool // true for servers that need external processes (e.g., chrome-devtools needs Chrome running)
 }
 
 // knownServers defines all MCP servers Koda can install.
@@ -38,7 +39,7 @@ var knownServers = []MCPServer{
 	{Name: "appdynamics-mcp", BundleDir: "appdynamics-mcp", TokenKeys: []string{"APPD_CLIENT_ID", "APPD_CLIENT_SECRET"}, EnvKeys: []string{"APPD_CONTROLLER_URL"}},
 {Name: "servicenow-mcp", BundleDir: "servicenow-mcp", TokenKeys: []string{"SNOW_API_USERNAME", "SNOW_API_PASSWORD"}, EnvKeys: []string{"SNOW_INSTANCE"}},
 	{Name: "chrome", BundleDir: "chrome-mcp"},
-	{Name: "chrome-devtools", IsNPX: true, NPXPackage: "@anthropic-ai/chrome-devtools-mcp@latest"},
+	{Name: "chrome-devtools", IsNPX: true, NPXPackage: "@anthropic-ai/chrome-devtools-mcp@latest", DisabledByDefault: true},
 	{Name: "sharepoint", BundleDir: "sharepoint-mcp", TokenKeys: []string{"SHAREPOINT_CLIENT_ID", "SHAREPOINT_CLIENT_SECRET"}, EnvKeys: []string{"SHAREPOINT_TENANT_ID", "SHAREPOINT_SITE_URL"}},
 }
 
@@ -104,12 +105,13 @@ func GenerateMcpJson(nodeExe string) error {
 	}
 
 	type mcpServer struct {
-		Command string            `json:"command,omitempty"`
-		Args    []string          `json:"args,omitempty"`
-		Env     map[string]string `json:"env,omitempty"`
-		URL     string            `json:"url,omitempty"`
-		Type    string            `json:"type,omitempty"`
-		Headers map[string]string `json:"headers,omitempty"`
+		Command  string            `json:"command,omitempty"`
+		Args     []string          `json:"args,omitempty"`
+		Env      map[string]string `json:"env,omitempty"`
+		URL      string            `json:"url,omitempty"`
+		Type     string            `json:"type,omitempty"`
+		Headers  map[string]string `json:"headers,omitempty"`
+		Disabled bool              `json:"disabled,omitempty"`
 	}
 
 	bundleDir := filepath.Join(home, ".kiro", "tools", "mcp-servers")
@@ -133,8 +135,9 @@ func GenerateMcpJson(nodeExe string) error {
 			Args:    []string{filepath.Join(bundleDir, "chrome-mcp", "dist", "index.cjs")},
 		},
 		"chrome-devtools": {
-			Command: "npx",
-			Args:    []string{"-y", "@anthropic-ai/chrome-devtools-mcp@latest"},
+			Command:  "npx",
+			Args:     []string{"-y", "@anthropic-ai/chrome-devtools-mcp@latest"},
+			Disabled: true,
 		},
 	}
 
@@ -525,12 +528,13 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 	bundleDir := filepath.Join(home, ".kiro", "tools", "mcp-servers")
 
 	type mcpServer struct {
-		Command string            `json:"command,omitempty"`
-		Args    []string          `json:"args,omitempty"`
-		Env     map[string]string `json:"env,omitempty"`
-		URL     string            `json:"url,omitempty"`
-		Type    string            `json:"type,omitempty"`
-		Headers map[string]string `json:"headers,omitempty"`
+		Command  string            `json:"command,omitempty"`
+		Args     []string          `json:"args,omitempty"`
+		Env      map[string]string `json:"env,omitempty"`
+		URL      string            `json:"url,omitempty"`
+		Type     string            `json:"type,omitempty"`
+		Headers  map[string]string `json:"headers,omitempty"`
+		Disabled bool              `json:"disabled,omitempty"`
 	}
 
 	servers := make(map[string]mcpServer)
@@ -559,8 +563,9 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 		case srv.IsNPX:
 			// NPX-based servers (no bundle, no npm install).
 			servers[srv.Name] = mcpServer{
-				Command: "npx",
-				Args:    []string{"-y", srv.NPXPackage},
+				Command:  "npx",
+				Args:     []string{"-y", srv.NPXPackage},
+				Disabled: srv.DisabledByDefault,
 			}
 
 		case srv.Name == "jira":
