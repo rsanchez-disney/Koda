@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	ps "github.com/disney/prompt-scorer/go-prompt-scorer"
+	ps "github.disney.com/SANCR225/prompt-scorer/go-prompt-scorer"
 )
 
 // ScoreResult wraps the Go library result with session tracking.

@@ -5,7 +5,7 @@ package kitestream
 import (
 	"sync"
 
-	ps "github.com/disney/prompt-scorer/go-prompt-scorer"
+	ps "github.disney.com/SANCR225/prompt-scorer/go-prompt-scorer"
 	"github.disney.com/SANCR225/koda/internal/ops"
 )
 
