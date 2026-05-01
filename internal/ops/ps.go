@@ -198,15 +198,28 @@ func PrintProcesses(procs []KiroProcess) {
 	fmt.Printf("  System: %d GB RAM — %s tier (max %d agents)\n", sp.TotalRAMGB, sp.Tier, sp.MaxAgents)
 }
 
+// killProcess terminates a process by PID (cross-platform).
+func killProcess(pid int) error {
+	if runtime.GOOS == "windows" {
+		return exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/F").Run()
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return proc.Signal(os.Kill)
+}
+
 // KillOrphanProcesses kills kiro-cli-chat sub-agent processes.
 func KillOrphanProcesses() int {
 	procs := ListKiroProcesses()
 	killed := 0
 	for _, p := range procs {
-		if p.Type == "sub-agent" || (p.Type == "session" && p.PID != os.Getpid()) {
-			proc, err := os.FindProcess(p.PID)
-			if err == nil {
-				proc.Signal(os.Interrupt)
+		if p.PID == os.Getpid() {
+			continue
+		}
+		if p.Type == "sub-agent" || (p.Type == "session") {
+			if killProcess(p.PID) == nil {
 				killed++
 				fmt.Printf("  ✓ Killed %s (PID %d, %.1f MB)\n", p.Name, p.PID, p.MemMB)
 			}
@@ -227,13 +240,10 @@ func CleanStaleProcesses() {
 		if p.PID == os.Getpid() {
 			continue
 		}
-		proc, err := os.FindProcess(p.PID)
-		if err != nil {
-			continue
+		if killProcess(p.PID) == nil {
+			killed++
+			freedMB += p.MemMB
 		}
-		proc.Signal(os.Interrupt)
-		killed++
-		freedMB += p.MemMB
 	}
 	if killed > 0 {
 		fmt.Printf("  ✓ Cleaned %d stale process(es) (%.0f MB freed)\n", killed, freedMB)
