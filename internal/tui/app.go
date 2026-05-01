@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -148,6 +147,7 @@ type ruleItem struct {
 type mcpItem struct {
 	name      string
 	hasBundle bool
+	disabled  bool
 }
 
 // cleanKey returns printable text from a key event.
@@ -223,7 +223,11 @@ func (m *model) refresh() {
 	}
 	mcpDir := filepath.Join(m.targetDir, "tools", "mcp-servers")
 	m.mcpServers = nil
-	if entries, err := os.ReadDir(mcpDir); err == nil {
+	if servers, err := ops.ListMCPServers(); err == nil {
+		for _, srv := range servers {
+			m.mcpServers = append(m.mcpServers, mcpItem{name: srv.Name, hasBundle: true, disabled: srv.Disabled})
+		}
+	} else if entries, err := os.ReadDir(mcpDir); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() {
 				continue
@@ -231,24 +235,6 @@ func (m *model) refresh() {
 			bundle := filepath.Join(mcpDir, e.Name(), "dist", "index.cjs")
 			_, err := os.Stat(bundle)
 			m.mcpServers = append(m.mcpServers, mcpItem{name: e.Name(), hasBundle: err == nil})
-		}
-	}
-	// Include SSE/remote servers from mcp.json (e.g., compass)
-	mcpJSON := filepath.Join(m.targetDir, config.SettingsDir, "mcp.json")
-	if data, err := os.ReadFile(mcpJSON); err == nil {
-		var cfg struct {
-			Servers map[string]struct{ Type string `json:"type"` } `json:"mcpServers"`
-		}
-		if json.Unmarshal(data, &cfg) == nil {
-			bundleSet := map[string]bool{}
-			for _, s := range m.mcpServers {
-				bundleSet[s.name] = true
-			}
-			for name, srv := range cfg.Servers {
-				if srv.Type == "sse" && !bundleSet[name] {
-					m.mcpServers = append(m.mcpServers, mcpItem{name: name + " (sse)", hasBundle: true})
-				}
-			}
 		}
 	}
 
@@ -1059,10 +1045,10 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenDashboard
 		m.statusMsg = ""
 	case "tab":
-		m.mcpSection = (m.mcpSection + 1) % 4
+		m.mcpSection = (m.mcpSection + 1) % 5
 		m.mcpRow = 0
 	case "shift+tab":
-		m.mcpSection = (m.mcpSection + 3) % 4
+		m.mcpSection = (m.mcpSection + 4) % 5
 		m.mcpRow = 0
 	case "up", "k":
 		if m.mcpRow > 0 {
@@ -1074,10 +1060,21 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mcpRow++
 		}
 	case "n":
-		if m.mcpSection < 3 { // can't add bundles
+		if m.mcpSection < 3 { // can't add to tokens or servers sections
 			m.mcpAdding = true
 			m.mcpField = 0
 			m.mcpInput = ""
+		}
+	case " ":
+		if m.mcpSection == 3 && m.mcpRow < len(m.mcpServers) {
+			srv := &m.mcpServers[m.mcpRow]
+			srv.disabled = !srv.disabled
+			ops.ToggleMCPServer(srv.name, srv.disabled)
+			if srv.disabled {
+				m.statusMsg = fmt.Sprintf("%s disabled — restart Kiro to apply", srv.name)
+			} else {
+				m.statusMsg = fmt.Sprintf("%s enabled — restart Kiro to apply", srv.name)
+			}
 		}
 	case "enter":
 		if m.mcpSection <= 3 && m.mcpSectionLen() > 0 {
@@ -1172,6 +1169,8 @@ func (m model) mcpSectionLen() int {
 		return m.confAllCount()
 	case 3:
 		return len(mdl.KnownTokens)
+	case 4:
+		return len(m.mcpServers)
 	}
 	return 0
 }
@@ -1299,14 +1298,14 @@ func (m model) mcpJiraCustomFields() string {
 
 func (m model) viewMCP() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("MCP Instances") + dimStyle.Render("  enter=edit  n=add  d=delete  ctrl+d=clear  r=regenerate  tab=section  esc=back"))
+	b.WriteString(titleStyle.Render("MCP Instances") + dimStyle.Render("  enter=edit  n=add  d=delete  space=toggle  ctrl+d=clear  r=regenerate  tab=section  esc=back"))
 	b.WriteString("\n\n")
 
 	sections := []struct {
 		title string
 		idx   int
 	}{
-		{"GitHub", 0}, {"Jira", 1}, {"Confluence", 2}, {"Other Tokens", 3},
+		{"GitHub", 0}, {"Jira", 1}, {"Confluence", 2}, {"Other Tokens", 3}, {"MCP Servers", 4},
 	}
 
 	for _, sec := range sections {
@@ -1325,6 +1324,8 @@ func (m model) viewMCP() string {
 			if count < len(mdl.DefaultConfluenceInstances) { count = len(mdl.DefaultConfluenceInstances) }
 		case 3:
 			count = len(mdl.KnownTokens)
+		case 4:
+			count = len(m.mcpServers)
 		}
 		if isActive {
 			header = activeStyle.Render(fmt.Sprintf("▸ %s (%d)", sec.title, count))
@@ -1453,19 +1454,27 @@ func (m model) viewMCP() string {
 					b.WriteString("    " + dimStyle.Render("enter=save  esc=cancel") + "\n")
 				}
 			}
+		case 4: // MCP Servers
+			for i, srv := range m.mcpServers {
+				cur := "    "
+				if isActive && m.mcpRow == i {
+					cur = activeStyle.Render("  ▸ ")
+				}
+				check := checkStyle.Render("[✓]")
+				if srv.disabled {
+					check = dimStyle.Render("[ ]")
+				}
+				name := fmt.Sprintf("%-24s", srv.name)
+				if srv.disabled {
+					name = dimStyle.Render(name)
+				}
+				b.WriteString(fmt.Sprintf("%s%s %s\n", cur, check, name))
+			}
 		}
 		b.WriteString("\n")
 	}
 
 	// Bundles footer (summary)
-	if len(m.mcpServers) > 0 {
-		ready := 0
-		for _, s := range m.mcpServers {
-			if s.hasBundle { ready++ }
-		}
-		b.WriteString(dimStyle.Render(fmt.Sprintf("  Bundles: %d/%d ready", ready, len(m.mcpServers))) + "\n\n")
-	}
-
 	if m.mcpAdding {
 		labels := []string{"  Name:  ", "  URL:   ", "  Token: "}
 		if m.mcpSection == 0 {

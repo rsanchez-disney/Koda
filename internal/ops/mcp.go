@@ -301,7 +301,10 @@ func GenerateMcpJson(nodeExe string) error {
 	if err != nil {
 		return fmt.Errorf("cannot marshal config: %w", err)
 	}
-	return os.WriteFile(mcpPath, append(out, '\n'), 0644)
+	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
+		return err
+	}
+	return applyOverridesToMCPJson()
 }
 
 // DiscoverServers scans targetDir/tools/mcp-servers/ and returns all
@@ -687,6 +690,7 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
 		return "", fmt.Errorf("cannot write mcp.json: %w", err)
 	}
+	applyOverridesToMCPJson()
 	return mcpPath, nil
 }
 
@@ -769,4 +773,122 @@ func WriteProfilesManifest(steerRoot, targetDir string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(settingsDir, "profiles.json"), append(out, '\n'), 0644)
+}
+
+// --- MCP Overrides (user-level enable/disable) ---
+
+const mcpOverridesFile = "mcp-overrides.json"
+
+// MCPOverride holds a per-server user override.
+type MCPOverride struct {
+	Disabled bool `json:"disabled"`
+}
+
+// ReadMCPOverrides reads ~/.kiro/settings/mcp-overrides.json.
+func ReadMCPOverrides() map[string]MCPOverride {
+	home, _ := os.UserHomeDir()
+	path := filepath.Join(home, ".kiro", config.SettingsDir, mcpOverridesFile)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return map[string]MCPOverride{}
+	}
+	var overrides map[string]MCPOverride
+	if json.Unmarshal(data, &overrides) != nil {
+		return map[string]MCPOverride{}
+	}
+	return overrides
+}
+
+// WriteMCPOverrides writes ~/.kiro/settings/mcp-overrides.json.
+func WriteMCPOverrides(overrides map[string]MCPOverride) error {
+	home, _ := os.UserHomeDir()
+	dir := filepath.Join(home, ".kiro", config.SettingsDir)
+	os.MkdirAll(dir, 0755)
+	data, err := json.MarshalIndent(overrides, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, mcpOverridesFile), append(data, '\n'), 0644)
+}
+
+// ToggleMCPServer sets or clears the disabled flag for a server.
+func ToggleMCPServer(name string, disabled bool) error {
+	overrides := ReadMCPOverrides()
+	if disabled {
+		overrides[name] = MCPOverride{Disabled: true}
+	} else {
+		delete(overrides, name)
+	}
+	if err := WriteMCPOverrides(overrides); err != nil {
+		return err
+	}
+	return applyOverridesToMCPJson()
+}
+
+// applyOverridesToMCPJson reads mcp.json, applies overrides, writes back.
+func applyOverridesToMCPJson() error {
+	home, _ := os.UserHomeDir()
+	mcpPath := filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return fmt.Errorf("cannot parse mcp.json")
+	}
+	var servers map[string]map[string]any
+	if json.Unmarshal(raw["mcpServers"], &servers) != nil {
+		return fmt.Errorf("cannot parse mcpServers")
+	}
+	overrides := ReadMCPOverrides()
+	for name, ov := range overrides {
+		if srv, ok := servers[name]; ok {
+			if ov.Disabled {
+				srv["disabled"] = true
+			} else {
+				delete(srv, "disabled")
+			}
+		}
+	}
+	// Also remove disabled from servers not in overrides
+	for name, srv := range servers {
+		if _, hasOverride := overrides[name]; !hasOverride {
+			delete(srv, "disabled")
+		}
+	}
+	serversJSON, _ := json.Marshal(servers)
+	raw["mcpServers"] = serversJSON
+	out, _ := json.MarshalIndent(raw, "", "  ")
+	return os.WriteFile(mcpPath, append(out, '\n'), 0644)
+}
+
+// ListMCPServers returns server names and their disabled status from mcp.json.
+func ListMCPServers() ([]MCPServerStatus, error) {
+	home, _ := os.UserHomeDir()
+	mcpPath := filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return nil, err
+	}
+	var parsed struct {
+		MCPServers map[string]struct {
+			Disabled bool `json:"disabled"`
+		} `json:"mcpServers"`
+	}
+	if json.Unmarshal(data, &parsed) != nil {
+		return nil, fmt.Errorf("cannot parse mcp.json")
+	}
+	var result []MCPServerStatus
+	for name, srv := range parsed.MCPServers {
+		result = append(result, MCPServerStatus{Name: name, Disabled: srv.Disabled})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+	return result, nil
+}
+
+// MCPServerStatus holds the name and disabled state of an MCP server.
+type MCPServerStatus struct {
+	Name     string `json:"name"`
+	Disabled bool   `json:"disabled"`
 }

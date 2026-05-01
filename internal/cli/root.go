@@ -156,4 +156,5 @@ func init() {
 	rootCmd.AddCommand(autopilotCmd)
 	rootCmd.AddCommand(kitestreamCmd)
 	rootCmd.AddCommand(featuresCmd)
+	rootCmd.AddCommand(mcpCmd)
 }
