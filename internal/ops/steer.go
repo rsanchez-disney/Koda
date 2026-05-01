@@ -79,12 +79,26 @@ func syncGit(steerRoot string) error {
 
 	if dirty != "" {
 		lines := strings.Split(dirty, "\n")
-		logf("  ⚠️  %d local changes detected — auto-stashing\n", len(lines))
-		exec.Command("git", "-C", steerRoot, "stash", "push", "-m", "koda-sync-auto-stash").Run()
-		defer func() {
-			exec.Command("git", "-C", steerRoot, "stash", "pop").Run()
-			logln("  ✓ Local changes restored from stash")
-		}()
+		action := handleDirtySync(steerRoot, lines)
+		switch action {
+		case syncActionStash:
+			exec.Command("git", "-C", steerRoot, "stash", "push", "-m", "koda-sync-auto-stash").Run()
+			defer func() {
+				exec.Command("git", "-C", steerRoot, "stash", "pop").Run()
+				logln("  ✓ Local changes restored from stash")
+			}()
+		case syncActionCommit:
+			if err := commitLocalChanges(steerRoot); err != nil {
+				return fmt.Errorf("commit failed: %w", err)
+			}
+			return nil // commitLocalChanges already pulls
+		case syncActionDiscard:
+			exec.Command("git", "-C", steerRoot, "checkout", "--", ".").Run()
+			exec.Command("git", "-C", steerRoot, "clean", "-fd").Run()
+			logln("  ✓ Local changes discarded")
+		case syncActionAbort:
+			return fmt.Errorf("sync aborted by user")
+		}
 	}
 
 	cmd := exec.Command("git", "-C", steerRoot, "pull", "--ff-only")
@@ -98,6 +112,84 @@ func syncGit(steerRoot string) error {
 		return cmd2.Run()
 	}
 	return nil
+}
+
+// syncAction represents the user's choice when local changes are detected.
+type syncAction int
+
+const (
+	syncActionStash   syncAction = iota // stash, pull, pop (default)
+	syncActionCommit                     // commit to branch, then pull
+	syncActionDiscard                    // discard all local changes
+	syncActionAbort                      // cancel sync
+)
+
+// handleDirtySync shows local changes and prompts the user for action.
+// In non-interactive mode (no TTY), defaults to stash.
+func handleDirtySync(steerRoot string, changes []string) syncAction {
+	logf("  ⚠️  %d local changes detected:\n\n", len(changes))
+	for _, line := range changes {
+		logf("    %s\n", line)
+	}
+	logln("")
+
+	if !isInteractive() {
+		logln("  Non-interactive — auto-stashing")
+		return syncActionStash
+	}
+
+	logln("  [s] Stash & sync (restore after)  — default")
+	logln("  [d] Show diff")
+	logln("  [c] Commit to branch, then sync")
+	logln("  [r] Discard all changes & sync")
+	logln("  [q] Abort sync")
+	logln("")
+
+	for {
+		fmt.Print("  Choose [s/d/c/r/q] (default: s): ")
+		var input string
+		fmt.Scanln(&input)
+		input = strings.TrimSpace(strings.ToLower(input))
+
+		switch input {
+		case "", "s":
+			return syncActionStash
+		case "d":
+			showDiff(steerRoot)
+			continue // re-prompt after showing diff
+		case "c":
+			return syncActionCommit
+		case "r":
+			return syncActionDiscard
+		case "q":
+			return syncActionAbort
+		default:
+			logln("  Invalid choice. Use s, d, c, r, or q.")
+		}
+	}
+}
+
+// showDiff runs git diff and prints it.
+func showDiff(steerRoot string) {
+	cmd := exec.Command("git", "-C", steerRoot, "diff")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+	// Also show untracked files
+	cmd2 := exec.Command("git", "-C", steerRoot, "diff", "--cached")
+	cmd2.Stdout = os.Stdout
+	cmd2.Stderr = os.Stderr
+	cmd2.Run()
+	logln("")
+}
+
+// isInteractive returns true if stdin is a terminal.
+func isInteractive() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
 }
 
 // commitLocalChanges creates a branch, commits local changes, and optionally creates a PR.
