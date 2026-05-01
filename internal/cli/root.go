@@ -157,4 +157,5 @@ func init() {
 	rootCmd.AddCommand(kitestreamCmd)
 	rootCmd.AddCommand(featuresCmd)
 	rootCmd.AddCommand(mcpCmd)
+	rootCmd.AddCommand(psCmd)
 }
