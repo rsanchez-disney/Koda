@@ -119,6 +119,9 @@ func Upgrade(currentVersion string) error {
 	// Restart tray process if running
 	RestartTray(exePath)
 
+	// Clean up stale kiro processes to free memory
+	CleanStaleProcesses()
+
 	// Install yax if not present
 	if !YaxInstalled() {
 		if err := YaxInstall(); err != nil {

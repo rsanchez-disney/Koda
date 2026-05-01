@@ -214,3 +214,28 @@ func KillOrphanProcesses() int {
 	}
 	return killed
 }
+
+// CleanStaleProcesses kills all kiro-cli-chat and MCP server processes (used during upgrade).
+func CleanStaleProcesses() {
+	procs := ListKiroProcesses()
+	if len(procs) == 0 {
+		return
+	}
+	killed := 0
+	var freedMB float64
+	for _, p := range procs {
+		if p.PID == os.Getpid() {
+			continue
+		}
+		proc, err := os.FindProcess(p.PID)
+		if err != nil {
+			continue
+		}
+		proc.Signal(os.Interrupt)
+		killed++
+		freedMB += p.MemMB
+	}
+	if killed > 0 {
+		fmt.Printf("  ✓ Cleaned %d stale process(es) (%.0f MB freed)\n", killed, freedMB)
+	}
+}
