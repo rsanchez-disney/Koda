@@ -307,3 +307,258 @@ func TestDefaultSelectionAllEnabled(t *testing.T) {
 		}
 	}
 }
+
+// --- Preserve user customizations across regeneration ---
+
+// writeMCPJsonWithState writes a mcp.json with the given servers map to the
+// settings directory under tmpHome. Each value is a map[string]any representing
+// the server entry (may include "disabled", "autoApprove", etc.).
+func writeMCPJsonWithState(t *testing.T, tmpHome string, servers map[string]map[string]any) {
+	t.Helper()
+	settingsDir := filepath.Join(tmpHome, ".kiro", config.SettingsDir)
+	os.MkdirAll(settingsDir, 0755)
+	mcpConfig := map[string]any{"mcpServers": servers}
+	data, err := json.MarshalIndent(mcpConfig, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal seed mcp.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(settingsDir, "mcp.json"), append(data, '\n'), 0644); err != nil {
+		t.Fatalf("failed to write seed mcp.json: %v", err)
+	}
+}
+
+// readMCPJsonRaw reads mcp.json and returns the raw mcpServers map.
+func readMCPJsonRaw(t *testing.T, mcpPath string) map[string]map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		t.Fatalf("failed to read mcp.json: %v", err)
+	}
+	var parsed struct {
+		MCPServers map[string]map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal mcp.json: %v", err)
+	}
+	return parsed.MCPServers
+}
+
+// TestGenerateMCPConfigPreservesDisabledState verifies that when a server was
+// previously disabled in mcp.json, regenerating the config preserves that state.
+func TestGenerateMCPConfigPreservesDisabledState(t *testing.T) {
+	tmpHome, cleanup := setupTempHome(t)
+	defer cleanup()
+
+	// Seed mcp.json with bruno disabled.
+	writeMCPJsonWithState(t, tmpHome, map[string]map[string]any{
+		"bruno":   {"command": "node", "disabled": true},
+		"mermaid": {"command": "node"},
+	})
+
+	// Select bruno and mermaid.
+	var selected []MCPServer
+	for _, srv := range knownServers {
+		if srv.Name == "bruno" || srv.Name == "mermaid" {
+			selected = append(selected, srv)
+		}
+	}
+
+	mcpPath, err := GenerateMCPConfig(selected, nil, nil, nil, map[string]string{}, map[string]string{})
+	if err != nil {
+		t.Fatalf("GenerateMCPConfig error: %v", err)
+	}
+
+	servers := readMCPJsonRaw(t, mcpPath)
+
+	// bruno should still be disabled.
+	brunoEntry, ok := servers["bruno"]
+	if !ok {
+		t.Fatal("bruno not found in generated config")
+	}
+	if disabled, _ := brunoEntry["disabled"].(bool); !disabled {
+		t.Errorf("expected bruno disabled=true, got %v", brunoEntry["disabled"])
+	}
+
+	// mermaid should NOT be disabled.
+	mermaidEntry, ok := servers["mermaid"]
+	if !ok {
+		t.Fatal("mermaid not found in generated config")
+	}
+	if disabled, _ := mermaidEntry["disabled"].(bool); disabled {
+		t.Error("expected mermaid disabled=false, but got true")
+	}
+}
+
+// TestGenerateMCPConfigPreservesAutoApprove verifies that autoApprove arrays
+// are preserved across regeneration.
+func TestGenerateMCPConfigPreservesAutoApprove(t *testing.T) {
+	tmpHome, cleanup := setupTempHome(t)
+	defer cleanup()
+
+	// Seed mcp.json with bruno having autoApprove.
+	writeMCPJsonWithState(t, tmpHome, map[string]map[string]any{
+		"bruno": {"command": "node", "autoApprove": []string{"create_collection", "create_request"}},
+	})
+
+	var selected []MCPServer
+	for _, srv := range knownServers {
+		if srv.Name == "bruno" {
+			selected = append(selected, srv)
+			break
+		}
+	}
+
+	mcpPath, err := GenerateMCPConfig(selected, nil, nil, nil, map[string]string{}, map[string]string{})
+	if err != nil {
+		t.Fatalf("GenerateMCPConfig error: %v", err)
+	}
+
+	servers := readMCPJsonRaw(t, mcpPath)
+	brunoEntry, ok := servers["bruno"]
+	if !ok {
+		t.Fatal("bruno not found in generated config")
+	}
+
+	autoApproveRaw, ok := brunoEntry["autoApprove"]
+	if !ok {
+		t.Fatal("autoApprove not found on bruno entry")
+	}
+
+	// JSON unmarshals arrays as []interface{}.
+	autoApprove, ok := autoApproveRaw.([]interface{})
+	if !ok {
+		t.Fatalf("autoApprove is not an array: %T", autoApproveRaw)
+	}
+	if len(autoApprove) != 2 {
+		t.Fatalf("expected 2 autoApprove entries, got %d", len(autoApprove))
+	}
+	if autoApprove[0] != "create_collection" || autoApprove[1] != "create_request" {
+		t.Errorf("unexpected autoApprove values: %v", autoApprove)
+	}
+}
+
+// TestGenerateMCPConfigDropsRemovedServerState verifies that disabled/autoApprove
+// state for a server that is no longer generated gets dropped (not resurrected).
+func TestGenerateMCPConfigDropsRemovedServerState(t *testing.T) {
+	tmpHome, cleanup := setupTempHome(t)
+	defer cleanup()
+
+	// Seed mcp.json with a server that won't be regenerated.
+	writeMCPJsonWithState(t, tmpHome, map[string]map[string]any{
+		"old-removed-server": {"command": "node", "disabled": true, "autoApprove": []string{"foo"}},
+		"bruno":              {"command": "node"},
+	})
+
+	var selected []MCPServer
+	for _, srv := range knownServers {
+		if srv.Name == "bruno" {
+			selected = append(selected, srv)
+			break
+		}
+	}
+
+	mcpPath, err := GenerateMCPConfig(selected, nil, nil, nil, map[string]string{}, map[string]string{})
+	if err != nil {
+		t.Fatalf("GenerateMCPConfig error: %v", err)
+	}
+
+	servers := readMCPJsonRaw(t, mcpPath)
+	if _, ok := servers["old-removed-server"]; ok {
+		t.Error("removed server should not be resurrected in generated config")
+	}
+}
+
+// TestGenerateMCPConfigNewServerDefaultsEnabled verifies that a server not
+// previously in mcp.json defaults to enabled (no disabled field).
+func TestGenerateMCPConfigNewServerDefaultsEnabled(t *testing.T) {
+	tmpHome, cleanup := setupTempHome(t)
+	defer cleanup()
+
+	// Seed mcp.json with only mermaid (no bruno).
+	writeMCPJsonWithState(t, tmpHome, map[string]map[string]any{
+		"mermaid": {"command": "node", "disabled": true},
+	})
+
+	// Now generate with both mermaid and bruno selected.
+	var selected []MCPServer
+	for _, srv := range knownServers {
+		if srv.Name == "bruno" || srv.Name == "mermaid" {
+			selected = append(selected, srv)
+		}
+	}
+
+	mcpPath, err := GenerateMCPConfig(selected, nil, nil, nil, map[string]string{}, map[string]string{})
+	if err != nil {
+		t.Fatalf("GenerateMCPConfig error: %v", err)
+	}
+
+	servers := readMCPJsonRaw(t, mcpPath)
+
+	// bruno is new — should not be disabled.
+	brunoEntry, ok := servers["bruno"]
+	if !ok {
+		t.Fatal("bruno not found in generated config")
+	}
+	if disabled, _ := brunoEntry["disabled"].(bool); disabled {
+		t.Error("new server bruno should default to enabled, but got disabled=true")
+	}
+
+	// mermaid was disabled — should stay disabled.
+	mermaidEntry, ok := servers["mermaid"]
+	if !ok {
+		t.Fatal("mermaid not found in generated config")
+	}
+	if disabled, _ := mermaidEntry["disabled"].(bool); !disabled {
+		t.Error("existing disabled mermaid should stay disabled")
+	}
+}
+
+// TestGenerateMCPConfigPreservesBothDisabledAndAutoApprove verifies that both
+// disabled and autoApprove are preserved simultaneously on the same server.
+func TestGenerateMCPConfigPreservesBothDisabledAndAutoApprove(t *testing.T) {
+	tmpHome, cleanup := setupTempHome(t)
+	defer cleanup()
+
+	writeMCPJsonWithState(t, tmpHome, map[string]map[string]any{
+		"bruno": {
+			"command":     "node",
+			"disabled":    true,
+			"autoApprove": []string{"create_collection"},
+		},
+	})
+
+	var selected []MCPServer
+	for _, srv := range knownServers {
+		if srv.Name == "bruno" {
+			selected = append(selected, srv)
+			break
+		}
+	}
+
+	mcpPath, err := GenerateMCPConfig(selected, nil, nil, nil, map[string]string{}, map[string]string{})
+	if err != nil {
+		t.Fatalf("GenerateMCPConfig error: %v", err)
+	}
+
+	servers := readMCPJsonRaw(t, mcpPath)
+	brunoEntry, ok := servers["bruno"]
+	if !ok {
+		t.Fatal("bruno not found in generated config")
+	}
+
+	if disabled, _ := brunoEntry["disabled"].(bool); !disabled {
+		t.Error("expected bruno disabled=true")
+	}
+
+	autoApproveRaw, ok := brunoEntry["autoApprove"]
+	if !ok {
+		t.Fatal("autoApprove not found on bruno entry")
+	}
+	autoApprove, ok := autoApproveRaw.([]interface{})
+	if !ok {
+		t.Fatalf("autoApprove is not an array: %T", autoApproveRaw)
+	}
+	if len(autoApprove) != 1 || autoApprove[0] != "create_collection" {
+		t.Errorf("unexpected autoApprove: %v", autoApprove)
+	}
+}

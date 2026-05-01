@@ -291,6 +291,9 @@ func GenerateMcpJson(nodeExe string) error {
 		servers[wm.Meta.Name] = entry
 	}
 
+	// Snapshot user customizations (disabled, autoApprove) before overwriting.
+	priorState := readExistingMCPUserState()
+
 	mcpConfig := map[string]any{"mcpServers": servers}
 	settingsDir := filepath.Join(home, ".kiro", config.SettingsDir)
 	if err := os.MkdirAll(settingsDir, 0755); err != nil {
@@ -302,6 +305,10 @@ func GenerateMcpJson(nodeExe string) error {
 		return fmt.Errorf("cannot marshal config: %w", err)
 	}
 	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
+		return err
+	}
+	// Restore user customizations for servers that still exist.
+	if err := mergeUserStateIntoJSON(mcpPath, priorState); err != nil {
 		return err
 	}
 	return applyOverridesToMCPJson()
@@ -664,6 +671,9 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 		servers["yax"] = mcpServer{Command: yaxBin, Args: []string{"mcp", "--tools=agent"}}
 	}
 
+	// Snapshot user customizations (disabled, autoApprove) before overwriting.
+	priorState := readExistingMCPUserState()
+
 	// Use sorted keys for deterministic output (idempotence).
 	sortedKeys := make([]string, 0, len(servers))
 	for k := range servers {
@@ -690,6 +700,8 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
 		return "", fmt.Errorf("cannot write mcp.json: %w", err)
 	}
+	// Restore user customizations for servers that still exist.
+	mergeUserStateIntoJSON(mcpPath, priorState)
 	applyOverridesToMCPJson()
 	return mcpPath, nil
 }
@@ -775,6 +787,88 @@ func WriteProfilesManifest(steerRoot, targetDir string) error {
 	return os.WriteFile(filepath.Join(settingsDir, "profiles.json"), append(out, '\n'), 0644)
 }
 
+// --- Preserve user customizations across regeneration ---
+
+// existingServerState holds user-customizable fields from an existing mcp.json entry.
+type existingServerState struct {
+	Disabled    bool
+	AutoApprove []string
+}
+
+// readExistingMCPUserState reads the current mcp.json (if any) and returns
+// a map of server name → user-customizable state (disabled, autoApprove).
+// Returns an empty map if the file doesn't exist or can't be parsed.
+func readExistingMCPUserState() map[string]existingServerState {
+	home, _ := os.UserHomeDir()
+	mcpPath := filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return nil
+	}
+	var parsed struct {
+		MCPServers map[string]struct {
+			Disabled    bool     `json:"disabled"`
+			AutoApprove []string `json:"autoApprove"`
+		} `json:"mcpServers"`
+	}
+	if json.Unmarshal(data, &parsed) != nil {
+		return nil
+	}
+	result := make(map[string]existingServerState, len(parsed.MCPServers))
+	for name, srv := range parsed.MCPServers {
+		if srv.Disabled || len(srv.AutoApprove) > 0 {
+			result[name] = existingServerState{
+				Disabled:    srv.Disabled,
+				AutoApprove: srv.AutoApprove,
+			}
+		}
+	}
+	return result
+}
+
+// mergeUserStateIntoJSON reads the written mcp.json, re-applies preserved
+// disabled and autoApprove fields for servers that still exist, and writes back.
+// Servers not present in prior are left untouched (new servers default to enabled).
+func mergeUserStateIntoJSON(mcpPath string, prior map[string]existingServerState) error {
+	if len(prior) == 0 {
+		return nil
+	}
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return fmt.Errorf("cannot parse mcp.json for merge")
+	}
+	var servers map[string]map[string]any
+	if json.Unmarshal(raw["mcpServers"], &servers) != nil {
+		return fmt.Errorf("cannot parse mcpServers for merge")
+	}
+	changed := false
+	for name, state := range prior {
+		srv, ok := servers[name]
+		if !ok {
+			continue // server was removed, don't resurrect it
+		}
+		if state.Disabled {
+			srv["disabled"] = true
+			changed = true
+		}
+		if len(state.AutoApprove) > 0 {
+			srv["autoApprove"] = state.AutoApprove
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	serversJSON, _ := json.Marshal(servers)
+	raw["mcpServers"] = serversJSON
+	out, _ := json.MarshalIndent(raw, "", "  ")
+	return os.WriteFile(mcpPath, append(out, '\n'), 0644)
+}
+
 // --- MCP Overrides (user-level enable/disable) ---
 
 const mcpOverridesFile = "mcp-overrides.json"
@@ -849,12 +943,6 @@ func applyOverridesToMCPJson() error {
 			} else {
 				delete(srv, "disabled")
 			}
-		}
-	}
-	// Also remove disabled from servers not in overrides
-	for name, srv := range servers {
-		if _, hasOverride := overrides[name]; !hasOverride {
-			delete(srv, "disabled")
 		}
 	}
 	serversJSON, _ := json.Marshal(servers)
