@@ -615,6 +615,10 @@ func (m model) viewDashboard() string {
 		}
 	}
 
+	// System resources
+	sysProfile := ops.ReadSystemProfile()
+	b.WriteString(fmt.Sprintf("  System:    %s\n", dimStyle.Render(fmt.Sprintf("%dGB RAM — %s tier (max %d agents)", sysProfile.TotalRAMGB, sysProfile.Tier, sysProfile.MaxAgents))))
+
 	if m.ghIdentity.Login != "" {
 		userStr := m.ghIdentity.Login
 		if m.ghIdentity.Name != "" {

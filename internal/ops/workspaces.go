@@ -299,6 +299,9 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 
 	WriteProfilesManifest(steerRoot, targetDir)
 
+	// Persist system resource profile for agent/hook consumption
+	WriteSystemProfile()
+
 	// Persist resolved workspace snapshot for agent/hook consumption
 	WriteWorkspaceSnapshot(targetDir, resolved)
 

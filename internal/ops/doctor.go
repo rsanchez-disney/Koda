@@ -368,6 +368,14 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		results = append(results, DoctorResult{Name: "prompt-scorer", OK: false, Detail: "not installed (prompt scoring binary unavailable)", Fix: "koda upgrade"})
 	}
 
+	// 14. System resources
+	sp := DetectSystemProfile()
+	results = append(results, DoctorResult{
+		Name:   "system",
+		OK:     true,
+		Detail: fmt.Sprintf("%dGB RAM — %s tier (max %d concurrent agents)", sp.TotalRAMGB, sp.Tier, sp.MaxAgents),
+	})
+
 	return results
 }
 
