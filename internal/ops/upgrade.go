@@ -17,6 +17,7 @@ const releaseURL = "https://api.github.com/repos/rsanchez-disney/Koda/releases/l
 
 type ghRelease struct {
 	TagName string    `json:"tag_name"`
+	Body    string    `json:"body"`
 	Assets  []ghAsset `json:"assets"`
 }
 
@@ -115,6 +116,17 @@ func Upgrade(currentVersion string) error {
 	os.Remove(oldFile)
 
 	fmt.Printf("\u2705 Upgraded: %s \u2192 %s\n", currentVersion, rel.TagName)
+
+	// Display release notes
+	if rel.Body != "" {
+		fmt.Println("\n📋 What's new in Koda " + rel.TagName + ":")
+		for _, line := range strings.Split(rel.Body, "\n") {
+			if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
+				fmt.Println("  " + line)
+			}
+		}
+		fmt.Println()
+	}
 
 	// Restart tray process if running
 	RestartTray(exePath)

@@ -191,7 +191,11 @@ var upgradeCmd = &cobra.Command{
 		// Auto-sync steer-runtime and installed profiles after upgrade
 		fmt.Println("\n🔄 Syncing steer-runtime...")
 		syncUpdate = true
-		return syncCmd.RunE(cmd, nil)
+		if err := syncCmd.RunE(cmd, nil); err != nil {
+			return err
+		}
+		ops.DisplaySteerReleaseNotes(steerRoot)
+		return nil
 	},
 }
 

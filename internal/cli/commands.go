@@ -143,9 +143,8 @@ var syncCmd = &cobra.Command{
 		if s := config.ReadSteerSettings(); s.ActiveWorkspace != "" {
 			ws, err := ops.GetWorkspace(steerRoot, s.ActiveWorkspace)
 			if err == nil {
-				_, wsNames := ops.ResolveWorkspace(steerRoot, ws)
-				ops.InstallWorkspaceSteering(steerRoot, target, wsNames)
-				ops.InstallWorkspaceMCPBundles(steerRoot, target, wsNames)
+				resolved, wsNames := ops.ResolveWorkspace(steerRoot, ws)
+				ops.RefreshWorkspaceFiles(steerRoot, target, resolved, wsNames)
 			}
 		}
 		fmt.Printf("\n\u2705 Sync complete (%d agents total)\n", countAgents(target))

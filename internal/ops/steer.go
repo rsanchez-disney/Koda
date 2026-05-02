@@ -68,6 +68,14 @@ func SyncSteerRuntime(steerRoot, targetDir string) error {
 		InstallProfileFrom(srcDir, targetDir)
 	}
 	InjectAgentTokens(targetDir)
+
+	// Re-apply active workspace files (context, rules, snapshot) so they survive the refresh
+	if settings.ActiveWorkspace != "" {
+		if ws, err := GetWorkspace(steerRoot, settings.ActiveWorkspace); err == nil {
+			resolved, wsNames := ResolveWorkspace(steerRoot, ws)
+			RefreshWorkspaceFiles(steerRoot, targetDir, resolved, wsNames)
+		}
+	}
 	return nil
 }
 
@@ -413,4 +421,32 @@ func ExtractTarGz(data []byte, destDir string) error {
 		}
 	}
 	return nil
+}
+
+// DisplaySteerReleaseNotes reads RELEASE_NOTES.md from steer-runtime and prints
+// the latest version block (between <!-- LATEST --> and <!-- END LATEST --> markers).
+func DisplaySteerReleaseNotes(steerRoot string) {
+	data, err := os.ReadFile(filepath.Join(steerRoot, "RELEASE_NOTES.md"))
+	if err != nil {
+		return
+	}
+	content := string(data)
+	start := strings.Index(content, "<!-- LATEST -->")
+	end := strings.Index(content, "<!-- END LATEST -->")
+	if start < 0 || end < 0 || end <= start {
+		return
+	}
+	block := strings.TrimSpace(content[start+len("<!-- LATEST -->") : end])
+	if block == "" {
+		return
+	}
+	fmt.Println("\n📋 What's new in steer-runtime:")
+	for _, line := range strings.Split(block, "\n") {
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
+			fmt.Println("  " + line)
+		} else if strings.HasPrefix(line, "## ") {
+			fmt.Println("  " + line[3:])
+		}
+	}
+	fmt.Println()
 }

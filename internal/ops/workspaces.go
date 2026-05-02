@@ -519,3 +519,28 @@ func WriteWorkspaceSnapshot(targetDir string, ws model.Workspace) {
 	data, _ := json.MarshalIndent(ws, "", "  ")
 	os.WriteFile(filepath.Join(settingsDir, "workspace.json"), append(data, '\n'), 0644)
 }
+
+// RefreshWorkspaceFiles re-applies workspace context, rules, steering, MCP bundles,
+// common files, and the settings snapshot. This is the lightweight counterpart to
+// ApplyWorkspace — it skips steer-runtime sync, repo cloning, and memory bank init,
+// making it safe to call after a profile sync or steer-runtime update.
+func RefreshWorkspaceFiles(steerRoot, targetDir string, resolved model.Workspace, wsNames []string) {
+	// Rules from workspace chain
+	for _, rule := range resolved.Rules {
+		src := filepath.Join(steerRoot, "common", config.RulesDir, rule+".md")
+		if _, err := os.Stat(src); err == nil {
+			dst := filepath.Join(targetDir, config.RulesDir)
+			os.MkdirAll(dst, 0755)
+			copyFile(src, filepath.Join(dst, rule+".md"))
+		}
+	}
+	for _, wsName := range wsNames {
+		wsPath := findWorkspaceDir(steerRoot, wsName)
+		copyDirContents(filepath.Join(wsPath, config.RulesDir), filepath.Join(targetDir, config.RulesDir))
+		copyDirContents(filepath.Join(wsPath, config.ContextDir), filepath.Join(targetDir, config.ContextDir))
+	}
+	InstallWorkspaceSteering(steerRoot, targetDir, wsNames)
+	InstallWorkspaceMCPBundles(steerRoot, targetDir, wsNames)
+	InstallWorkspaceCommon(steerRoot, targetDir, wsNames)
+	WriteWorkspaceSnapshot(targetDir, resolved)
+}
