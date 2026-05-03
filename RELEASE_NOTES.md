@@ -1,31 +1,21 @@
-# Koda v0.4.114 — Release Notes
+# Koda v0.4.115 — Release Notes
 
 **Date:** 2026-05-03
 
 ## Highlights
 
-**Graceful process cleanup during upgrade** — Koda now safely manages running processes when performing an upgrade. Disposable processes (sub-agents, tray, MCP servers) are automatically terminated, while active chat sessions prompt the user before stopping and trigger an auto-save via SIGTERM.
+**MCP toggle and chrome-devtools defaults fixed** — Two bugs in the MCP subsystem are resolved: the TUI space-bar toggle for MCP servers now targets the correct section, and the chrome-devtools server is disabled by default as intended.
 
-## What's New
+## What's Fixed
 
-### Added
-- **Graceful process cleanup during upgrade** — auto-kill disposable processes (sub-agents, tray, MCP) during upgrade, prompt user before stopping active chat sessions, send SIGTERM to sessions triggering auto-save before exit (#183)
-- **SIGTERM auto-save handler** — chat TUI saves session to `autosave.json` on SIGTERM; extracted shared `saveSession` method from `/save` command
-- **RestartTray** now checks and announces before killing; 5s grace period with SIGKILL fallback for hung processes
-
-### Fixed
-- `gracefulKillProcess` polls with signal 0 instead of `Wait()` (works for non-child processes) (#183)
-- `saveSession` uses value receiver for consistency with bubbletea pattern (#183)
-- SIGTERM autosave uses `autosave-<pid>.json` to avoid collisions (#183)
-- `KillOrphanProcesses` uses graceful kill for sessions, hard kill for sub-agents (#183)
+- **TUI MCP toggle** — space bar checked `mcpSection==3` instead of `4`, so toggling servers on/off never worked (`internal/tui/app.go`)
+- **chrome-devtools default** — MCP server entry was missing `Disabled: true`, causing it to load on every session (`internal/ops/mcp.go`)
 
 ## Commits
 
-- `3a3f70e` feat: graceful process cleanup during upgrade with auto-save
-- `031dafe` fix: address PR #183 review issues
+- `dc9ebcb` fix: MCP toggle wrong section and chrome-devtools not disabled by default (#179)
 
 ## Files Changed
 
-- `internal/ops/ps.go` — process management with graceful kill logic
-- `internal/ops/upgrade.go` — upgrade flow with process cleanup
-- `internal/tui/chat.go` — SIGTERM handler and saveSession extraction
+- `internal/tui/app.go` — corrected mcpSection comparison from 3 to 4
+- `internal/ops/mcp.go` — added `Disabled: true` to chrome-devtools server entry

@@ -31,6 +31,14 @@ All notable changes to Koda.
 
 ---
 
+## [0.4.115] — 2026-05-03
+
+### Fixed
+- TUI MCP toggle checked `mcpSection==3` instead of `4`, so toggling servers via space bar never worked (#179)
+- `chrome-devtools` MCP server was missing `Disabled: true`, causing it to load on every session (#179)
+
+---
+
 ## [0.4.114] — 2026-05-03
 
 ### Added
