@@ -31,6 +31,21 @@ All notable changes to Koda.
 
 ---
 
+## [0.4.114] — 2026-05-03
+
+### Added
+- **Graceful process cleanup during upgrade** — auto-kill disposable processes (sub-agents, tray, MCP) during upgrade, prompt user before stopping active chat sessions, send SIGTERM to sessions triggering auto-save before exit (#183)
+- **SIGTERM auto-save handler** — chat TUI saves session to `autosave.json` on SIGTERM; extracted shared `saveSession` method from `/save` command
+- **RestartTray** now checks and announces before killing; 5s grace period with SIGKILL fallback for hung processes
+
+### Fixed
+- `gracefulKillProcess` polls with signal 0 instead of `Wait()` (works for non-child processes) (#183)
+- `saveSession` uses value receiver for consistency with bubbletea pattern (#183)
+- SIGTERM autosave uses `autosave-<pid>.json` to avoid collisions (#183)
+- `KillOrphanProcesses` uses graceful kill for sessions, hard kill for sub-agents (#183)
+
+---
+
 ## [0.4.113] — 2026-05-03
 
 ### Fixed
