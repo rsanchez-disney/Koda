@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -90,8 +92,34 @@ func initialChatModel(agent string) chatModel {
 	return chatModel{agent: agent, scroll: -1}
 }
 
+type sigtermMsg struct{}
+
+func listenSigterm() tea.Msg {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGTERM)
+	<-ch
+	return sigtermMsg{}
+}
+
+func (m *chatModel) saveSession(name string) {
+	home, _ := os.UserHomeDir()
+	sessDir := filepath.Join(home, ".kiro", "settings", "sessions")
+	os.MkdirAll(sessDir, 0755)
+	filename := filepath.Join(sessDir, name+".json")
+	var msgs []map[string]string
+	for _, msg := range m.messages {
+		msgs = append(msgs, map[string]string{"role": msg.role, "content": msg.content})
+	}
+	data, _ := json.MarshalIndent(map[string]interface{}{
+		"agent":    m.agent,
+		"messages": msgs,
+		"savedAt":  time.Now().Format(time.RFC3339),
+	}, "", "  ")
+	os.WriteFile(filename, data, 0644)
+}
+
 func (m chatModel) Init() tea.Cmd {
-	return func() tea.Msg {
+	return tea.Batch(listenSigterm, func() tea.Msg {
 		agent := m.agent
 		if agent == "" {
 			if s := ops.LoadSettings(); s.LastAgent != "" {
@@ -107,7 +135,7 @@ func (m chatModel) Init() tea.Cmd {
 			return chatMsg{role: "system", content: fmt.Sprintf("Session failed: %v", err)}
 		}
 		return acpConnected{client: client, agent: agent}
-	}
+	})
 }
 
 type acpConnected struct {
@@ -131,6 +159,14 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
+
+	case sigtermMsg:
+		m.saveSession("autosave")
+		m.quitting = true
+		if m.client != nil {
+			m.client.Close()
+		}
+		return m, tea.Quit
 
 	case acpConnected:
 		m.client = msg.client
@@ -647,24 +683,11 @@ func (m chatModel) handleSlash(text string) (tea.Model, tea.Cmd) {
 			m.messages = append(m.messages, chatMsg{role: "system", content: "Usage: /profile <name> (or /profile to clear)"})
 		}
 	case "/save":
-		home, _ := os.UserHomeDir()
-		sessDir := filepath.Join(home, ".kiro", "settings", "sessions")
-		os.MkdirAll(sessDir, 0755)
 		name := "session"
 		if len(parts) > 1 {
 			name = parts[1]
 		}
-		filename := filepath.Join(sessDir, name+".json")
-		var msgs []map[string]string
-		for _, msg := range m.messages {
-			msgs = append(msgs, map[string]string{"role": msg.role, "content": msg.content})
-		}
-		data, _ := json.MarshalIndent(map[string]interface{}{
-			"agent":    m.agent,
-			"messages": msgs,
-			"savedAt":  time.Now().Format(time.RFC3339),
-		}, "", "  ")
-		os.WriteFile(filename, data, 0644)
+		m.saveSession(name)
 		m.messages = append(m.messages, chatMsg{role: "system", content: fmt.Sprintf("Session saved: %s", name)})
 	case "/load":
 		home, _ := os.UserHomeDir()

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -210,6 +211,32 @@ func killProcess(pid int) error {
 	return proc.Signal(os.Kill)
 }
 
+// gracefulKillProcess sends SIGTERM and waits for the process to exit within the grace period.
+// Falls back to SIGKILL if the process doesn't exit in time.
+func gracefulKillProcess(pid int, grace time.Duration) error {
+	if runtime.GOOS == "windows" {
+		return exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/F").Run()
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		return err
+	}
+	done := make(chan struct{})
+	go func() {
+		proc.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-time.After(grace):
+		return proc.Signal(os.Kill)
+	}
+}
+
 // KillOrphanProcesses kills kiro-cli-chat sub-agent processes.
 func KillOrphanProcesses() int {
 	procs := ListKiroProcesses()
@@ -228,24 +255,65 @@ func KillOrphanProcesses() int {
 	return killed
 }
 
-// CleanStaleProcesses kills all kiro-cli-chat and MCP server processes (used during upgrade).
+// CleanStaleProcesses auto-kills disposable processes (sub-agents, tray, MCP servers)
+// and prompts the user about active sessions so they can save context first.
 func CleanStaleProcesses() {
 	procs := ListKiroProcesses()
-	if len(procs) == 0 {
-		return
-	}
-	killed := 0
-	var freedMB float64
+
+	var disposable, sessions []KiroProcess
 	for _, p := range procs {
 		if p.PID == os.Getpid() {
 			continue
 		}
-		if killProcess(p.PID) == nil {
+		switch p.Type {
+		case "sub-agent", "tray", "mcp":
+			disposable = append(disposable, p)
+		case "session":
+			sessions = append(sessions, p)
+		}
+	}
+
+	// Auto-kill disposable processes silently
+	if len(disposable) > 0 {
+		killed := 0
+		var freedMB float64
+		for _, p := range disposable {
+			if killProcess(p.PID) == nil {
+				killed++
+				freedMB += p.MemMB
+			}
+		}
+		if killed > 0 {
+			fmt.Printf("  ✓ Stopped %d background process(es) (%.0f MB freed)\n", killed, freedMB)
+		}
+	}
+
+	if len(sessions) == 0 {
+		return
+	}
+
+	// Prompt about active sessions
+	fmt.Printf("\n⚠ %d active chat session(s) found:\n", len(sessions))
+	for _, p := range sessions {
+		fmt.Printf("  PID %-8d %8.1f MB  %s\n", p.PID, p.MemMB, FormatElapsed(p.Elapsed))
+	}
+	fmt.Println("\n  Sessions will auto-save memories on exit, or skip to keep them running.")
+	fmt.Print("  Stop active sessions? [y/N] ")
+	var answer string
+	fmt.Scanln(&answer)
+	if answer != "y" && answer != "Y" {
+		fmt.Println("  Skipped — sessions left running (will use old binary until restarted).")
+		return
+	}
+
+	fmt.Print("  Saving sessions...")
+	killed := 0
+	for _, p := range sessions {
+		if gracefulKillProcess(p.PID, 5*time.Second) == nil {
 			killed++
-			freedMB += p.MemMB
 		}
 	}
 	if killed > 0 {
-		fmt.Printf("  ✓ Cleaned %d stale process(es) (%.0f MB freed)\n", killed, freedMB)
+		fmt.Printf("\r  ✓ Saved and stopped %d session(s)\n", killed)
 	}
 }
