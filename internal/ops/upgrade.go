@@ -153,7 +153,10 @@ func Upgrade(currentVersion string) error {
 
 // RestartTray kills any running "koda tray" process and restarts it with the new binary.
 func RestartTray(exePath string) {
-	KillTray()
+	if IsTrayRunning() {
+		fmt.Println("  🔄 Restarting tray process with new binary...")
+		KillTray()
+	}
 	LaunchTray(exePath)
 }
 
