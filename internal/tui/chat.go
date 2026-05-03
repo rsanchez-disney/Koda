@@ -101,7 +101,7 @@ func listenSigterm() tea.Msg {
 	return sigtermMsg{}
 }
 
-func (m *chatModel) saveSession(name string) {
+func (m chatModel) saveSession(name string) {
 	home, _ := os.UserHomeDir()
 	sessDir := filepath.Join(home, ".kiro", "settings", "sessions")
 	os.MkdirAll(sessDir, 0755)
@@ -161,7 +161,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case sigtermMsg:
-		m.saveSession("autosave")
+		m.saveSession(fmt.Sprintf("autosave-%d", os.Getpid()))
 		m.quitting = true
 		if m.client != nil {
 			m.client.Close()

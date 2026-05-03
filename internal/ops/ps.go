@@ -211,7 +211,7 @@ func killProcess(pid int) error {
 	return proc.Signal(os.Kill)
 }
 
-// gracefulKillProcess sends SIGTERM and waits for the process to exit within the grace period.
+// gracefulKillProcess sends SIGTERM and polls until the process exits or the grace period expires.
 // Falls back to SIGKILL if the process doesn't exit in time.
 func gracefulKillProcess(pid int, grace time.Duration) error {
 	if runtime.GOOS == "windows" {
@@ -224,20 +224,17 @@ func gracefulKillProcess(pid int, grace time.Duration) error {
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
 		return err
 	}
-	done := make(chan struct{})
-	go func() {
-		proc.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-		return nil
-	case <-time.After(grace):
-		return proc.Signal(os.Kill)
+	deadline := time.Now().Add(grace)
+	for time.Now().Before(deadline) {
+		if proc.Signal(syscall.Signal(0)) != nil {
+			return nil // process exited
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
+	return proc.Signal(os.Kill)
 }
 
-// KillOrphanProcesses kills kiro-cli-chat sub-agent processes.
+// KillOrphanProcesses kills kiro-cli-chat sub-agent processes and gracefully stops sessions.
 func KillOrphanProcesses() int {
 	procs := ListKiroProcesses()
 	killed := 0
@@ -245,11 +242,18 @@ func KillOrphanProcesses() int {
 		if p.PID == os.Getpid() {
 			continue
 		}
-		if p.Type == "sub-agent" || (p.Type == "session") {
+		switch p.Type {
+		case "sub-agent":
 			if killProcess(p.PID) == nil {
 				killed++
 				fmt.Printf("  ✓ Killed %s (PID %d, %.1f MB)\n", p.Name, p.PID, p.MemMB)
 			}
+		case "session":
+			if gracefulKillProcess(p.PID, 5*time.Second) == nil {
+				killed++
+				fmt.Printf("  ✓ Stopped %s (PID %d, %.1f MB)\n", p.Name, p.PID, p.MemMB)
+			}
+		// daemon and other types are intentionally skipped
 		}
 	}
 	return killed
