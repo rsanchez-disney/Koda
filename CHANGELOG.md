@@ -31,6 +31,13 @@ All notable changes to Koda.
 
 ---
 
+## [0.4.113] — 2026-05-03
+
+### Fixed
+- Sync installs global profile before workspace overlay agents, matching the workspace apply flow; also deduplicates DetectInstalled output (#182)
+
+---
+
 ## [0.1.0] — 2026-03-28
 
 Initial release with install, sync, remove, workspace, doctor, chat, TUI dashboard.
