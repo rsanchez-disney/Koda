@@ -135,7 +135,8 @@ func GenerateMcpJson(nodeExe string) error {
 			Args:    []string{filepath.Join(bundleDir, "chrome-mcp", "dist", "index.cjs")},
 		},
 		"chrome-devtools": {
-			Command: filepath.Join(home, ".kiro", "hooks", "chrome-devtools-mcp.sh"),
+			Command:  filepath.Join(home, ".kiro", "hooks", "chrome-devtools-mcp.sh"),
+			Disabled: true,
 		},
 	}
 
@@ -573,7 +574,8 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 			if srv.DisabledByDefault {
 				// Server needs an external process — use wrapper script that launches it first.
 				servers[srv.Name] = mcpServer{
-					Command: filepath.Join(home, ".kiro", "hooks", srv.Name+"-mcp.sh"),
+					Command:  filepath.Join(home, ".kiro", "hooks", srv.Name+"-mcp.sh"),
+					Disabled: true,
 				}
 			} else {
 				servers[srv.Name] = mcpServer{

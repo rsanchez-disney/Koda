@@ -93,7 +93,7 @@ type model struct {
 	ghAdding      bool
 	jiraInstances []mdl.JiraInstance
 	confInstances []mdl.ConfluenceInstance
-	mcpSection    int  // 0=github, 1=jira, 2=confluence, 3=other
+	mcpSection    int  // 0=github, 1=jira, 2=confluence, 3=other tokens, 4=servers
 	mcpRow        int  // row within current section
 	mcpAdding     bool
 	mcpEditing    bool
@@ -1070,7 +1070,7 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mcpInput = ""
 		}
 	case " ":
-		if m.mcpSection == 3 && m.mcpRow < len(m.mcpServers) {
+		if m.mcpSection == 4 && m.mcpRow < len(m.mcpServers) {
 			srv := &m.mcpServers[m.mcpRow]
 			srv.disabled = !srv.disabled
 			ops.ToggleMCPServer(srv.name, srv.disabled)
