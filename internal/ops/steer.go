@@ -64,8 +64,15 @@ func SyncSteerRuntime(steerRoot, targetDir string) error {
 	CleanStaleKiroConfig()
 	InstallProfile(steerRoot, "core", targetDir)
 	for _, p := range installed {
-		srcDir, _ := ResolveProfileSource(steerRoot, p)
-		InstallProfileFrom(srcDir, targetDir)
+		// Install global profile first, then overlay workspace agents (if any).
+		// This matches the workspace apply flow in workspaces.go.
+		InstallProfile(steerRoot, p, targetDir)
+		if settings.ActiveWorkspace != "" {
+			wsDir := filepath.Join(findWorkspaceDir(steerRoot, settings.ActiveWorkspace), "profiles", p)
+			if _, err := os.Stat(wsDir); err == nil {
+				InstallProfileFrom(wsDir, targetDir)
+			}
+		}
 	}
 	InjectAgentTokens(targetDir)
 

@@ -271,9 +271,11 @@ func RemoveProfileFrom(steerRoot, srcDir, targetDir string) (int, error) {
 // DetectInstalled returns profile IDs that are currently installed in targetDir.
 func DetectInstalled(steerRoot, targetDir string) []string {
 	profiles, _ := ListProfiles(steerRoot, targetDir)
+	seen := map[string]bool{}
 	var installed []string
 	for _, p := range profiles {
-		if p.Installed {
+		if p.Installed && !seen[p.ID] {
+			seen[p.ID] = true
 			installed = append(installed, p.ID)
 		}
 	}
