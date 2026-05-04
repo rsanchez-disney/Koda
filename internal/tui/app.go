@@ -54,6 +54,7 @@ const (
 	screenGitHub
 	screenKiroIDE
 	screenYax
+	screenMCPWizard
 )
 
 // Fork list scroll parameters.
@@ -127,6 +128,20 @@ type model struct {
 	yaxSearch     string
 	yaxSearching  bool
 	yaxProject    string // selected project filter
+
+	// MCP install wizard state
+	wizStep    int // 0=servers, 1=tokens, 2=done
+	wizServers []wizServer
+	wizCursor  int
+	wizTokens  []mdl.Token
+	wizTokIdx  int
+	wizInput   string
+}
+
+type wizServer struct {
+	srv      ops.MCPServer
+	selected bool
+	verified bool
 }
 
 type profileItem struct {
@@ -376,6 +391,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateCreateWorkspace(msg)
 		case screenYax:
 			return m.updateYax(msg)
+		case screenMCPWizard:
+			return m.updateMCPWizard(msg)
 		}
 	}
 	return m, nil
@@ -1648,6 +1665,14 @@ func (m model) updateEnvVars(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.envInput += cleanKey(msg)
 		}
+	case "g":
+		if m.envInput == "" {
+			m.saveEnvVars()
+			m.launchMCPWizard()
+			return m, nil
+		} else {
+			m.envInput += cleanKey(msg)
+		}
 	case "d":
 		if m.envInput == "" && m.cursor < len(m.envVarKeys) {
 			k := m.envVarKeys[m.cursor]
@@ -1705,7 +1730,7 @@ func (m *model) saveEnvVars() {
 
 func (m model) viewEnvVars() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Env Vars") + dimStyle.Render("  type=edit  enter=save  n=new  d=delete  esc=back"))
+	b.WriteString(titleStyle.Render("Env Vars") + dimStyle.Render("  type=edit  enter=save  n=new  d=delete  g=generate-mcp  esc=back"))
 	b.WriteString("\n\n")
 
 	if strings.TrimSpace(m.envNewKey) != "" || m.envNewKey == " " {
@@ -1756,6 +1781,222 @@ func (m model) viewEnvVars() string {
 	return boxStyle.Render(b.String())
 }
 
+// --- MCP Install Wizard ---
+
+func (m *model) launchMCPWizard() {
+	available, verified := ops.DiscoverServers(m.targetDir)
+	m.wizServers = nil
+	for _, srv := range available {
+		m.wizServers = append(m.wizServers, wizServer{
+			srv:      srv,
+			selected: verified[srv.Name],
+			verified: verified[srv.Name],
+		})
+	}
+	m.wizStep = 0
+	m.wizCursor = 0
+	m.wizInput = ""
+	m.wizTokens = nil
+	m.wizTokIdx = 0
+	m.screen = screenMCPWizard
+}
+
+func (m *model) wizSelectedServers() []ops.MCPServer {
+	var sel []ops.MCPServer
+	for _, ws := range m.wizServers {
+		if ws.selected && ws.verified {
+			sel = append(sel, ws.srv)
+		}
+	}
+	return sel
+}
+
+func (m model) updateMCPWizard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch m.wizStep {
+	case 0: // server selection
+		switch key {
+		case "esc":
+			m.screen = screenEnvVars
+			m.statusMsg = ""
+		case "up", "k":
+			if m.wizCursor > 0 {
+				m.wizCursor--
+			}
+		case "down", "j":
+			if m.wizCursor < len(m.wizServers)-1 {
+				m.wizCursor++
+			}
+		case " ":
+			if m.wizCursor < len(m.wizServers) && m.wizServers[m.wizCursor].verified {
+				m.wizServers[m.wizCursor].selected = !m.wizServers[m.wizCursor].selected
+			}
+		case "a":
+			for i := range m.wizServers {
+				if m.wizServers[i].verified {
+					m.wizServers[i].selected = true
+				}
+			}
+		case "enter":
+			selected := m.wizSelectedServers()
+			m.wizTokens = ops.RequiredTokens(selected)
+			if len(m.wizTokens) > 0 {
+				m.wizStep = 1
+				m.wizTokIdx = 0
+				m.wizInput = ""
+			} else {
+				m.wizStep = 2
+				return m, m.wizGenerate()
+			}
+		}
+
+	case 1: // token config
+		switch key {
+		case "esc":
+			m.wizStep = 0
+			m.wizCursor = 0
+		case "up", "k":
+			if m.wizInput == "" && m.wizTokIdx > 0 {
+				m.wizTokIdx--
+			}
+		case "down", "j":
+			if m.wizInput == "" && m.wizTokIdx < len(m.wizTokens)-1 {
+				m.wizTokIdx++
+			}
+		case "enter":
+			if m.wizInput != "" {
+				m.tokens[m.wizTokens[m.wizTokIdx].Key] = m.wizInput
+				m.wizInput = ""
+			}
+			if m.wizTokIdx < len(m.wizTokens)-1 {
+				m.wizTokIdx++
+			} else {
+				// All tokens reviewed — generate
+				ops.WriteTokens(m.tokens)
+				m.wizStep = 2
+				return m, m.wizGenerate()
+			}
+		case "backspace":
+			if len(m.wizInput) > 0 {
+				m.wizInput = m.wizInput[:len(m.wizInput)-1]
+			}
+		case "ctrl+u":
+			m.wizInput = ""
+		default:
+			if ck := cleanKey(msg); len(ck) >= 1 && ck[0] >= 32 {
+				m.wizInput += ck
+			}
+		}
+
+	case 2: // generating / done — esc to go back
+		if key == "esc" || key == "enter" {
+			m.screen = screenEnvVars
+		}
+	}
+	return m, nil
+}
+
+func (m *model) wizGenerate() tea.Cmd {
+	selected := m.wizSelectedServers()
+	tokens := m.tokens
+	envVars := m.envVars
+	ghRemotes := ops.ReadGitHubRemotes()
+	jiraInst := ops.ReadJiraInstances()
+	confInst := ops.ReadConfluenceInstances()
+	targetDir := m.targetDir
+	return func() tea.Msg {
+		_, err := ops.GenerateMCPConfig(selected, ghRemotes, jiraInst, confInst, tokens, envVars)
+		if err != nil {
+			return mcpRegenDoneMsg{err: err}
+		}
+		err = ops.InjectAgentTokens(targetDir)
+		return mcpRegenDoneMsg{err: err}
+	}
+}
+
+func (m model) viewMCPWizard() string {
+	var b strings.Builder
+
+	switch m.wizStep {
+	case 0: // server selection
+		b.WriteString(titleStyle.Render("MCP Install") + dimStyle.Render("  space=toggle  a=all  enter=next  esc=back"))
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("  Select servers to install:") + "\n\n")
+		for i, ws := range m.wizServers {
+			cursor := "  "
+			if i == m.wizCursor {
+				cursor = activeStyle.Render("▸ ")
+			}
+			check := "[ ]"
+			if ws.selected {
+				check = checkStyle.Render("[✓]")
+			}
+			name := ws.srv.Name
+			if !ws.verified {
+				name = dimStyle.Render(name + " (missing)")
+				check = dimStyle.Render("[ ]")
+			} else if i == m.wizCursor {
+				name = activeStyle.Render(name)
+			}
+			b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, check, name))
+		}
+		count := 0
+		for _, ws := range m.wizServers {
+			if ws.selected && ws.verified {
+				count++
+			}
+		}
+		b.WriteString(fmt.Sprintf("\n  %s", dimStyle.Render(fmt.Sprintf("%d selected", count))))
+
+	case 1: // token config
+		b.WriteString(titleStyle.Render("MCP Install — Tokens") + dimStyle.Render("  type=edit  enter=next  esc=back"))
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("  Configure tokens for selected servers:") + "\n\n")
+		for i, tk := range m.wizTokens {
+			cursor := "  "
+			if i == m.wizTokIdx {
+				cursor = activeStyle.Render("▸ ")
+			}
+			current := m.tokens[tk.Key]
+			masked := ops.MaskToken(current)
+			label := fmt.Sprintf("%-28s", tk.Label)
+			if i == m.wizTokIdx {
+				label = activeStyle.Render(label)
+			}
+			status := dimStyle.Render(masked)
+			if current != "" {
+				status = checkStyle.Render(masked)
+			}
+			b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, label, status))
+			if i == m.wizTokIdx {
+				if m.wizInput != "" {
+					b.WriteString(fmt.Sprintf("    %s\n", activeStyle.Render(strings.Repeat("•", len(m.wizInput))+"█")))
+				} else {
+					b.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render("type to set...█")))
+				}
+				b.WriteString(fmt.Sprintf("    %s\n", dimStyle.Render(tk.Hint)))
+			}
+		}
+
+	case 2: // done
+		b.WriteString(titleStyle.Render("MCP Install — Done") + dimStyle.Render("  esc=back"))
+		b.WriteString("\n\n")
+		if m.statusMsg != "" && strings.Contains(m.statusMsg, "❌") {
+			b.WriteString("  " + errStyle.Render(m.statusMsg) + "\n")
+		} else {
+			b.WriteString("  " + checkStyle.Render("✅ mcp.json generated") + "\n\n")
+			b.WriteString(dimStyle.Render("  Servers included:") + "\n")
+			for _, ws := range m.wizServers {
+				if ws.selected && ws.verified {
+					b.WriteString(fmt.Sprintf("    • %s\n", ws.srv.Name))
+				}
+			}
+		}
+	}
+
+	return boxStyle.Render(b.String())
+}
 
 // --- Profiles ---
 
@@ -2625,6 +2866,8 @@ func (m model) View() string {
 		return m.viewCreateWorkspace()
 	case screenYax:
 		return m.viewYax()
+	case screenMCPWizard:
+		return m.viewMCPWizard()
 	default:
 		return m.viewDashboard()
 	}
