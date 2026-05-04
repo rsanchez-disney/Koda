@@ -58,7 +58,37 @@ func ReadSteerSettings() SteerSettings {
 	if s.Source == "" {
 		s.Source = "tarball"
 	}
+
+	// Reconcile: if workspace.json exists with a different name, trust it
+	// over kite.json — workspace.json is the ground truth of what's installed.
+	s.ActiveWorkspace = reconcileWorkspace(s.ActiveWorkspace)
+
 	return s
+}
+
+// reconcileWorkspace checks the installed workspace snapshot and returns
+// the actual active workspace name. This prevents drift when kite.json
+// has a stale value (e.g., after upgrade or manual edit).
+func reconcileWorkspace(fromSettings string) string {
+	snapshotPath := filepath.Join(KiroRoot(), SettingsDir, "workspace.json")
+	data, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		return fromSettings // no snapshot — trust settings
+	}
+	var snap struct {
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(data, &snap) != nil || snap.Name == "" {
+		return fromSettings
+	}
+	if fromSettings != "" && fromSettings != snap.Name {
+		// Drift detected — workspace.json wins, fix kite.json silently
+		return snap.Name
+	}
+	if fromSettings == "" && snap.Name != "" {
+		return snap.Name
+	}
+	return fromSettings
 }
 
 func SaveSteerSettings(s SteerSettings) error {
