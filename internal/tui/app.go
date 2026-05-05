@@ -2267,6 +2267,73 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(m.wsDisplayOrder)-1 {
 			m.cursor++
 		}
+	case " ":
+		// Toggle workspace active (materialize/dematerialize)
+		if m.cursor < len(m.wsDisplayOrder) {
+			ws := m.workspaces[m.wsDisplayOrder[m.cursor]]
+			s := config.ReadSteerSettings()
+			isActive := false
+			for _, n := range s.ActiveWorkspaces {
+				if n == ws.Name {
+					isActive = true
+					break
+				}
+			}
+			if isActive {
+				// Deactivate
+				ops.DematerializeWorkspace(ws.Name)
+				var updated []string
+				for _, n := range s.ActiveWorkspaces {
+					if n != ws.Name {
+						updated = append(updated, n)
+					}
+				}
+				s.ActiveWorkspaces = updated
+				if s.PrimaryWorkspace == ws.Name {
+					s.PrimaryWorkspace = ""
+					if len(updated) > 0 {
+						s.PrimaryWorkspace = updated[0]
+					}
+				}
+				m.statusMsg = fmt.Sprintf("Deactivated '%s'", ws.Name)
+			} else {
+				// Activate (materialize)
+				if err := ops.MaterializeWorkspace(m.steerRoot, ws); err != nil {
+					m.statusMsg = fmt.Sprintf("⚠ %s: %v", ws.Name, err)
+				} else {
+					s.ActiveWorkspaces = append(s.ActiveWorkspaces, ws.Name)
+					if s.PrimaryWorkspace == "" {
+						s.PrimaryWorkspace = ws.Name
+					}
+					m.statusMsg = fmt.Sprintf("Activated '%s'", ws.Name)
+				}
+			}
+			config.SaveSteerSettings(s)
+		}
+	case "p":
+		// Set as primary workspace
+		if m.cursor < len(m.wsDisplayOrder) {
+			ws := m.workspaces[m.wsDisplayOrder[m.cursor]]
+			s := config.ReadSteerSettings()
+			s.PrimaryWorkspace = ws.Name
+			// Ensure it's in active list
+			found := false
+			for _, n := range s.ActiveWorkspaces {
+				if n == ws.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				ops.MaterializeWorkspace(m.steerRoot, ws)
+				s.ActiveWorkspaces = append(s.ActiveWorkspaces, ws.Name)
+			}
+			config.SaveSteerSettings(s)
+			// Apply as default (write to ~/.kiro/)
+			ops.ApplyWorkspace(m.steerRoot, m.targetDir, ws)
+			m.refresh()
+			m.statusMsg = fmt.Sprintf("'%s' set as primary", ws.Name)
+		}
 	case "enter":
 		if m.cursor < len(m.wsDisplayOrder) {
 			ws := m.workspaces[m.wsDisplayOrder[m.cursor]]
@@ -2330,7 +2397,7 @@ func (m *model) buildWSDisplayOrder() {
 func (m model) viewWorkspaces() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("Workspaces") + dimStyle.Render("  enter=apply  e=edit  x=extend  n=new  esc=back"))
+	b.WriteString(titleStyle.Render("Workspaces") + dimStyle.Render("  space=toggle  p=primary  enter=apply  e=edit  x=extend  n=new  esc=back"))
 	b.WriteString("\n\n")
 
 	if len(m.workspaces) == 0 {
@@ -2356,6 +2423,14 @@ func (m model) viewWorkspaces() string {
 	}
 
 	active := config.ReadSteerSettings().ActiveWorkspace
+	s := config.ReadSteerSettings()
+	activeSet := map[string]bool{}
+	for _, n := range s.ActiveWorkspaces {
+		activeSet[n] = true
+	}
+	if len(s.ActiveWorkspaces) == 0 && active != "" {
+		activeSet[active] = true
+	}
 
 	var renderWS func(idx int, prefix string, last bool)
 	renderWS = func(idx int, prefix string, last bool) {
@@ -2364,6 +2439,11 @@ func (m model) viewWorkspaces() string {
 		cursor := "  "
 		if row == m.cursor {
 			cursor = activeStyle.Render("\u25b8 ")
+		}
+		// Checkbox
+		check := "[ ]"
+		if activeSet[ws.Name] {
+			check = checkStyle.Render("[✓]")
 		}
 		tree := prefix
 		if prefix != "" {
@@ -2375,7 +2455,9 @@ func (m model) viewWorkspaces() string {
 		}
 		isParent := len(children[ws.Name]) > 0
 		name := ws.Name
-		if ws.Name == active {
+		if ws.Name == s.PrimaryWorkspace {
+			name = name + " ●"
+		} else if ws.Name == active && s.PrimaryWorkspace == "" {
 			name = name + " ●"
 		}
 		if row == m.cursor {
@@ -2384,7 +2466,7 @@ func (m model) viewWorkspaces() string {
 			name = titleStyle.Render(name)
 		}
 		profiles := dimStyle.Render(strings.Join(ws.Profiles, ", "))
-		b.WriteString(fmt.Sprintf("%s%s%s %s\n", cursor, dimStyle.Render(tree), name, profiles))
+		b.WriteString(fmt.Sprintf("%s%s %s%s %s\n", cursor, check, dimStyle.Render(tree), name, profiles))
 		if row == m.cursor && ws.Description != "" {
 			b.WriteString(fmt.Sprintf("    %s%s\n", dimStyle.Render(prefix), dimStyle.Render(ws.Description)))
 		}

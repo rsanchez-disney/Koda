@@ -15,6 +15,7 @@ import (
 
 var (
 	chatAgent    string
+	chatWs       string
 	chatTrustAll bool
 	chatNoTrust  bool
 )
@@ -63,17 +64,62 @@ var chatCmd = &cobra.Command{
 	Use:   "chat [message]",
 	Short: "Start an interactive chat with a Kiro agent (proxies to kiro-cli --tui)",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Resolve workspace session
+		var wsDir string
+		if chatWs != "" {
+			wsDir = config.WorkspaceRuntimeDir(chatWs)
+			// Auto-materialize if not exists
+			if _, err := os.Stat(wsDir); err != nil {
+				if steerRoot == "" {
+					return fmt.Errorf("steer-runtime not found — cannot materialize workspace")
+				}
+				ws, err := ops.GetWorkspace(steerRoot, chatWs)
+				if err != nil {
+					return fmt.Errorf("workspace '%s' not found: %w", chatWs, err)
+				}
+				fmt.Printf("⏳ Materializing workspace '%s'...\n", chatWs)
+				if err := ops.MaterializeWorkspace(steerRoot, ws); err != nil {
+					return err
+				}
+				// Add to active workspaces
+				s := config.ReadSteerSettings()
+				found := false
+				for _, n := range s.ActiveWorkspaces {
+					if n == chatWs {
+						found = true
+						break
+					}
+				}
+				if !found {
+					s.ActiveWorkspaces = append(s.ActiveWorkspaces, chatWs)
+				}
+				if s.PrimaryWorkspace == "" {
+					s.PrimaryWorkspace = chatWs
+				}
+				config.SaveSteerSettings(s)
+			}
+			ops.TouchWorkspace(chatWs)
+		}
+
 		agent := chatAgent
 		if agent == "" {
-			agent = ops.SuggestDefaultAgent(steerRoot, config.TargetDir(projectDir))
+			targetDir := config.TargetDir(projectDir)
+			if wsDir != "" {
+				targetDir = wsDir
+			}
+			agent = ops.SuggestDefaultAgent(steerRoot, targetDir)
 		}
 
 		trustAll := resolveTrust(chatTrustAll, chatNoTrust)
-		return launchKiroCLIChat(agent, trustAll, args...)
+		return launchKiroCLIChatWithWs(agent, trustAll, wsDir, args...)
 	},
 }
 
 func launchKiroCLIChat(agent string, trustAll bool, extra ...string) error {
+	return launchKiroCLIChatWithWs(agent, trustAll, "", extra...)
+}
+
+func launchKiroCLIChatWithWs(agent string, trustAll bool, wsDir string, extra ...string) error {
 	cliArgs := []string{"chat", "--tui"}
 	if trustAll {
 		cliArgs = append(cliArgs, "--trust-all-tools")
@@ -86,6 +132,9 @@ func launchKiroCLIChat(agent string, trustAll bool, extra ...string) error {
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
+	if wsDir != "" {
+		c.Env = append(os.Environ(), "KIRO_HOME="+wsDir)
+	}
 	return c.Run()
 }
 
@@ -103,6 +152,7 @@ var promptCmd = &cobra.Command{
 
 func init() {
 	chatCmd.Flags().StringVar(&chatAgent, "agent", "", "Agent to chat with (e.g., orchestrator, backend)")
+	chatCmd.Flags().StringVar(&chatWs, "ws", "", "Workspace session to use (materializes on first use)")
 	chatCmd.Flags().BoolVar(&chatTrustAll, "trust-all", false, "Trust all tools without prompting")
 	chatCmd.Flags().BoolVar(&chatNoTrust, "no-trust", false, "Don't trust any tools (kiro-cli will prompt per tool)")
 	promptCmd.Flags().StringVar(&chatAgent, "agent", "", "Agent to chat with (e.g., orchestrator, backend)")

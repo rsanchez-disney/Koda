@@ -25,15 +25,17 @@ func SharedSettingsPath() string {
 }
 
 type SteerSettings struct {
-	Repo            string `json:"repo"`
-	Branch          string `json:"branch"`
-	Source          string `json:"source"` // "tarball" (default) or "git"
-	LastSync        string `json:"lastSync"`
-	AutoSync        bool   `json:"autoSync"`
-	AutoUpgrade     bool   `json:"autoUpgrade"`
-	ActiveWorkspace     string `json:"activeWorkspace"`
-	KiroSettingsApplied bool   `json:"kiroSettingsApplied,omitempty"`
-	TrustTools          string `json:"trustTools,omitempty"` // "all", "none", or "" (prompt)
+	Repo            string   `json:"repo"`
+	Branch          string   `json:"branch"`
+	Source          string   `json:"source"` // "tarball" (default) or "git"
+	LastSync        string   `json:"lastSync"`
+	AutoSync        bool     `json:"autoSync"`
+	AutoUpgrade     bool     `json:"autoUpgrade"`
+	ActiveWorkspace     string   `json:"activeWorkspace"`
+	ActiveWorkspaces    []string `json:"activeWorkspaces,omitempty"`
+	PrimaryWorkspace    string   `json:"primaryWorkspace,omitempty"`
+	KiroSettingsApplied bool     `json:"kiroSettingsApplied,omitempty"`
+	TrustTools          string   `json:"trustTools,omitempty"` // "all", "none", or "" (prompt)
 }
 
 func ReadSteerSettings() SteerSettings {

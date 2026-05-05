@@ -46,6 +46,7 @@ var installCmd = &cobra.Command{
 		ops.EnrichWelcomeMessages(target)
 		ops.WriteProfilesManifest(steerRoot, target)
 		ops.GenerateMcpJson(ops.FindNodeExe())
+		ops.PropagateMCPJson()
 		ops.WriteSystemProfile()
 		// Kiro settings: full configure on first run, just default agent after
 		s := config.ReadSteerSettings()
@@ -150,6 +151,13 @@ var syncCmd = &cobra.Command{
 		fmt.Printf("\n\u2705 Sync complete (%d agents total)\n", countAgents(target))
 		ops.WriteProfilesManifest(steerRoot, target)
 		ops.GenerateMcpJson(ops.FindNodeExe())
+		ops.PropagateMCPJson()
+		// Sync all materialized workspaces
+		s := config.ReadSteerSettings()
+		if len(s.ActiveWorkspaces) > 0 {
+			fmt.Printf("🔄 Syncing %d materialized workspace(s)...\n", len(s.ActiveWorkspaces))
+			ops.SyncMaterializedWorkspaces(steerRoot, s.ActiveWorkspaces)
+		}
 		ops.WriteSystemProfile()
 		return nil
 	},
