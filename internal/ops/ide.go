@@ -26,18 +26,22 @@ type IDEInfo struct {
 // DetectIDEs returns all known IDEs with their install status.
 func DetectIDEs() []IDEInfo {
 	return []IDEInfo{
-		detectVSCode(),
+		detectVSCode("VS Code", "vscode", "code"),
+		detectVSCode("Cursor", "cursor", "cursor"),
 		detectIntelliJ("IntelliJ IDEA", "intellij", "IntelliJIdea"),
 		detectIntelliJ("WebStorm", "webstorm", "WebStorm"),
+		detectIntelliJ("PyCharm", "pycharm", "PyCharm"),
+		detectIntelliJ("Rider", "rider", "Rider"),
+		detectIntelliJ("GoLand", "goland", "GoLand"),
+		detectIntelliJ("Android Studio", "android-studio", "Google/AndroidStudio"),
 	}
 }
 
-func detectVSCode() IDEInfo {
-	info := IDEInfo{Name: "VS Code", ID: "vscode"}
-	if _, err := exec.LookPath("code"); err == nil {
+func detectVSCode(name, id, binary string) IDEInfo {
+	info := IDEInfo{Name: name, ID: id}
+	if _, err := exec.LookPath(binary); err == nil {
 		info.Installed = true
-		// Check if steer extension is installed
-		out, err := exec.Command("code", "--list-extensions").Output()
+		out, err := exec.Command(binary, "--list-extensions").Output()
 		if err == nil && strings.Contains(string(out), "steer") {
 			info.Plugin = true
 			info.Version = "installed"
@@ -91,32 +95,50 @@ func InstallIDEPlugin(ide string) error {
 	cacheDir := filepath.Join(home, ".kiro", "tools", "ide-plugins")
 	os.MkdirAll(cacheDir, 0755)
 
+	// VS Code family — same .vsix
 	switch ide {
 	case "vscode":
-		vsix := filepath.Join(cacheDir, "steer.vsix")
-		if err := downloadPluginAsset(vsix, "steer.vsix"); err != nil {
-			return err
-		}
-		fmt.Println("  Installing VS Code extension...")
-		return exec.Command("code", "--install-extension", vsix).Run()
-
-	case "intellij", "webstorm":
-		zip := filepath.Join(cacheDir, "steer.zip")
-		if err := downloadPluginAsset(zip, "steer.zip"); err != nil {
-			return err
-		}
-		prefix := "IntelliJIdea"
-		if ide == "webstorm" {
-			prefix = "WebStorm"
-		}
-		pluginsDir := jetbrainsPluginsDir(prefix)
-		if pluginsDir == "" {
-			return fmt.Errorf("%s plugins directory not found", ide)
-		}
-		fmt.Printf("  Installing to %s...\n", pluginsDir)
-		return unzipFile(zip, pluginsDir)
+		return installVSIX(cacheDir, "code")
+	case "cursor":
+		return installVSIX(cacheDir, "cursor")
 	}
+
+	// JetBrains family — same .zip, different plugins dir
+	jetbrainsMap := map[string]string{
+		"intellij":       "IntelliJIdea",
+		"webstorm":       "WebStorm",
+		"pycharm":        "PyCharm",
+		"rider":          "Rider",
+		"goland":         "GoLand",
+		"android-studio": "Google/AndroidStudio",
+	}
+	if prefix, ok := jetbrainsMap[ide]; ok {
+		return installJetBrains(cacheDir, prefix, ide)
+	}
+
 	return fmt.Errorf("unknown IDE: %s", ide)
+}
+
+func installVSIX(cacheDir, binary string) error {
+	vsix := filepath.Join(cacheDir, "steer.vsix")
+	if err := downloadPluginAsset(vsix, "steer.vsix"); err != nil {
+		return err
+	}
+	fmt.Printf("  Installing via %s...\n", binary)
+	return exec.Command(binary, "--install-extension", vsix).Run()
+}
+
+func installJetBrains(cacheDir, dirPrefix, ide string) error {
+	zip := filepath.Join(cacheDir, "steer.zip")
+	if err := downloadPluginAsset(zip, "steer.zip"); err != nil {
+		return err
+	}
+	pluginsDir := jetbrainsPluginsDir(dirPrefix)
+	if pluginsDir == "" {
+		return fmt.Errorf("%s plugins directory not found", ide)
+	}
+	fmt.Printf("  Installing to %s...\n", pluginsDir)
+	return unzipFile(zip, pluginsDir)
 }
 
 func downloadPluginAsset(dest, assetName string) error {
