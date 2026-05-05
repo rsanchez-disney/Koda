@@ -10,6 +10,7 @@ YAX_REPO := github.disney.com-sancr225:QUINJ327/yax.git
 YAX_SRC  ?= /tmp/yax
 SCORER_REPO := github.disney.com-sancr225:SANCR225/prompt-scorer.git
 SCORER_SRC  ?= /Users/ricardo.sanchez/Workspace/Disney/SANCR225/prompt-scorer
+PLUGINS_SRC ?= /Users/ricardo.sanchez/Workspace/Disney/SANCR225/steer-plugins
 
 .PHONY: build run clean test lint fmt vet tidy install cross release help yax-fetch yax-cross scorer-fetch scorer-cross
 
@@ -96,7 +97,7 @@ scorer-cross: scorer-fetch ## Fetch, test, and cross-compile prompt-scorer
 	cd $(SCORER_SRC)/go-prompt-scorer && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o $(CURDIR)/bin/prompt-scorer-windows-amd64.exe ./cmd/prompt-scorer/
 
 release: TAGS=scorer
-release: ## Tag + build Koda + yax + scorer + publish (make release TAG=v0.1.0)
+release: ## Tag + build Koda + yax + scorer + plugins + publish (make release TAG=v0.1.0)
 	@test -n "$(TAG)" || { echo "Usage: make release TAG=v0.1.0"; exit 1; }
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
 	git tag -a $(TAG) -m "Release $(TAG)"
@@ -104,7 +105,8 @@ release: ## Tag + build Koda + yax + scorer + publish (make release TAG=v0.1.0)
 	$(MAKE) cross VERSION=$(TAG)
 	-$(MAKE) yax-cross
 	-$(MAKE) scorer-cross
-	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* $$(ls bin/yax-* 2>/dev/null) $$(ls bin/prompt-scorer-* 2>/dev/null) --latest \
+	-$(MAKE) plugins-build
+	GH_HOST=github.com gh release create $(TAG) bin/$(APP)-* $$(ls bin/yax-* 2>/dev/null) $$(ls bin/prompt-scorer-* 2>/dev/null) $$(ls bin/steer.vsix 2>/dev/null) $$(ls bin/steer.zip 2>/dev/null) --latest \
 		--repo $(PUB_REPO) \
 		--title "Koda $(TAG)" \
 		--generate-notes
@@ -113,6 +115,19 @@ release: ## Tag + build Koda + yax + scorer + publish (make release TAG=v0.1.0)
 kitestream: build ## Build Koda + KiteStream client, then launch
 	@cd $(KITESTREAM_ROOT) && npm run build --workspace=client
 	KITESTREAM_DEV_DIST=$(KITESTREAM_ROOT)/client/dist $(BIN) kitestream start
+
+plugins-build: ## Build IDE plugins (steer.vsix + steer.zip) from steer-plugins repo
+	@if [ -d "$(PLUGINS_SRC)/vscode" ]; then \
+		echo "Building IDE plugins..."; \
+		cd $(PLUGINS_SRC)/vscode && npm install --silent 2>/dev/null && npm run build 2>/dev/null; \
+		if command -v npx >/dev/null 2>&1; then \
+			cd $(PLUGINS_SRC)/vscode && npx vsce package --out $(CURDIR)/bin/steer.vsix 2>/dev/null && echo "  ✅ steer.vsix"; \
+		else \
+			echo "  ⚠ vsce not available, skipping .vsix"; \
+		fi; \
+	else \
+		echo "  ⚠ steer-plugins not found at $(PLUGINS_SRC), skipping"; \
+	fi
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
