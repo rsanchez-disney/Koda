@@ -53,8 +53,10 @@ func MaterializeWorkspace(steerRoot string, ws model.Workspace) error {
 	for _, p := range profiles {
 		if wsDir, ok := wsOverrides[p]; ok {
 			InstallProfileFrom(wsDir, targetDir)
+			TrackProfileInstall(p, wsDir, targetDir)
 		} else {
 			InstallProfile(steerRoot, p, targetDir)
+			TrackProfileInstall(p, filepath.Join(steerRoot, config.ProfilePrefix+p), targetDir)
 		}
 	}
 
