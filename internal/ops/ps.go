@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -303,8 +304,9 @@ func CleanStaleProcesses() {
 	}
 	fmt.Println("\n  Sessions will auto-save memories on exit, or skip to keep them running.")
 	fmt.Print("  Stop active sessions? [y/N] ")
-	var answer string
-	fmt.Scanln(&answer)
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimRight(answer, "\r\n")
 	if answer != "y" && answer != "Y" {
 		fmt.Println("  Skipped — sessions left running (will use old binary until restarted).")
 		return
