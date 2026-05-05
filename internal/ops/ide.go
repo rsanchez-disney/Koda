@@ -1,10 +1,7 @@
 package ops
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,7 +9,7 @@ import (
 	"strings"
 )
 
-const pluginsReleaseURL = "https://github.disney.com/api/v3/repos/SANCR225/steer-plugins/releases/latest"
+const pluginsReleaseURL = "https://api.github.com/repos/rsanchez-disney/Koda/releases/latest"
 
 // IDEInfo represents a detected IDE and its plugin status.
 type IDEInfo struct {
@@ -144,70 +141,31 @@ func installJetBrains(cacheDir, dirPrefix, ide string) error {
 func downloadPluginAsset(dest, assetName string) error {
 	fmt.Printf("  Downloading %s...\n", assetName)
 
-	// Fetch latest release
-	token := os.Getenv("GH_TOKEN")
-	if token == "" {
-		token = os.Getenv("GITHUB_TOKEN")
+	// Primary: curl from github.com public releases (no auth needed)
+	url := fmt.Sprintf("https://github.com/rsanchez-disney/Koda/releases/latest/download/%s", assetName)
+	curlBin := "curl"
+	if runtime.GOOS == "windows" {
+		curlBin = "curl.exe"
 	}
-	if token == "" {
-		// Try gh CLI auth
-		out, err := exec.Command("gh", "auth", "token", "--hostname", "github.disney.com").Output()
-		if err == nil {
-			token = strings.TrimSpace(string(out))
+	if err := exec.Command(curlBin, "-fsSL", "-o", dest, url).Run(); err == nil {
+		return nil
+	}
+
+	// Fallback: gh release download
+	if ghPath, err := exec.LookPath("gh"); err == nil {
+		cmd := exec.Command(ghPath, "release", "download", "--repo", "rsanchez-disney/Koda",
+			"--pattern", assetName, "--dir", filepath.Dir(dest), "--clobber")
+		cmd.Env = append(os.Environ(), "GH_HOST=github.com")
+		if err := cmd.Run(); err == nil {
+			downloaded := filepath.Join(filepath.Dir(dest), assetName)
+			if downloaded != dest {
+				os.Rename(downloaded, dest)
+			}
+			return nil
 		}
 	}
 
-	req, _ := http.NewRequest("GET", pluginsReleaseURL, nil)
-	if token != "" {
-		req.Header.Set("Authorization", "token "+token)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("cannot reach GitHub: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("GitHub API returned %d", resp.StatusCode)
-	}
-
-	var rel struct {
-		Assets []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
-		} `json:"assets"`
-	}
-	json.NewDecoder(resp.Body).Decode(&rel)
-
-	var downloadURL string
-	for _, a := range rel.Assets {
-		if a.Name == assetName {
-			downloadURL = a.URL
-			break
-		}
-	}
-	if downloadURL == "" {
-		return fmt.Errorf("asset %s not found in latest release", assetName)
-	}
-
-	// Download
-	dlReq, _ := http.NewRequest("GET", downloadURL, nil)
-	if token != "" {
-		dlReq.Header.Set("Authorization", "token "+token)
-	}
-	dlResp, err := http.DefaultClient.Do(dlReq)
-	if err != nil {
-		return err
-	}
-	defer dlResp.Body.Close()
-
-	f, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = io.Copy(f, dlResp.Body)
-	return err
+	return fmt.Errorf("failed to download %s — check network connection", assetName)
 }
 
 func unzipFile(src, dest string) error {
