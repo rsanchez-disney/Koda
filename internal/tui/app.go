@@ -685,6 +685,7 @@ func (m model) viewDashboard() string {
 			{"d", "Doctor", "doctor"},
 			{"y", yaxLabel, "yax"},
 			{"f", forkLabel, "fork"},
+			{"c", "Reset", "reset"},
 		},
 	}
 	for _, row := range rows {

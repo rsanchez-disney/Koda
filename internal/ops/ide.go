@@ -149,6 +149,13 @@ func downloadPluginAsset(dest, assetName string) error {
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN")
 	}
+	if token == "" {
+		// Try gh CLI auth
+		out, err := exec.Command("gh", "auth", "token", "--hostname", "github.disney.com").Output()
+		if err == nil {
+			token = strings.TrimSpace(string(out))
+		}
+	}
 
 	req, _ := http.NewRequest("GET", pluginsReleaseURL, nil)
 	if token != "" {
