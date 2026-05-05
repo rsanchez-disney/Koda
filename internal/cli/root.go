@@ -158,4 +158,5 @@ func init() {
 	rootCmd.AddCommand(featuresCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(psCmd)
+	rootCmd.AddCommand(ideCmd)
 }
