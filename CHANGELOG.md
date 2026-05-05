@@ -4,38 +4,28 @@ All notable changes to Koda.
 
 ## [Unreleased]
 
-### Added
-- **Interactive mcp-install** — smart mode detection (first run → assistant, existing config → quick reinstall, `--assistant` → force), server selector, token assistant, GitHub remote manager, `MCPServer` registry (#65)
-- **Workspace profile precedence** — workspace-level profiles override global profiles (#66)
-- **Kiro IDE integration** — `koda kiro-ide install/sync/remove` CLI + TUI `[k]` screen + doctor check, cross-platform with `FindNodeExe()` for fnm/nvm on Windows (#64)
-- **Enterprise Memory Bank** — `services`/`channels` fields in workspace model, `InstallBanks()` merges service/channel docs, TUI shows banks, doctor checks staleness (#63)
-- **memory-mcp lifecycle** — container runtime detection, lifecycle management, mcp.json integration, doctor checks (#62)
-- **Rule discrimination** — workspace-level rule overrides (#61)
-- **Workspace profile loading** — load profiles from workspace directories (#60)
-- **Compass MCP** — remote SSE MCP support with token/URL config (#58)
-- **Multi-instance GitHub MCP** — per-remote GitHub entries in mcp.json, `@github/*` tool ref expansion (#57, #59)
-- **Figma MCP** — server support in mcp.json generation (#55)
-- **Nested workspace folders** — support parent/child workspace hierarchy (#56)
-- **Tray app** — menu bar tray with workspaces, doctor health, version info, auto-start on login, Windows Registry support (#42-#54)
-- **Workspace apply** — auto-clone repos, init memory banks, resolve project paths, hierarchical extends inheritance (#38-#41)
-
-### Fixed
-- Doctor checks for multi-instance GitHub remotes (#67)
-- Dashboard polish — git stderr suppression + runtime version display (#54)
-- Windows tray — ICO format, embedded icon, cross-compilation build tags (#49, #50, #53)
-- Tray — removed chat/TUI launch, refresh workspaces on sync (#45)
-
-### Changed
-- `MCPInstall` refactored — extracted `CopyMcpBundles()`, `GenerateMcpJson()`, `GenerateMCPConfig()` with `nodeExe` param for absolute paths on Windows (#64, #65)
-- `WriteGitHubRemote` — clears stale `GITHUB_API_PATH_<name>` keys on upsert (#65)
-
 ---
 
-## [0.4.115] — 2026-05-03
+## [0.4.115] — 2026-05-05
+
+### Added
+- **Multi-workspace sessions** — `koda chat --ws <name>` spawns isolated sessions with `KIRO_HOME` pointing to `~/.kiro/workspaces/<name>/` (#191)
+- **Workspace lifecycle** — `koda workspace remove <name>` dematerializes + cleans settings; `koda workspace prune` removes stale (30d) workspaces (#191)
+- **MCP propagation** — `koda sync` propagates global `mcp.json` to all materialized workspaces (#191)
+- **TUI workspace checklist** — multi-select with `space`=toggle active, `p`=set primary (#191)
+- **IDE plugins CLI** — `koda ide install/status/update` commands (#189)
+- **IDE Plugins TUI screen** — detect and install steer plugins for 8 IDEs (#187)
+- **8 IDE support** — VS Code, Cursor, IntelliJ, WebStorm, PyCharm, Rider, GoLand, Android Studio (#187)
+- **steer-plugins in releases** — steer.vsix bundled with Koda release assets (#187)
 
 ### Fixed
-- TUI MCP toggle checked `mcpSection==3` instead of `4`, so toggling servers via space bar never worked (#179)
-- `chrome-devtools` MCP server was missing `Disabled: true`, causing it to load on every session (#179)
+- Sibling profiles with same agent names showing as installed — false positive (#190)
+- reconcile activeWorkspace with workspace.json to prevent drift (#186)
+- native MCP install wizard added to TUI env vars screen (#185)
+- MCP toggle wrong section and chrome-devtools not disabled by default (#179)
+- restore [c] Reset menu entry, add gh auth token fallback for GHE
+- download IDE plugins from public Koda releases (no GHE auth needed)
+- bufio reader for upgrade session prompt (#188)
 
 ---
 
