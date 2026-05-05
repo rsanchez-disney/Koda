@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -260,4 +261,48 @@ func init() {
 	workspaceCmd.AddCommand(wsCreateCmd)
 	workspaceCmd.AddCommand(wsSyncCmd)
 	workspaceCmd.AddCommand(wsEditCmd)
+	workspaceCmd.AddCommand(wsRemoveCmd)
+	workspaceCmd.AddCommand(wsPruneCmd)
+}
+
+var wsRemoveCmd = &cobra.Command{
+	Use:   "remove <name>",
+	Short: "Remove a materialized workspace session",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		if err := ops.DematerializeWorkspace(name); err != nil {
+			return err
+		}
+		s := config.ReadSteerSettings()
+		var updated []string
+		for _, n := range s.ActiveWorkspaces {
+			if n != name {
+				updated = append(updated, n)
+			}
+		}
+		s.ActiveWorkspaces = updated
+		if s.PrimaryWorkspace == name {
+			s.PrimaryWorkspace = ""
+			if len(updated) > 0 {
+				s.PrimaryWorkspace = updated[0]
+			}
+		}
+		config.SaveSteerSettings(s)
+		fmt.Printf("✅ Removed workspace '%s'\n", name)
+		return nil
+	},
+}
+
+var wsPruneCmd = &cobra.Command{
+	Use:   "prune",
+	Short: "Remove materialized workspaces not used in 30 days",
+	Run: func(cmd *cobra.Command, args []string) {
+		pruned := ops.PruneMaterialized(30 * 24 * time.Hour)
+		if pruned == 0 {
+			fmt.Println("Nothing to prune.")
+		} else {
+			fmt.Printf("✅ Pruned %d stale workspace(s)\n", pruned)
+		}
+	},
 }

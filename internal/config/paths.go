@@ -68,3 +68,13 @@ func TargetDir(projectDir string) string {
 	}
 	return KiroRoot()
 }
+
+// WorkspacesRuntimeDir returns ~/.kiro/workspaces/ where materialized workspaces live.
+func WorkspacesRuntimeDir() string {
+	return filepath.Join(KiroRoot(), "workspaces")
+}
+
+// WorkspaceRuntimeDir returns ~/.kiro/workspaces/<name>/ for a specific workspace.
+func WorkspaceRuntimeDir(name string) string {
+	return filepath.Join(WorkspacesRuntimeDir(), name)
+}
