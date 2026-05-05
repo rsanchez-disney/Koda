@@ -119,11 +119,13 @@ kitestream: build ## Build Koda + KiteStream client, then launch
 plugins-build: ## Build IDE plugins (steer.vsix + steer.zip) from steer-plugins repo
 	@if [ -d "$(PLUGINS_SRC)/vscode" ]; then \
 		echo "Building IDE plugins..."; \
-		cd $(PLUGINS_SRC)/vscode && npm install --silent 2>/dev/null && npm run build 2>/dev/null; \
-		if command -v npx >/dev/null 2>&1; then \
-			cd $(PLUGINS_SRC)/vscode && npx vsce package --out $(CURDIR)/bin/steer.vsix 2>/dev/null && echo "  ✅ steer.vsix"; \
+		cd $(PLUGINS_SRC)/vscode && npm install --registry https://registry.npmjs.org 2>&1 | tail -3; \
+		if [ -x "$(PLUGINS_SRC)/vscode/node_modules/.bin/vsce" ]; then \
+			cd $(PLUGINS_SRC)/vscode && npm run build && \
+			./node_modules/.bin/vsce package --out $(CURDIR)/bin/steer.vsix && \
+			echo "  ✅ steer.vsix"; \
 		else \
-			echo "  ⚠ vsce not available, skipping .vsix"; \
+			echo "  ⚠ vsce not installed (npm registry issue?), skipping .vsix"; \
 		fi; \
 	else \
 		echo "  ⚠ steer-plugins not found at $(PLUGINS_SRC), skipping"; \
