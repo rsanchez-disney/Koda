@@ -116,6 +116,93 @@ func TestListProfiles(t *testing.T) {
 	}
 }
 
+func TestSiblingProfilesNotFalsePositive(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "target")
+	os.MkdirAll(filepath.Join(target, "agents"), 0755)
+
+	// Two workspace profiles with an agent of the same name
+	wsA := filepath.Join(tmp, "workspaces", "ws-a", "profiles", "ops")
+	wsB := filepath.Join(tmp, "workspaces", "ws-b", "profiles", "ops")
+	os.MkdirAll(filepath.Join(wsA, "agents"), 0755)
+	os.MkdirAll(filepath.Join(wsB, "agents"), 0755)
+	os.WriteFile(filepath.Join(wsA, "agents", "orchestrator.json"), []byte(`{"name":"orchestrator","description":"from A"}`), 0644)
+	os.WriteFile(filepath.Join(wsB, "agents", "orchestrator.json"), []byte(`{"name":"orchestrator","description":"from B"}`), 0644)
+
+	// Install only ws-a profile
+	TrackProfileInstall("ops", wsA, target)
+	os.WriteFile(filepath.Join(target, "agents", "orchestrator.json"), []byte(`{"name":"orchestrator","description":"from A"}`), 0644)
+
+	// ws-a should be installed, ws-b should NOT
+	if !isProfileInstalled("ops", wsA, target) {
+		t.Error("ws-a/ops should be detected as installed")
+	}
+	if isProfileInstalled("ops", wsB, target) {
+		t.Error("ws-b/ops should NOT be detected as installed (sibling false positive)")
+	}
+}
+
+func TestProfileWithoutAgentsTracked(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "target")
+	os.MkdirAll(filepath.Join(target, "agents"), 0755)
+
+	// Profile with no agents, only rules
+	srcDir := filepath.Join(tmp, "workspaces", "myws", "profiles", "rules-only")
+	os.MkdirAll(filepath.Join(srcDir, "rules"), 0755)
+	os.WriteFile(filepath.Join(srcDir, "rules", "no-console.md"), []byte("# rule"), 0644)
+
+	// Without tracking, should NOT be installed
+	if isProfileInstalled("rules-only", srcDir, target) {
+		t.Error("profile without agents should not be detected without manifest")
+	}
+
+	// After tracking, should be installed
+	TrackProfileInstall("rules-only", srcDir, target)
+	if !isProfileInstalled("rules-only", srcDir, target) {
+		t.Error("profile without agents should be detected after TrackProfileInstall")
+	}
+
+	// After removal, should not be installed
+	TrackProfileRemove("rules-only", srcDir, target)
+	if isProfileInstalled("rules-only", srcDir, target) {
+		t.Error("profile should not be detected after TrackProfileRemove")
+	}
+}
+
+func TestSeedInstalledFromWorkspace(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "target")
+	os.MkdirAll(filepath.Join(target, "agents"), 0755)
+
+	// Create a workspace with two profiles (one without agents)
+	wsDir := filepath.Join(tmp, "workspaces", "test-ws")
+	os.MkdirAll(filepath.Join(wsDir, "profiles", "dev-core", "agents"), 0755)
+	os.WriteFile(filepath.Join(wsDir, "profiles", "dev-core", "agents", "a.json"), []byte(`{"name":"a"}`), 0644)
+	os.MkdirAll(filepath.Join(wsDir, "profiles", "no-agents", "rules"), 0755)
+	os.WriteFile(filepath.Join(wsDir, "profiles", "no-agents", "rules", "r.md"), []byte("# r"), 0644)
+
+	// Create workspace JSON
+	wsJSON := `{"name":"test-ws","profiles":["dev-core","no-agents"]}`
+	os.WriteFile(filepath.Join(wsDir, "workspace.json"), []byte(wsJSON), 0644)
+
+	// Need profiles/dev-core for SteerRoot detection
+	os.MkdirAll(filepath.Join(tmp, "profiles/dev-core", "agents"), 0755)
+
+	// Directly call TrackProfileInstall for both (simulates what seed does)
+	wsDC := filepath.Join(wsDir, "profiles", "dev-core")
+	wsNA := filepath.Join(wsDir, "profiles", "no-agents")
+	TrackProfileInstall("dev-core", wsDC, target)
+	TrackProfileInstall("no-agents", wsNA, target)
+
+	if !isProfileInstalled("dev-core", wsDC, target) {
+		t.Error("dev-core should be installed after tracking")
+	}
+	if !isProfileInstalled("no-agents", wsNA, target) {
+		t.Error("no-agents profile should be installed after tracking")
+	}
+}
+
 func TestInstallRemoveProfile(t *testing.T) {
 	tmp := t.TempDir()
 	// Create fake profile

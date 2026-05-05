@@ -221,6 +221,9 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 		InstallProfile(steerRoot, p, targetDir)
 		if wsDir, ok := wsOverrides[p]; ok {
 			InstallProfileFrom(wsDir, targetDir)
+			TrackProfileInstall(p, wsDir, targetDir)
+		} else {
+			TrackProfileInstall(p, filepath.Join(steerRoot, config.ProfilePrefix+p), targetDir)
 		}
 	}
 

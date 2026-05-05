@@ -2050,6 +2050,7 @@ func (m *model) applyProfileChanges() {
 			} else {
 				ops.RemoveProfileFrom(m.steerRoot, p.sourceDir, m.targetDir)
 			}
+			ops.TrackProfileRemove(p.id, p.sourceDir, m.targetDir)
 		}
 	}
 	// Reinstall only selected profiles from scratch
@@ -2062,6 +2063,7 @@ func (m *model) applyProfileChanges() {
 			} else {
 				ops.InstallProfile(m.steerRoot, p.id, m.targetDir)
 			}
+			ops.TrackProfileInstall(p.id, p.sourceDir, m.targetDir)
 		}
 	}
 	// Reinstall workspace-level files (common, rules, context, steering, MCP bundles)

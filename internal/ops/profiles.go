@@ -57,6 +57,11 @@ func ListProfiles(steerRoot, targetDir string) ([]model.Profile, error) {
 		return nil, err
 	}
 
+	// Seed manifest from active workspace if missing (one-time migration)
+	if existing := readInstalledProfiles(targetDir); existing == nil {
+		seedInstalledFromWorkspace(steerRoot, targetDir)
+	}
+
 	// Global profiles
 	var profiles []model.Profile
 	globalAgents := map[string][]model.Agent{} // id -> agents (for inheritance)
@@ -397,6 +402,15 @@ func agentNames(profileDir string) ([]string, error) {
 }
 
 func isProfileInstalled(id, sourceDir, targetDir string) bool {
+	installed := readInstalledProfiles(targetDir)
+	key := profileKey(id, sourceDir)
+	if _, ok := installed[key]; ok {
+		return true
+	}
+	// Fallback: check file existence for backward compat (no manifest yet)
+	if len(installed) > 0 {
+		return false
+	}
 	names, err := agentNames(sourceDir)
 	if err != nil || len(names) == 0 {
 		return false
@@ -406,7 +420,96 @@ func isProfileInstalled(id, sourceDir, targetDir string) bool {
 			return false
 		}
 	}
+	// Lazy migration: persist to manifest so future checks use it
+	TrackProfileInstall(id, sourceDir, targetDir)
 	return true
+}
+
+// profileKey builds a unique key for a profile: "workspace:id" or ":id" for globals.
+func profileKey(id, sourceDir string) string {
+	// Workspace profiles have path like .../workspaces/<ws>/profiles/<id>
+	parts := strings.Split(filepath.ToSlash(sourceDir), "/")
+	for i, p := range parts {
+		if p == "workspaces" && i+2 < len(parts) && parts[i+2] == "profiles" {
+			return parts[i+1] + ":" + id
+		}
+	}
+	return ":" + id
+}
+
+const installedProfilesFile = "settings/installed_profiles.json"
+
+func readInstalledProfiles(targetDir string) map[string]bool {
+	data, err := os.ReadFile(filepath.Join(targetDir, installedProfilesFile))
+	if err != nil {
+		return nil
+	}
+	var keys []string
+	if json.Unmarshal(data, &keys) != nil {
+		return nil
+	}
+	m := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		m[k] = true
+	}
+	return m
+}
+
+func writeInstalledProfiles(targetDir string, installed map[string]bool) {
+	keys := make([]string, 0, len(installed))
+	for k := range installed {
+		keys = append(keys, k)
+	}
+	data, _ := json.MarshalIndent(keys, "", "  ")
+	os.MkdirAll(filepath.Join(targetDir, config.SettingsDir), 0755)
+	os.WriteFile(filepath.Join(targetDir, installedProfilesFile), append(data, '\n'), 0644)
+}
+
+// seedInstalledFromWorkspace creates the manifest from the active workspace's profile list.
+// Called once when no manifest exists (migration from older installs).
+func seedInstalledFromWorkspace(steerRoot, targetDir string) {
+	s := config.ReadSteerSettings()
+	if s.ActiveWorkspace == "" {
+		return
+	}
+	ws, err := GetWorkspace(steerRoot, s.ActiveWorkspace)
+	if err != nil {
+		return
+	}
+	profiles := ExpandAliases(ws.Profiles)
+	installed := make(map[string]bool)
+	for _, p := range profiles {
+		wsDir := filepath.Join(findWorkspaceDir(steerRoot, s.ActiveWorkspace), "profiles", p)
+		if _, err := os.Stat(wsDir); err == nil {
+			installed[profileKey(p, wsDir)] = true
+		} else {
+			globalDir := filepath.Join(steerRoot, config.ProfilePrefix+p)
+			installed[profileKey(p, globalDir)] = true
+		}
+	}
+	if len(installed) > 0 {
+		writeInstalledProfiles(targetDir, installed)
+	}
+}
+
+// TrackProfileInstall registers a profile as installed.
+func TrackProfileInstall(id, sourceDir, targetDir string) {
+	installed := readInstalledProfiles(targetDir)
+	if installed == nil {
+		installed = make(map[string]bool)
+	}
+	installed[profileKey(id, sourceDir)] = true
+	writeInstalledProfiles(targetDir, installed)
+}
+
+// TrackProfileRemove unregisters a profile.
+func TrackProfileRemove(id, sourceDir, targetDir string) {
+	installed := readInstalledProfiles(targetDir)
+	if installed == nil {
+		return
+	}
+	delete(installed, profileKey(id, sourceDir))
+	writeInstalledProfiles(targetDir, installed)
 }
 
 func copyDirContents(src, dst string) {
