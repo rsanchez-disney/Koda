@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -115,6 +116,28 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	// Settings
 	case r.Method == "GET" && path == "/settings":
 		writeJSON(w, 200, config.ReadSteerSettings())
+
+	// File Explorer
+	case r.Method == "GET" && path == "/files":
+		root := r.URL.Query().Get("path")
+		if root == "" {
+			root = s.targetDir
+		}
+		writeJSON(w, 200, s.listFiles(root))
+
+	case r.Method == "GET" && path == "/files/read":
+		filePath := r.URL.Query().Get("path")
+		if filePath == "" {
+			writeJSON(w, 400, map[string]string{"error": "path required"})
+			return
+		}
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			writeJSON(w, 404, map[string]string{"error": "file not found"})
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(content)
 
 	// Kiro Sessions (from ~/.kiro/sessions/)
 	case r.Method == "GET" && path == "/kiro-sessions":
@@ -238,4 +261,53 @@ func extractID(path, prefix, suffix string) string {
 	path = strings.TrimPrefix(path, prefix)
 	path = strings.TrimSuffix(path, suffix)
 	return path
+}
+
+type fileEntry struct {
+	Name     string       `json:"name"`
+	Path     string       `json:"path"`
+	IsDir    bool         `json:"isDir"`
+	Size     int64        `json:"size,omitempty"`
+	Children []fileEntry  `json:"children,omitempty"`
+}
+
+var ignoreDirs = map[string]bool{
+	"node_modules": true, ".git": true, "dist": true, "build": true,
+	".DS_Store": true, "__pycache__": true, ".cache": true, "target": true,
+	".next": true, ".nuxt": true, "coverage": true, ".vite": true,
+}
+
+func (s *Server) listFiles(root string) []fileEntry {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return []fileEntry{}
+	}
+	var result []fileEntry
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") && name != ".kiro" {
+			continue
+		}
+		if ignoreDirs[name] {
+			continue
+		}
+		info, _ := e.Info()
+		entry := fileEntry{
+			Name:  name,
+			Path:  filepath.Join(root, name),
+			IsDir: e.IsDir(),
+		}
+		if info != nil && !e.IsDir() {
+			entry.Size = info.Size()
+		}
+		result = append(result, entry)
+	}
+	// Sort: dirs first, then files
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].IsDir != result[j].IsDir {
+			return result[i].IsDir
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result
 }

@@ -55,6 +55,7 @@ const (
 	screenKiroIDE
 	screenYax
 	screenMCPWizard
+	screenIDE
 )
 
 // Fork list scroll parameters.
@@ -107,6 +108,7 @@ type model struct {
 	kiroAgentFilter string
 	envVarKeys    []string
 	wsMCPKeys     []string
+	ideItems      []ops.IDEInfo
 	envInput      string
 	envNewKey     string
 	ruleInput     string
@@ -391,6 +393,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateCreateWorkspace(msg)
 		case screenYax:
 			return m.updateYax(msg)
+		case screenIDE:
+			return m.updateIDE(msg)
 		case screenMCPWizard:
 			return m.updateMCPWizard(msg)
 		}
@@ -542,6 +546,10 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenEnvVars
 		m.cursor = 0
 		m.envInput = ""
+	case "i":
+		m.ideItems = ops.DetectIDEs()
+		m.cursor = 0
+		m.screen = screenIDE
 	case "m":
 		m.screen = screenMCP
 		m.cursor = 0
@@ -670,11 +678,12 @@ func (m model) viewDashboard() string {
 			{"m", fmt.Sprintf("MCP (%d)", mcpCount), "mcp"},
 			{"e", "Env Vars", "env_vars"},
 			{"k", "Kiro", "kiro"},
-			{"y", yaxLabel, "yax"},
+			{"i", "IDE", "ide"},
 		},
 		{
 			{"s", "Sync", "sync"},
 			{"d", "Doctor", "doctor"},
+			{"y", yaxLabel, "yax"},
 			{"f", forkLabel, "fork"},
 			{"c", "Reset", "reset"},
 		},
@@ -2866,6 +2875,8 @@ func (m model) View() string {
 		return m.viewCreateWorkspace()
 	case screenYax:
 		return m.viewYax()
+	case screenIDE:
+		return m.viewIDE()
 	case screenMCPWizard:
 		return m.viewMCPWizard()
 	default:
@@ -3312,5 +3323,76 @@ func (m model) viewYax() string {
 		b.WriteString("\n  " + checkStyle.Render(m.statusMsg) + "\n")
 	}
 
+	return boxStyle.Render(b.String())
+}
+
+// --- IDE Plugins ---
+
+func (m model) updateIDE(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		m.screen = screenDashboard
+		m.statusMsg = ""
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.ideItems)-1 {
+			m.cursor++
+		}
+	case "enter":
+		if m.cursor < len(m.ideItems) {
+			ide := m.ideItems[m.cursor]
+			if !ide.Installed {
+				m.statusMsg = fmt.Sprintf("%s not detected on this system", ide.Name)
+				break
+			}
+			m.statusMsg = fmt.Sprintf("Installing steer plugin for %s...", ide.Name)
+			if err := ops.InstallIDEPlugin(ide.ID); err != nil {
+				m.statusMsg = fmt.Sprintf("✗ %s: %v", ide.Name, err)
+			} else {
+				m.statusMsg = fmt.Sprintf("✅ %s plugin installed!", ide.Name)
+				m.ideItems = ops.DetectIDEs()
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m model) viewIDE() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("IDE Plugins") + dimStyle.Render("  enter=install  esc=back"))
+	b.WriteString("\n\n")
+
+	if len(m.ideItems) == 0 {
+		b.WriteString(dimStyle.Render("  No IDEs detected"))
+		return boxStyle.Render(b.String())
+	}
+
+	for i, ide := range m.ideItems {
+		cursor := "  "
+		if i == m.cursor {
+			cursor = activeStyle.Render("▸ ")
+		}
+
+		name := ide.Name
+		if i == m.cursor {
+			name = activeStyle.Render(name)
+		}
+
+		var status string
+		if !ide.Installed {
+			status = dimStyle.Render("not detected")
+		} else if ide.Plugin {
+			status = checkStyle.Render("✓ installed")
+		} else {
+			status = errStyle.Render("✗ not installed")
+		}
+
+		b.WriteString(fmt.Sprintf("%s%-18s %s\n", cursor, name, status))
+	}
+
+	b.WriteString("\n" + dimStyle.Render("  Press enter to install/update the steer plugin"))
 	return boxStyle.Render(b.String())
 }
