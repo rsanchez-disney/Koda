@@ -150,7 +150,7 @@ var enableToolsCmd = &cobra.Command{
 			"chat.enableThinking",
 			"chat.enableTodoList",
 			"chat.enableKnowledge",
-			"chat.enableDelegate",
+			"chat.enableSubagent",
 		}
 
 		for _, s := range settings {

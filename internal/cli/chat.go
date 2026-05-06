@@ -14,15 +14,22 @@ import (
 )
 
 var (
-	chatAgent    string
-	chatWs       string
-	chatTrustAll bool
-	chatNoTrust  bool
+	chatAgent      string
+	chatWs         string
+	chatTrustAll   bool
+	chatNoTrust    bool
+	chatResetTrust bool
 )
 
 // resolveTrust returns whether to trust all tools, consulting saved preference
 // and prompting the user if needed. Flags override everything.
-func resolveTrust(flagTrustAll, flagNoTrust bool) bool {
+func resolveTrust(flagTrustAll, flagNoTrust, flagResetTrust bool) bool {
+	if flagResetTrust {
+		s := config.ReadSteerSettings()
+		s.TrustTools = ""
+		config.SaveSteerSettings(s)
+		fmt.Println("  ✓ Trust preference reset — will prompt next time")
+	}
 	if flagTrustAll {
 		return true
 	}
@@ -48,12 +55,12 @@ func resolveTrust(flagTrustAll, flagNoTrust bool) bool {
 	case "always":
 		s.TrustTools = "all"
 		config.SaveSteerSettings(s)
-		fmt.Println("  ✓ Saved: always trust tools (reset with: koda chat --no-trust)")
+		fmt.Println("  ✓ Saved: always trust tools (reset with: koda chat --reset-trust)")
 		return true
 	case "never":
 		s.TrustTools = "none"
 		config.SaveSteerSettings(s)
-		fmt.Println("  ✓ Saved: never trust tools (reset with: koda chat --trust-all)")
+		fmt.Println("  ✓ Saved: never trust tools (reset with: koda chat --reset-trust)")
 		return false
 	default:
 		return answer == "" || strings.HasPrefix(answer, "y")
@@ -110,7 +117,7 @@ var chatCmd = &cobra.Command{
 			agent = ops.SuggestDefaultAgent(steerRoot, targetDir)
 		}
 
-		trustAll := resolveTrust(chatTrustAll, chatNoTrust)
+		trustAll := resolveTrust(chatTrustAll, chatNoTrust, chatResetTrust)
 		return launchKiroCLIChatWithWs(agent, trustAll, wsDir, args...)
 	},
 }
@@ -155,5 +162,6 @@ func init() {
 	chatCmd.Flags().StringVar(&chatWs, "ws", "", "Workspace session to use (materializes on first use)")
 	chatCmd.Flags().BoolVar(&chatTrustAll, "trust-all", false, "Trust all tools without prompting")
 	chatCmd.Flags().BoolVar(&chatNoTrust, "no-trust", false, "Don't trust any tools (kiro-cli will prompt per tool)")
+	chatCmd.Flags().BoolVar(&chatResetTrust, "reset-trust", false, "Clear saved trust preference (will prompt again)")
 	promptCmd.Flags().StringVar(&chatAgent, "agent", "", "Agent to chat with (e.g., orchestrator, backend)")
 }

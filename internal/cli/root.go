@@ -83,7 +83,7 @@ Run with no arguments to launch the interactive TUI.`,
 			return err
 		}
 		if launchChat {
-			trustAll := resolveTrust(false, false)
+			trustAll := resolveTrust(false, false, false)
 			return launchKiroCLIChat("", trustAll)
 		}
 		return nil
