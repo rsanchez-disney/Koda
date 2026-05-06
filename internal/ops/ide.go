@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -43,6 +44,8 @@ func detectVSCode(name, id, binary string) IDEInfo {
 			info.Plugin = true
 			info.Version = "installed"
 		}
+	} else if resolveAppBinary(binary) != "" {
+		info.Installed = true
 	}
 	return info
 }
@@ -117,12 +120,54 @@ func InstallIDEPlugin(ide string) error {
 }
 
 func installVSIX(cacheDir, binary string) error {
+	if _, err := exec.LookPath(binary); err != nil {
+		if resolved := resolveAppBinary(binary); resolved != "" {
+			fmt.Printf("  '%s' not in PATH, creating symlink...\n", binary)
+			dst := "/usr/local/bin/" + binary
+			if err := os.Symlink(resolved, dst); err != nil {
+				// Try with sudo
+				if err := exec.Command("sudo", "ln", "-s", resolved, dst).Run(); err != nil {
+					return fmt.Errorf("'%s' not in PATH; symlink failed: %w\n  Run: sudo ln -s %s %s", binary, err, resolved, dst)
+				}
+			}
+			fmt.Printf("  ✓ Linked %s → %s\n", dst, resolved)
+		} else {
+			return fmt.Errorf("'%s' not found in PATH or /Applications", binary)
+		}
+	}
 	vsix := filepath.Join(cacheDir, "steer.vsix")
 	if err := downloadPluginAsset(vsix, "steer.vsix"); err != nil {
 		return err
 	}
 	fmt.Printf("  Installing via %s...\n", binary)
-	return exec.Command(binary, "--install-extension", vsix).Run()
+	if err := exec.Command(binary, "--install-extension", vsix).Run(); err != nil {
+		return err
+	}
+
+	// Auto-configure kiroCLIPath so the extension can find kiro-cli
+	if kiroPath := FindKiroCLI(); kiroPath != "" {
+		if err := setIDESetting(binary, "steer.kiroCLIPath", kiroPath); err == nil {
+			fmt.Printf("  ✓ Set steer.kiroCLIPath = %s\n", kiroPath)
+		}
+	}
+	return nil
+}
+
+// resolveAppBinary finds a CLI binary inside a macOS .app bundle.
+func resolveAppBinary(binary string) string {
+	appNames := map[string]string{
+		"cursor": "/Applications/Cursor.app",
+		"code":   "/Applications/Visual Studio Code.app",
+	}
+	app, ok := appNames[binary]
+	if !ok {
+		return ""
+	}
+	candidate := filepath.Join(app, "Contents/Resources/app/bin", binary)
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return ""
 }
 
 func installJetBrains(cacheDir, dirPrefix, ide string) error {
@@ -197,4 +242,50 @@ func CopyPluginFromSteerRuntime(steerRoot string) {
 			copyFile(srcFile, filepath.Join(dest, name))
 		}
 	}
+}
+
+// setIDESetting writes a setting into the IDE's user settings.json.
+func setIDESetting(binary, key, value string) error {
+	home, _ := os.UserHomeDir()
+	var settingsPath string
+	switch binary {
+	case "code":
+		switch runtime.GOOS {
+		case "darwin":
+			settingsPath = filepath.Join(home, "Library", "Application Support", "Code", "User", "settings.json")
+		case "windows":
+			settingsPath = filepath.Join(os.Getenv("APPDATA"), "Code", "User", "settings.json")
+		default:
+			settingsPath = filepath.Join(home, ".config", "Code", "User", "settings.json")
+		}
+	case "cursor":
+		switch runtime.GOOS {
+		case "darwin":
+			settingsPath = filepath.Join(home, "Library", "Application Support", "Cursor", "User", "settings.json")
+		case "windows":
+			settingsPath = filepath.Join(os.Getenv("APPDATA"), "Cursor", "User", "settings.json")
+		default:
+			settingsPath = filepath.Join(home, ".config", "Cursor", "User", "settings.json")
+		}
+	default:
+		return fmt.Errorf("unsupported IDE: %s", binary)
+	}
+
+	// Read existing settings or start fresh
+	settings := map[string]interface{}{}
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		// Simple JSON parse (settings.json may have comments, but we do best-effort)
+		if err := json.Unmarshal(data, &settings); err != nil {
+			// If parse fails, don't overwrite user's file
+			return err
+		}
+	}
+
+	settings[key] = value
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	os.MkdirAll(filepath.Dir(settingsPath), 0755)
+	return os.WriteFile(settingsPath, out, 0644)
 }
