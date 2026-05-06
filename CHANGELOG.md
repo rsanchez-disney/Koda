@@ -6,6 +6,17 @@ All notable changes to Koda.
 
 ---
 
+## [0.4.123] — 2026-05-06
+
+### Added
+- **Auto-configure kiroCLIPath** — IDE plugin install now auto-sets `kiroCLIPath` in settings (#194)
+
+### Fixed
+- Clean orphaned steering/skills/agents on sync (#192)
+- Correct `enable-tools` setting name (#193)
+
+---
+
 ## [0.4.115] — 2026-05-05
 
 ### Added
