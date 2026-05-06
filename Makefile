@@ -178,6 +178,7 @@ pack-steer: ## Create steer-runtime tarball for release (requires STEER_ROOT and
 publish-steer: pack-steer ## Upload steer-runtime tarball to public repo (make publish-steer TAG=v0.1.4 STEER_ROOT=../steer-runtime)
 	@test -n "$(TAG)" || { echo "Usage: make publish-steer TAG=v0.1.4 STEER_ROOT=../steer-runtime"; exit 1; }
 	@echo "$(TAG)" > "$(STEER_ROOT)/VERSION"
+	@sed -i '' 's/^## v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/## $(TAG)/' "$(STEER_ROOT)/RELEASE_NOTES.md" 2>/dev/null || true
 	$(MAKE) pack-steer STEER_ROOT=$(STEER_ROOT)
 	GH_HOST=github.com gh release create $(TAG) --repo rsanchez-disney/steer-runtime --title "$(TAG)" --notes "steer-runtime $(TAG)" 2>/dev/null || true
 	@if [ -f bin/steer-runtime.tar.gz.enc ]; then \
@@ -217,11 +218,20 @@ publish-all: ## Pull, detect changes, auto-version, publish all repos with chang
 	@echo ""
 	@# --- steer-runtime ---
 	@STEER_LAST=$$(GH_HOST=github.com gh release list --repo rsanchez-disney/steer-runtime --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null); \
+	if echo "$$STEER_LAST" | grep -qv '^v0\.2\.'; then \
+		echo "❌ ERROR: Public steer-runtime latest release is $$STEER_LAST (expected v0.2.x)"; \
+		echo "   An internal version was published to the public repo. Fix with:"; \
+		echo "   GH_HOST=github.com gh release delete $$STEER_LAST --repo rsanchez-disney/steer-runtime --yes --cleanup-tag"; \
+		exit 1; \
+	fi; \
 	git -C $(STEER_ROOT) fetch --tags 2>/dev/null; \
 	if git -C $(STEER_ROOT) rev-parse "$$STEER_LAST" >/dev/null 2>&1; then \
 		STEER_COMMITS=$$(git -C $(STEER_ROOT) log $$STEER_LAST..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
 	else \
-		STEER_COMMITS=999; \
+		echo "❌ ERROR: Cannot resolve $$STEER_LAST in local steer-runtime repo."; \
+		echo "   The public release tag does not exist locally. This likely means"; \
+		echo "   a wrong version was published. Aborting to prevent version mismatch."; \
+		exit 1; \
 	fi; \
 	if [ "$$STEER_COMMITS" -gt 0 ]; then \
 		MAJOR=$$(echo $$STEER_LAST | sed 's/v//' | cut -d. -f1); \
