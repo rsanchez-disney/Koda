@@ -48,9 +48,12 @@ func TestGenerateSteeringFromMap(t *testing.T) {
 	profileDir := filepath.Join(root, "profiles", "dev-dotnet")
 	mapFile := filepath.Join(profileDir, "steering-map.json")
 
-	count := generateSteeringFromMap(profileDir, mapFile, dst)
+	count, names := generateSteeringFromMap(profileDir, mapFile, dst)
 	if count != 2 {
 		t.Fatalf("expected 2 files generated, got %d", count)
+	}
+	if len(names) != 2 {
+		t.Fatalf("expected 2 names returned, got %d", len(names))
 	}
 
 	// Check "always" inclusion
@@ -92,9 +95,12 @@ func TestGenerateSteeringFromMap_MissingContext(t *testing.T) {
 }`), 0644)
 
 	dst := t.TempDir()
-	count := generateSteeringFromMap(profileDir, filepath.Join(profileDir, "steering-map.json"), dst)
+	count, names := generateSteeringFromMap(profileDir, filepath.Join(profileDir, "steering-map.json"), dst)
 	if count != 0 {
 		t.Fatalf("expected 0 for missing context file, got %d", count)
+	}
+	if len(names) != 0 {
+		t.Fatalf("expected 0 names for missing context file, got %d", len(names))
 	}
 }
 
@@ -171,5 +177,126 @@ func TestCopySkillDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dst, "._hidden")); err == nil {
 		t.Error("._hidden should be skipped")
+	}
+}
+
+func TestInstallSteering_CleansOrphans(t *testing.T) {
+	root := setupFakeSteerRoot(t)
+	target := t.TempDir()
+
+	// First install with both profiles
+	count := installSteering(root, target, []string{"dev-core", "dev-dotnet"})
+	if count != 3 {
+		t.Fatalf("expected 3 steering files, got %d", count)
+	}
+
+	// Verify all 3 files exist
+	steeringDir := filepath.Join(target, "steering")
+	for _, name := range []string{"foundation.md", "aws-rules.md", "testing-rules.md"} {
+		if _, err := os.Stat(filepath.Join(steeringDir, name)); err != nil {
+			t.Fatalf("expected %s to exist after full install", name)
+		}
+	}
+
+	// Now sync with only dev-core — dev-dotnet files should be removed
+	count = installSteering(root, target, []string{"dev-core"})
+	if count != 1 {
+		t.Fatalf("expected 1 steering file after narrowing profiles, got %d", count)
+	}
+
+	// foundation.md should still exist
+	if _, err := os.Stat(filepath.Join(steeringDir, "foundation.md")); err != nil {
+		t.Error("foundation.md should still exist")
+	}
+	// dev-dotnet files should be removed
+	if _, err := os.Stat(filepath.Join(steeringDir, "aws-rules.md")); err == nil {
+		t.Error("aws-rules.md should have been removed (orphan)")
+	}
+	if _, err := os.Stat(filepath.Join(steeringDir, "testing-rules.md")); err == nil {
+		t.Error("testing-rules.md should have been removed (orphan)")
+	}
+}
+
+func TestInstallSkills_CleansOrphans(t *testing.T) {
+	root := setupFakeSteerRoot(t)
+	target := t.TempDir()
+
+	// Install with dev-dotnet (has skills)
+	count := installSkills(root, target, []string{"dev-core", "dev-dotnet"})
+	if count != 2 {
+		t.Fatalf("expected 2 skills, got %d", count)
+	}
+
+	skillsDir := filepath.Join(target, "skills")
+	if _, err := os.Stat(filepath.Join(skillsDir, "dotnet-api-skill", "SKILL.md")); err != nil {
+		t.Fatal("dotnet-api-skill should exist after install")
+	}
+
+	// Now sync with only dev-core — dotnet skill dir should be removed
+	count = installSkills(root, target, []string{"dev-core"})
+	// Only common/skills/ship-it.md remains
+	if count != 1 {
+		t.Fatalf("expected 1 skill after narrowing profiles, got %d", count)
+	}
+
+	if _, err := os.Stat(filepath.Join(skillsDir, "ship-it.md")); err != nil {
+		t.Error("ship-it.md (common) should still exist")
+	}
+	if _, err := os.Stat(filepath.Join(skillsDir, "dotnet-api-skill")); err == nil {
+		t.Error("dotnet-api-skill dir should have been removed (orphan)")
+	}
+}
+
+func TestCleanOrphans(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "keep.md"), []byte("keep"), 0644)
+	os.WriteFile(filepath.Join(dir, "remove.md"), []byte("remove"), 0644)
+	os.WriteFile(filepath.Join(dir, "other.txt"), []byte("other"), 0644)
+	os.WriteFile(filepath.Join(dir, "local-my-rules.md"), []byte("local"), 0644)
+
+	expected := map[string]bool{"keep.md": true}
+	removed := cleanOrphans(dir, expected, ".md")
+
+	if removed != 1 {
+		t.Fatalf("expected 1 removed, got %d", removed)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "keep.md")); err != nil {
+		t.Error("keep.md should still exist")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "remove.md")); err == nil {
+		t.Error("remove.md should have been removed")
+	}
+	// .txt file should be untouched (suffix filter)
+	if _, err := os.Stat(filepath.Join(dir, "other.txt")); err != nil {
+		t.Error("other.txt should be untouched (different suffix)")
+	}
+	// local- prefix should be preserved
+	if _, err := os.Stat(filepath.Join(dir, "local-my-rules.md")); err != nil {
+		t.Error("local-my-rules.md should be preserved (local- prefix)")
+	}
+}
+
+func TestCleanOrphanDirs(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "keep-dir"), 0755)
+	os.MkdirAll(filepath.Join(dir, "remove-dir"), 0755)
+	os.WriteFile(filepath.Join(dir, "remove-dir", "file.md"), []byte("x"), 0644)
+	os.WriteFile(filepath.Join(dir, "file.md"), []byte("file"), 0644)
+
+	expected := map[string]bool{"keep-dir": true}
+	removed := cleanOrphanDirs(dir, expected)
+
+	if removed != 1 {
+		t.Fatalf("expected 1 dir removed, got %d", removed)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "keep-dir")); err != nil {
+		t.Error("keep-dir should still exist")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "remove-dir")); err == nil {
+		t.Error("remove-dir should have been removed")
+	}
+	// Regular file should be untouched
+	if _, err := os.Stat(filepath.Join(dir, "file.md")); err != nil {
+		t.Error("file.md should be untouched (not a dir)")
 	}
 }

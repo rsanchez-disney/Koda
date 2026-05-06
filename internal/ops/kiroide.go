@@ -143,6 +143,7 @@ func RemoveKiroIDE(workspaceDir string) int {
 
 // installKiroAgents copies profile agents + prompts into <project>/.kiro/ with
 // resource paths rewritten from file://~/.kiro/ to file://.kiro/ for Kiro IDE.
+// Orphaned agent/prompt files from previously installed profiles are removed.
 func installKiroAgents(steerRoot, dotKiro string, profiles []string) (int, int) {
 	agentsDst := filepath.Join(dotKiro, config.AgentsDir)
 	promptsDst := filepath.Join(dotKiro, config.PromptsDir)
@@ -152,6 +153,9 @@ func installKiroAgents(steerRoot, dotKiro string, profiles []string) (int, int) 
 	home, _ := os.UserHomeDir()
 	jsonHome := strings.ReplaceAll(home, "\\", "/")
 	agents, prompts := 0, 0
+
+	expectedAgents := make(map[string]bool)
+	expectedPrompts := make(map[string]bool)
 
 	for _, p := range profiles {
 		srcDir, _ := ResolveProfileSource(steerRoot, p)
@@ -176,6 +180,7 @@ func installKiroAgents(steerRoot, dotKiro string, profiles []string) (int, int) 
 				content = strings.ReplaceAll(content, ".sh\"", ".ps1\"")
 			}
 			os.WriteFile(filepath.Join(agentsDst, e.Name()), []byte(content), 0644)
+			expectedAgents[e.Name()] = true
 			agents++
 		}
 
@@ -186,19 +191,41 @@ func installKiroAgents(steerRoot, dotKiro string, profiles []string) (int, int) 
 				continue
 			}
 			copyFile(filepath.Join(srcDir, config.PromptsDir, e.Name()), filepath.Join(promptsDst, e.Name()))
+			expectedPrompts[e.Name()] = true
 			prompts++
 		}
 	}
+
+	// Remove orphaned agents and prompts from previously installed profiles.
+	if removed := cleanOrphans(agentsDst, expectedAgents, ".json"); removed > 0 {
+		logf("  cleaned %d orphaned agent(s)\n", removed)
+	}
+	if removed := cleanOrphans(promptsDst, expectedPrompts, ".md"); removed > 0 {
+		logf("  cleaned %d orphaned prompt(s)\n", removed)
+	}
+
 	return agents, prompts
 }
 
 // installKiroContext copies context files from shared + profiles into <project>/.kiro/context/.
+// Orphaned context files from previously installed profiles are removed.
 func installKiroContext(steerRoot, dotKiro string, profiles []string) int {
 	dst := filepath.Join(dotKiro, config.ContextDir)
 	os.MkdirAll(dst, 0755)
 
+	// Track expected files for orphan cleanup.
+	expected := make(map[string]bool)
+
 	// Shared context first
-	copyDirContents(filepath.Join(steerRoot, "shared", config.ContextDir), dst)
+	sharedSrc := filepath.Join(steerRoot, "shared", config.ContextDir)
+	if entries, err := os.ReadDir(sharedSrc); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				expected[e.Name()] = true
+			}
+		}
+	}
+	copyDirContents(sharedSrc, dst)
 
 	// Profile-specific context (profile wins over shared on conflict)
 	for _, p := range profiles {
@@ -213,6 +240,7 @@ func installKiroContext(steerRoot, dotKiro string, profiles []string) int {
 				continue
 			}
 			copyFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name()))
+			expected[e.Name()] = true
 		}
 	}
 
@@ -221,7 +249,19 @@ func installKiroContext(steerRoot, dotKiro string, profiles []string) int {
 	if s.ActiveWorkspace != "" {
 		if ws, err := GetWorkspace(steerRoot, s.ActiveWorkspace); err == nil {
 			InstallBanks(steerRoot, dotKiro, ws.Services, ws.Channels)
+			// Add bank-generated filenames to expected set directly.
+			for _, svc := range ws.Services {
+				expected["svc-"+svc+".md"] = true
+			}
+			for _, ch := range ws.Channels {
+				expected["ch-"+ch+".md"] = true
+			}
 		}
+	}
+
+	// Remove orphaned context files (local- prefixed files are preserved).
+	if removed := cleanOrphans(dst, expected, ""); removed > 0 {
+		logf("  cleaned %d orphaned context file(s)\n", removed)
 	}
 
 	// Count actual files on disk (avoids double-counting overwrites)
@@ -248,9 +288,15 @@ func installKiroRules(steerRoot, dotKiro string) int {
 	return InstallRules(steerRoot, dotKiro, ws.Rules)
 }
 
+// installSteering installs steering files from selected profiles into targetRoot/steering/.
+// Orphaned files from previously installed profiles are removed.
+// Files prefixed with "local-" are preserved (user-managed).
 func installSteering(steerRoot, targetRoot string, profiles []string) int {
 	dst := filepath.Join(targetRoot, "steering")
 	os.MkdirAll(dst, 0755)
+
+	// Collect the set of steering files that SHOULD exist after this install.
+	expected := make(map[string]bool)
 	count := 0
 	allowed := make(map[string]bool, len(profiles))
 	for _, p := range profiles {
@@ -267,7 +313,11 @@ func installSteering(steerRoot, targetRoot string, profiles []string) int {
 		// Check for steering-map.json first
 		mapFile := filepath.Join(profileDir, "steering-map.json")
 		if _, err := os.Stat(mapFile); err == nil {
-			count += generateSteeringFromMap(profileDir, mapFile, dst)
+			generated, names := generateSteeringFromMap(profileDir, mapFile, dst)
+			count += generated
+			for _, n := range names {
+				expected[n] = true
+			}
 			continue
 		}
 		// Fall back to copying steering/ directory
@@ -281,24 +331,82 @@ func installSteering(steerRoot, targetRoot string, profiles []string) int {
 				continue
 			}
 			copyFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name()))
+			expected[e.Name()] = true
 			count++
 		}
 	}
+
+	// Remove orphaned steering files that no longer belong to any selected profile.
+	if removed := cleanOrphans(dst, expected, ".md"); removed > 0 {
+		logf("  cleaned %d orphaned steering file(s)\n", removed)
+	}
+
 	return count
+}
+
+// cleanOrphans removes files from dir that are not in the expected set.
+// Only files matching the given suffix are considered (e.g. ".md", ".json").
+// Pass an empty suffix to consider all files.
+// Files prefixed with "local-" are always preserved (user-managed).
+func cleanOrphans(dir string, expected map[string]bool, suffix string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	removed := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if suffix != "" && !strings.HasSuffix(e.Name(), suffix) {
+			continue
+		}
+		if strings.HasPrefix(e.Name(), "local-") {
+			continue
+		}
+		if !expected[e.Name()] {
+			logf("  removing orphan: %s\n", e.Name())
+			os.Remove(filepath.Join(dir, e.Name()))
+			removed++
+		}
+	}
+	return removed
+}
+
+// cleanOrphanDirs removes subdirectories from dir that are not in the expected set.
+func cleanOrphanDirs(dir string, expected map[string]bool) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	removed := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if !expected[e.Name()] {
+			logf("  removing orphan dir: %s\n", e.Name())
+			os.RemoveAll(filepath.Join(dir, e.Name()))
+			removed++
+		}
+	}
+	return removed
 }
 
 // generateSteeringFromMap reads a steering-map.json and generates steering files
 // from context files with Kiro IDE frontmatter prepended.
-func generateSteeringFromMap(profileDir, mapFile, dstDir string) int {
+// Returns the count of files generated and the list of destination filenames.
+func generateSteeringFromMap(profileDir, mapFile, dstDir string) (int, []string) {
 	data, err := os.ReadFile(mapFile)
 	if err != nil {
-		return 0
+		return 0, nil
 	}
 	var sm steeringMap
 	if err := json.Unmarshal(data, &sm); err != nil {
-		return 0
+		return 0, nil
 	}
 	count := 0
+	names := make([]string, 0, len(sm.Mappings))
 	for _, m := range sm.Mappings {
 		content, err := os.ReadFile(filepath.Join(profileDir, config.ContextDir, m.Context))
 		if err != nil {
@@ -312,11 +420,15 @@ func generateSteeringFromMap(profileDir, mapFile, dstDir string) int {
 			frontmatter = "---\ninclusion: always\n---\n\n"
 		}
 		os.WriteFile(filepath.Join(dstDir, m.Steering), append([]byte(frontmatter), content...), 0644)
+		names = append(names, m.Steering)
 		count++
 	}
-	return count
+	return count, names
 }
 
+// installSkills installs skill files from common + selected profiles into targetRoot/skills/.
+// Orphaned skill files and directories from previously installed profiles are removed.
+// Files prefixed with "local-" are preserved (user-managed).
 func installSkills(steerRoot, targetRoot string, profiles []string) int {
 	dst := filepath.Join(targetRoot, "skills")
 	os.MkdirAll(dst, 0755)
@@ -325,6 +437,10 @@ func installSkills(steerRoot, targetRoot string, profiles []string) int {
 	for _, p := range profiles {
 		allowed[p] = true
 	}
+
+	// Track expected files and directories for orphan cleanup.
+	expectedFiles := make(map[string]bool)
+	expectedDirs := make(map[string]bool)
 
 	// Collect skill source directories: common/skills + selected profiles' skills/
 	skillDirs := []string{filepath.Join(steerRoot, "common", "skills")}
@@ -346,13 +462,24 @@ func installSkills(steerRoot, targetRoot string, profiles []string) int {
 			if e.IsDir() {
 				// Skill directory (SKILL.md + references/ + assets/)
 				copySkillDir(src, filepath.Join(dst, e.Name()))
+				expectedDirs[e.Name()] = true
 				count++
 			} else if strings.HasSuffix(e.Name(), ".md") && e.Name() != "README.md" {
 				copyFile(src, filepath.Join(dst, e.Name()))
+				expectedFiles[e.Name()] = true
 				count++
 			}
 		}
 	}
+
+	// Remove orphaned skill files and directories.
+	if removed := cleanOrphans(dst, expectedFiles, ".md"); removed > 0 {
+		logf("  cleaned %d orphaned skill file(s)\n", removed)
+	}
+	if removed := cleanOrphanDirs(dst, expectedDirs); removed > 0 {
+		logf("  cleaned %d orphaned skill dir(s)\n", removed)
+	}
+
 	return count
 }
 

@@ -72,7 +72,7 @@ var kiroIDESyncCmd = &cobra.Command{
 			wsDir = args[0]
 		}
 
-		fmt.Println("\U0001f504 Syncing Kiro IDE config")
+		fmt.Println("\U0001f504 Syncing Kiro IDE config (stale files from removed profiles will be cleaned)")
 		r, err := ops.SyncKiroIDE(steerRoot, wsDir, kiroIDEProfiles)
 		if err != nil {
 			return err
