@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -48,7 +50,8 @@ func resolveTrust(flagTrustAll, flagNoTrust, flagResetTrust bool) bool {
 	// No saved preference — prompt
 	fmt.Print("Trust all tools? (Y/n/always/never): ")
 	var answer string
-	fmt.Scanln(&answer)
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ = reader.ReadString('\n')
 	answer = strings.TrimSpace(strings.ToLower(answer))
 
 	switch answer {
@@ -84,9 +87,11 @@ var chatCmd = &cobra.Command{
 				fmt.Printf("  [%d] %s (%s)\n", i+1, w.Name, w.Team)
 			}
 			fmt.Print("\nSelect workspace: ")
-			var choice int
-			fmt.Scanln(&choice)
-			if choice < 1 || choice > len(workspaces) {
+			reader := bufio.NewReader(os.Stdin)
+			line, _ := reader.ReadString('\n')
+			line = strings.TrimRight(line, "\r\n")
+			choice, err := strconv.Atoi(line)
+			if err != nil || choice < 1 || choice > len(workspaces) {
 				return fmt.Errorf("invalid selection")
 			}
 			chatWs = workspaces[choice-1].Name
