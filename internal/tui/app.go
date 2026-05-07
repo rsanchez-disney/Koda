@@ -595,15 +595,20 @@ func (m model) viewDashboard() string {
 	b.WriteString("\n\n")
 
 	if len(m.report.Profiles) > 0 {
+		profileStr := strings.Join(m.report.Profiles, " · ")
+		if len(profileStr) > 50 {
+			profileStr = fmt.Sprintf("%d profiles", len(m.report.Profiles))
+		}
 		b.WriteString(fmt.Sprintf("  Installed: %s (%d agents)\n",
-			checkStyle.Render(strings.Join(m.report.Profiles, " \u00b7 ")), m.report.TotalAgents))
+			checkStyle.Render(profileStr), m.report.TotalAgents))
 	} else {
 		b.WriteString(warnStyle.Render("  No profiles installed") + "\n")
 	}
 
 	tokSet := len(m.report.TokensSet)
 	tokTotal := tokSet + len(m.report.TokensMissing)
-	b.WriteString(fmt.Sprintf("  Tokens:    %d/%d configured\n", tokSet, tokTotal))
+	mcpConfigured := len(m.ghRemotes) + len(m.jiraInstances) + len(m.confInstances)
+	b.WriteString(fmt.Sprintf("  Tokens:    %d/%d configured + %d MCP instances\n", tokSet, tokTotal, mcpConfigured))
 	b.WriteString(fmt.Sprintf("  Target:    %s\n", dimStyle.Render(m.targetDir)))
 
 	settings := config.ReadSteerSettings()
