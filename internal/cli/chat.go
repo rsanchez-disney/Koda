@@ -73,6 +73,24 @@ var chatCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Resolve workspace session
 		var wsDir string
+		if chatWs == "__pick__" {
+			// --ws passed without value: show interactive picker
+			workspaces, err := ops.ListWorkspaces(steerRoot)
+			if err != nil || len(workspaces) == 0 {
+				return fmt.Errorf("no workspaces found in %s", steerRoot)
+			}
+			fmt.Println("Available workspaces:")
+			for i, w := range workspaces {
+				fmt.Printf("  [%d] %s (%s)\n", i+1, w.Name, w.Team)
+			}
+			fmt.Print("\nSelect workspace: ")
+			var choice int
+			fmt.Scanln(&choice)
+			if choice < 1 || choice > len(workspaces) {
+				return fmt.Errorf("invalid selection")
+			}
+			chatWs = workspaces[choice-1].Name
+		}
 		if chatWs != "" {
 			wsDir = config.WorkspaceRuntimeDir(chatWs)
 			// Auto-materialize if not exists
@@ -160,6 +178,7 @@ var promptCmd = &cobra.Command{
 func init() {
 	chatCmd.Flags().StringVar(&chatAgent, "agent", "", "Agent to chat with (e.g., orchestrator, backend)")
 	chatCmd.Flags().StringVar(&chatWs, "ws", "", "Workspace session to use (materializes on first use)")
+	chatCmd.Flags().Lookup("ws").NoOptDefVal = "__pick__"
 	chatCmd.Flags().BoolVar(&chatTrustAll, "trust-all", false, "Trust all tools without prompting")
 	chatCmd.Flags().BoolVar(&chatNoTrust, "no-trust", false, "Don't trust any tools (kiro-cli will prompt per tool)")
 	chatCmd.Flags().BoolVar(&chatResetTrust, "reset-trust", false, "Clear saved trust preference (will prompt again)")
