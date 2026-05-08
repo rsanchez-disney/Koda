@@ -1,29 +1,15 @@
-# Koda v0.4.115 — Release Notes
+# Koda v0.5.0 — Release Notes
 
-**Date:** 2026-05-05
+**Date:** 2026-05-08
 
 ## Highlights
 
-**Multi-workspace sessions** — Work in multiple workspaces in parallel without overwriting `~/.kiro/` configuration. Each `koda chat --ws <name>` session gets its own isolated runtime directory.
+**Multi-prefix jira_prefix** — Workspaces can now specify multiple JIRA prefixes as an array, enabling teams that span multiple JIRA projects.
 
 ## What's New
 
-- **Multi-workspace sessions** — `koda chat --ws <name>` spawns isolated sessions with `KIRO_HOME` pointing to workspace-specific runtime dir (#191)
-- **Workspace lifecycle** — `koda workspace remove <name>` / `koda workspace prune` for cleanup
-- **MCP propagation** — `koda sync` propagates `mcp.json` to all materialized workspaces
-- **TUI workspace checklist** — multi-select with `space`=toggle, `p`=primary (#191)
-- **IDE plugins** — `koda ide install/status/update` CLI commands + TUI IDE Plugins screen (#189)
-- **8 IDE support** — VS Code, Cursor, IntelliJ, WebStorm, PyCharm, Rider, GoLand, Android Studio
-- **steer-plugins in releases** — steer.vsix bundled with Koda releases
+- **Multi-prefix jira_prefix** — `StringOrSlice` type supports `string | string[]` for workspace jira_prefix (#196)
 
 ## What's Fixed
 
-- Sibling profiles with same agent names showing as installed (false positive) (#190)
-- reconcile activeWorkspace with workspace.json to prevent drift (#186)
-- MCP toggle wrong section and chrome-devtools not disabled by default (#179)
-- native MCP install wizard in TUI env vars screen (#185)
-- bufio reader for upgrade session prompt (#188)
-
-## Commits
-
-See full diff: v0.4.114...v0.4.115
+- `dev` alias now expands to all 9 dev-* profiles (#197)

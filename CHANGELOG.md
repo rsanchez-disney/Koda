@@ -6,6 +6,16 @@ All notable changes to Koda.
 
 ---
 
+## [0.5.0] — 2026-05-08
+
+### Added
+- **Multi-prefix jira_prefix** — `StringOrSlice` type supports `string | string[]` for workspace jira_prefix (#196)
+
+### Fixed
+- `dev` alias now expands to all 9 dev-* profiles (#197)
+
+---
+
 ## [0.4.123] — 2026-05-06
 
 ### Added
