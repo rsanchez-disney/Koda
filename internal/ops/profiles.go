@@ -607,7 +607,7 @@ func EnrichWelcomeMessages(targetDir string) {
 	var ws struct {
 		Name       string   `json:"name"`
 		Team       string   `json:"team"`
-		JiraPrefix string   `json:"jira_prefix"`
+		JiraPrefix model.StringOrSlice `json:"jira_prefix"`
 		Profiles   []string `json:"profiles"`
 		Projects   []struct {
 			Name string `json:"name"`
@@ -626,8 +626,8 @@ func EnrichWelcomeMessages(targetDir string) {
 	if ws.Team != "" {
 		b.WriteString(" (" + ws.Team + ")")
 	}
-	if ws.JiraPrefix != "" {
-		b.WriteString("\n  Jira: " + ws.JiraPrefix + "-*")
+	if !ws.JiraPrefix.IsEmpty() {
+		b.WriteString("\n  Jira: " + ws.JiraPrefix.String() + "-*")
 	}
 	if len(ws.Profiles) > 0 {
 		b.WriteString("\n  Profiles: " + strings.Join(ws.Profiles, ", "))

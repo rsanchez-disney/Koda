@@ -141,7 +141,7 @@ func ResolveWorkspace(steerRoot string, ws model.Workspace) (model.Workspace, []
 		if child.DefaultAgent != "" {
 			merged.DefaultAgent = child.DefaultAgent
 		}
-		if child.JiraPrefix != "" {
+		if !child.JiraPrefix.IsEmpty() {
 			merged.JiraPrefix = child.JiraPrefix
 		}
 		if len(child.JiraCustomFields) > 0 {
@@ -495,7 +495,7 @@ func PrintWorkspace(ws model.Workspace) {
 	if ws.Team != "" {
 		fmt.Printf("  Team:        %s\n", ws.Team)
 	}
-	if ws.JiraPrefix != "" {
+	if !ws.JiraPrefix.IsEmpty() {
 		fmt.Printf("  Jira Prefix: %s\n", ws.JiraPrefix)
 	}
 	fmt.Printf("  Profiles:    %s\n", strings.Join(ws.Profiles, ", "))

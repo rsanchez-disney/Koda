@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.disney.com/SANCR225/koda/internal/acp"
+	mdl "github.disney.com/SANCR225/koda/internal/model"
 	"github.disney.com/SANCR225/koda/internal/ops"
 )
 
@@ -320,7 +321,7 @@ func loadWelcomeMessage(agent string) string {
 	var ws struct {
 		Name       string `json:"name"`
 		Team       string `json:"team"`
-		JiraPrefix string `json:"jira_prefix"`
+		JiraPrefix mdl.StringOrSlice `json:"jira_prefix"`
 		Profiles   []string `json:"profiles"`
 		Projects   []struct {
 			Name string `json:"name"`
@@ -339,8 +340,8 @@ func loadWelcomeMessage(agent string) string {
 	if ws.Team != "" {
 		b.WriteString(" (" + ws.Team + ")")
 	}
-	if ws.JiraPrefix != "" {
-		b.WriteString("\n  Jira: " + ws.JiraPrefix + "-*")
+	if !ws.JiraPrefix.IsEmpty() {
+		b.WriteString("\n  Jira: " + ws.JiraPrefix.String() + "-*")
 	}
 	if len(ws.Profiles) > 0 {
 		b.WriteString("\n  Profiles: " + strings.Join(ws.Profiles, ", "))

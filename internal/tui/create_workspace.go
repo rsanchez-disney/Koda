@@ -87,7 +87,7 @@ func newCWStateFromWorkspace(steerRoot, targetDir string, ws mdl.Workspace) cwSt
 	s.extends = ws.Extends
 	s.desc = ws.Description
 	s.team = ws.Team
-	s.jira = ws.JiraPrefix
+	s.jira = ws.JiraPrefix.String()
 	s.agent = ws.DefaultAgent
 	s.tools = ws.EnableTools
 	s.reposPath = ws.WorkspacePath
@@ -342,7 +342,7 @@ func (m model) cwBuildWorkspace() mdl.Workspace {
 		Extends:       cw.extends,
 		Description:   cw.desc,
 		Team:          cw.team,
-		JiraPrefix:    cw.jira,
+		JiraPrefix:    mdl.ParseStringOrSlice(cw.jira),
 		DefaultAgent:  cw.agent,
 		EnableTools:   cw.tools,
 		WorkspacePath: cw.reposPath,
