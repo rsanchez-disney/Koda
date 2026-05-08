@@ -16,10 +16,10 @@ func TestExpandAliases(t *testing.T) {
 		in   []string
 		want []string
 	}{
-		{"dev expands", []string{"dev"}, []string{"dev-core", "dev-web", "dev-mobile", "dev-python", "dev-infra"}},
+		{"dev expands", []string{"dev"}, []string{"dev-core", "dev-web", "dev-mobile", "dev-python", "dev-ai", "dev-infra", "dev-dotnet", "dev-php", "dev-ui"}},
 		{"no alias", []string{"qa", "ops"}, []string{"qa", "ops"}},
-		{"dedup", []string{"dev", "dev-core"}, []string{"dev-core", "dev-web", "dev-mobile", "dev-python", "dev-infra"}},
-		{"mixed", []string{"dev", "ba"}, []string{"dev-core", "dev-web", "dev-mobile", "dev-python", "dev-infra", "ba"}},
+		{"dedup", []string{"dev", "dev-core"}, []string{"dev-core", "dev-web", "dev-mobile", "dev-python", "dev-ai", "dev-infra", "dev-dotnet", "dev-php", "dev-ui"}},
+		{"mixed", []string{"dev", "ba"}, []string{"dev-core", "dev-web", "dev-mobile", "dev-python", "dev-ai", "dev-infra", "dev-dotnet", "dev-php", "dev-ui", "ba"}},
 		{"empty", []string{}, nil},
 	}
 	for _, tt := range tests {

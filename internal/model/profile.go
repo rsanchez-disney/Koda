@@ -12,5 +12,5 @@ type Profile struct {
 
 // Aliases maps shorthand names to their expanded profile lists.
 var Aliases = map[string][]string{
-	"dev": {"dev-core", "dev-web", "dev-mobile", "dev-python", "dev-infra"},
+	"dev": {"dev-core", "dev-web", "dev-mobile", "dev-python", "dev-ai", "dev-infra", "dev-dotnet", "dev-php", "dev-ui"},
 }
