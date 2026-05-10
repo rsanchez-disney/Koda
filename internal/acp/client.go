@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -31,9 +32,25 @@ func dbg(format string, args ...interface{}) {
 	}
 }
 
+// TrustLevel controls how the ACP client handles permission requests.
+type TrustLevel string
+
+const (
+	TrustAutonomous TrustLevel = "autonomous" // auto-approve all
+	TrustSupervised TrustLevel = "supervised" // route to PermissionCh for human decision
+	TrustStrict     TrustLevel = "strict"     // deny destructive, allow reads
+)
+
+// PermissionEvent is emitted when a permission request needs human decision (supervised mode).
+type PermissionEvent struct {
+	ID         interface{}
+	ToolName   string
+	ResponseCh chan string // send "allow_once", "allow_always", or "deny"
+}
+
 // Event types emitted by the ACP read loop.
 type Event struct {
-	Type    string // MessageChunk, ToolCall, ToolResult, Complete, Metadata
+	Type    string // MessageChunk, ToolCall, ToolResult, Complete, Metadata, Permission
 	Chunk   string
 	Name    string
 	Reason  string
@@ -42,14 +59,16 @@ type Event struct {
 
 // Client wraps a kiro-cli acp subprocess.
 type Client struct {
-	cmd       *exec.Cmd
-	stdin     *json.Encoder
-	mu        sync.Mutex
-	reqID     atomic.Uint64
-	pending   map[string]chan json.RawMessage
-	pendingMu sync.Mutex
-	Events    chan Event
-	sessionID string
+	cmd          *exec.Cmd
+	stdin        *json.Encoder
+	mu           sync.Mutex
+	reqID        atomic.Uint64
+	pending      map[string]chan json.RawMessage
+	pendingMu    sync.Mutex
+	Events       chan Event
+	sessionID    string
+	TrustLevel   TrustLevel
+	PermissionCh chan PermissionEvent
 }
 
 type jsonRPCRequest struct {
@@ -60,26 +79,36 @@ type jsonRPCRequest struct {
 }
 
 type jsonRPCResponse struct {
-	ID     interface{}      `json:"id,omitempty"`
-	Result json.RawMessage  `json:"result,omitempty"`
+	ID     interface{}     `json:"id,omitempty"`
+	Result json.RawMessage `json:"result,omitempty"`
 	Error  *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
-	Method string           `json:"method,omitempty"`
-	Params json.RawMessage  `json:"params,omitempty"`
+	Method string          `json:"method,omitempty"`
+	Params json.RawMessage `json:"params,omitempty"`
 }
 
 // SpawnWithCwd starts kiro-cli acp with a custom working directory.
 func SpawnWithCwd(agent, cwd string) (*Client, error) {
-	return spawnInternal(agent, cwd)
+	return spawnInternal(agent, cwd, TrustAutonomous)
+}
+
+// SpawnWithTrust starts kiro-cli acp with a specific trust level.
+func SpawnWithTrust(agent string, trust TrustLevel) (*Client, error) {
+	return spawnInternal(agent, "", trust)
+}
+
+// SpawnWithCwdAndTrust starts kiro-cli acp with a custom cwd and trust level.
+func SpawnWithCwdAndTrust(agent, cwd string, trust TrustLevel) (*Client, error) {
+	return spawnInternal(agent, cwd, trust)
 }
 
 // Spawn starts kiro-cli acp and returns a connected client.
 func Spawn(agent string) (*Client, error) {
-	return spawnInternal(agent, "")
+	return spawnInternal(agent, "", TrustAutonomous)
 }
 
-func spawnInternal(agent, cwd string) (*Client, error) {
+func spawnInternal(agent, cwd string, trust TrustLevel) (*Client, error) {
 	kiroPath := ops.FindKiroCLI()
 
 	args := []string{"acp", "-a"}
@@ -94,7 +123,9 @@ func spawnInternal(agent, cwd string) (*Client, error) {
 	if debugLog != nil {
 		stderrPipe, _ := cmd.StderrPipe()
 		go func() {
-			if stderrPipe == nil { return }
+			if stderrPipe == nil {
+				return
+			}
 			sc := bufio.NewScanner(stderrPipe)
 			for sc.Scan() {
 				dbg("STDERR: %s", sc.Text())
@@ -113,17 +144,19 @@ func spawnInternal(agent, cwd string) (*Client, error) {
 		return nil, err
 	}
 
-	dbg("spawn: %s %v", kiroPath, args)
+	dbg("spawn: %s %v (trust=%s)", kiroPath, args, trust)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start kiro-cli: %w", err)
 	}
 	dbg("spawn: pid=%d", cmd.Process.Pid)
 
 	c := &Client{
-		cmd:     cmd,
-		stdin:   json.NewEncoder(stdinPipe),
-		pending: make(map[string]chan json.RawMessage),
-		Events:  make(chan Event, 100),
+		cmd:          cmd,
+		stdin:        json.NewEncoder(stdinPipe),
+		pending:      make(map[string]chan json.RawMessage),
+		Events:       make(chan Event, 100),
+		TrustLevel:   trust,
+		PermissionCh: make(chan PermissionEvent, 5),
 	}
 
 	// Read loop
@@ -208,6 +241,9 @@ func (c *Client) CreateSession(agent string, cwd ...string) error {
 	if agent != "" {
 		params["agentId"] = agent
 	}
+	if ctx := buildRecentSessionContext(home); ctx != "" {
+		params["sessionContext"] = ctx
+	}
 
 	result, err := c.request("session/new", params)
 	if err != nil {
@@ -244,6 +280,11 @@ func (c *Client) SendMessage(content string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.stdin.Encode(req)
+}
+
+// RespondPermission sends a permission decision for a pending request.
+func (c *Client) RespondPermission(id interface{}, decision string) {
+	c.respondPermission(id, decision)
 }
 
 // SessionID returns the current session ID.
@@ -321,10 +362,40 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 func (c *Client) handleServerRequest(method string, id interface{}, params json.RawMessage) {
 	switch method {
 	case "session/request_permission":
-		dbg("   auto-approve permission id=%v", id)
-		c.respondPermission(id, "allow_always")
+		c.handlePermission(id, params)
 	default:
 		dbg("   unhandled server request: %s", method)
+	}
+}
+
+func (c *Client) handlePermission(id interface{}, params json.RawMessage) {
+	toolName := extractToolName(params)
+
+	switch c.TrustLevel {
+	case TrustSupervised:
+		dbg("   supervised: requesting approval for %s", toolName)
+		evt := PermissionEvent{
+			ID:         id,
+			ToolName:   toolName,
+			ResponseCh: make(chan string, 1),
+		}
+		c.PermissionCh <- evt
+		decision := <-evt.ResponseCh
+		dbg("   supervised: decision=%s for %s", decision, toolName)
+		c.respondPermission(id, decision)
+
+	case TrustStrict:
+		if isDestructiveTool(toolName) {
+			dbg("   strict: deny %s", toolName)
+			c.respondPermission(id, "deny")
+		} else {
+			dbg("   strict: allow_once %s", toolName)
+			c.respondPermission(id, "allow_once")
+		}
+
+	default: // TrustAutonomous or unset
+		dbg("   autonomous: allow_always %s", toolName)
+		c.respondPermission(id, "allow_always")
 	}
 }
 
@@ -338,6 +409,76 @@ func (c *Client) respondPermission(id interface{}, optionID string) {
 	defer c.mu.Unlock()
 	c.stdin.Encode(resp)
 	dbg(">> permission response: %s", optionID)
+}
+
+// extractToolName parses the tool name from permission request params.
+func extractToolName(params json.RawMessage) string {
+	var p map[string]interface{}
+	if json.Unmarshal(params, &p) != nil {
+		return "unknown"
+	}
+	if title, ok := p["title"].(string); ok {
+		return title
+	}
+	if name, ok := p["name"].(string); ok {
+		return name
+	}
+	return "unknown"
+}
+
+// isDestructiveTool returns true for tools that modify state.
+func isDestructiveTool(name string) bool {
+	lower := strings.ToLower(name)
+	destructive := []string{"write", "fs_write", "shell", "execute_bash", "delete", "remove"}
+	for _, d := range destructive {
+		if strings.Contains(lower, d) {
+			return true
+		}
+	}
+	return false
+}
+
+// buildRecentSessionContext reads last 3 sessions from telemetry for cross-session awareness.
+func buildRecentSessionContext(home string) string {
+	path := home + "/.kiro/logs/telemetry.jsonl"
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	// Read last 3 entries (scan all, keep tail)
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	start := len(lines) - 3
+	if start < 0 {
+		start = 0
+	}
+
+	var b strings.Builder
+	b.WriteString("## Recent Sessions\n\n")
+	for _, line := range lines[start:] {
+		var e struct {
+			Ts    string `json:"ts"`
+			Agent string `json:"agent"`
+			Dur   int    `json:"duration_ms"`
+			Tools int    `json:"tool_calls"`
+		}
+		if json.Unmarshal([]byte(line), &e) == nil && e.Agent != "" {
+			b.WriteString(fmt.Sprintf("- %s: %s (%ds, %d tools)\n", e.Ts, e.Agent, e.Dur/1000, e.Tools))
+		}
+	}
+	result := b.String()
+	if len(result) > 2048 {
+		result = result[:2048]
+	}
+	return result
 }
 
 func truncLog(s string, max int) string {

@@ -36,6 +36,12 @@ Rules:
 - Use dependsOn for sequential tasks (e.g., tests depend on implementation)
 - Use "supervised" trust for code changes, "autonomous" for read-only tasks
 - Keep taskTemplate specific and actionable
+
+Optional retry fields per worker:
+- "maxRetries": 1-2 for network-dependent tasks (MCP tools, API calls, flaky operations)
+- "retryDelay": "5s" for transient failures, "10s" for rate limits
+- "onFailure": "skip" for non-critical tasks (tests, linting), "abort" for critical path (implementation)
+- Omit retry fields for simple, reliable tasks (default: no retry, abort on failure)
 `
 
 // GeneratePlan uses kiro-cli to decompose a goal into a TeamSpec.

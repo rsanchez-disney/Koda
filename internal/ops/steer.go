@@ -83,6 +83,11 @@ func SyncSteerRuntime(steerRoot, targetDir string) error {
 			RefreshWorkspaceFiles(steerRoot, targetDir, resolved, wsNames)
 		}
 	}
+
+	// Build context index for RAG-based retrieval
+	contextDir := filepath.Join(targetDir, config.ContextDir)
+	BuildContextIndex(contextDir) // best-effort, errors ignored
+
 	return nil
 }
 

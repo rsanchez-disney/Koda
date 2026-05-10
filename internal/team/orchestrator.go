@@ -2,6 +2,8 @@ package team
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -19,7 +21,8 @@ type Team struct {
 	Worktrees   *GitWorktreeManager
 	RepoRoot    string
 	StartedAt   time.Time
-	Events      chan WorkerEvent
+	Events         chan WorkerEvent
+	BlackboardPath string
 }
 
 // NewTeam creates a team from a spec.
@@ -36,6 +39,9 @@ func NewTeam(id string, spec TeamSpec, goal, repoRoot string) *Team {
 
 	for _, ws := range spec.Workers {
 		w := NewWorker(ws.ID, ws.Role, ws.AgentConfig, ws.Model, TrustLevel(ws.TrustLevel), ws.TaskTemplate, ws.DependsOn)
+		w.MaxRetries = ws.MaxRetries
+		w.RetryDelay = ws.RetryDelay
+		w.OnFailure = ws.OnFailure
 		t.Workers[ws.ID] = w
 		t.WorkerOrder = append(t.WorkerOrder, ws.ID)
 	}
@@ -58,6 +64,11 @@ func (t *Team) Run() error {
 		w.WorktreePath = wtPath
 		w.Branch = branch
 	}
+
+	// Initialize blackboard
+	t.BlackboardPath = filepath.Join(".koda", "team", t.ID, "blackboard.md")
+	os.MkdirAll(filepath.Dir(t.BlackboardPath), 0755)
+	initBlackboard(t.BlackboardPath, t.Goal, t.Spec.Workers)
 
 	// Execute in dependency order
 	completed := map[string]bool{}
@@ -88,22 +99,16 @@ func (t *Team) Run() error {
 			continue
 		}
 
-		// Launch ready workers in parallel
+		// Launch ready workers in parallel (with retry)
 		var wg sync.WaitGroup
 		for _, w := range ready {
 			wg.Add(1)
 			go func(w *Worker) {
 				defer wg.Done()
 				spec := t.findSpec(w.ID)
-				handoff := BuildHandoff(spec, t.Goal, t.Results)
-				if err := w.Start(handoff); err != nil {
-					t.Events <- WorkerEvent{WorkerID: w.ID, Type: "StateChange", Data: string(StateFailed)}
-					return
-				}
-				// Forward worker events to team
-				for evt := range w.Events {
-					t.Events <- evt
-				}
+				bb, _ := os.ReadFile(t.BlackboardPath)
+				handoff := BuildHandoffWithBlackboard(spec, t.Goal, t.Results, string(bb))
+				t.executeWithRetry(w, spec, handoff)
 			}(w)
 		}
 
@@ -130,6 +135,45 @@ func (t *Team) Run() error {
 	}
 
 	return nil
+}
+
+// executeWithRetry runs a worker with retry logic based on its spec.
+func (t *Team) executeWithRetry(w *Worker, spec WorkerSpec, handoff string) {
+	maxAttempts := w.MaxRetries + 1
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := w.Start(handoff); err != nil {
+			if attempt < maxAttempts {
+				delay := parseDuration(w.RetryDelay, 5*time.Second)
+				time.Sleep(delay)
+				handoff = fmt.Sprintf("%s\n\n---\nPrevious attempt %d/%d failed: %s. Retry.", handoff, attempt, maxAttempts, err)
+				w.Reset()
+				continue
+			}
+			// Final failure — apply onFailure strategy
+			switch w.OnFailure {
+			case "skip":
+				w.SetState(StateCompleted) // mark as done so dependents can proceed
+				t.mu.Lock()
+				t.Results[w.ID] = fmt.Sprintf("[SKIPPED: %s]", w.Error)
+				t.mu.Unlock()
+			default: // "abort" or ""
+				t.Events <- WorkerEvent{WorkerID: w.ID, Type: "StateChange", Data: string(StateFailed)}
+			}
+			return
+		}
+		// Forward worker events to team
+		for evt := range w.Events {
+			t.Events <- evt
+		}
+		return // success
+	}
+}
+
+func parseDuration(s string, fallback time.Duration) time.Duration {
+	if d, err := time.ParseDuration(s); err == nil {
+		return d
+	}
+	return fallback
 }
 
 // Abort kills all running workers.
@@ -202,4 +246,29 @@ func stateIcon(s WorkerState) string {
 	default:
 		return "?"
 	}
+}
+
+func initBlackboard(path, goal string, workers []WorkerSpec) {
+	var b strings.Builder
+	b.WriteString("# Team Blackboard\n\n")
+	b.WriteString(fmt.Sprintf("**Goal:** %s\n\n", goal))
+	b.WriteString("## Workers\n\n")
+	for _, w := range workers {
+		deps := ""
+		if len(w.DependsOn) > 0 {
+			deps = " (depends: " + strings.Join(w.DependsOn, ", ") + ")"
+		}
+		b.WriteString(fmt.Sprintf("- %s: %s%s\n", w.ID, w.Role, deps))
+	}
+	b.WriteString("\n## Shared Notes\n\n")
+	os.WriteFile(path, []byte(b.String()), 0644)
+}
+
+// BuildHandoffWithBlackboard creates the handoff prompt including blackboard content.
+func BuildHandoffWithBlackboard(spec WorkerSpec, goal string, priorResults map[string]string, blackboard string) string {
+	base := BuildHandoff(spec, goal, priorResults)
+	if blackboard == "" {
+		return base
+	}
+	return base + "\n## Shared Blackboard\n\n" + blackboard + "\n"
 }

@@ -88,3 +88,74 @@ func PrintStats(days int) {
 	fmt.Printf("  %-25s %6d %10d %10d\n", "TOTAL", totalInteractions, totalIn, totalOut)
 	fmt.Println()
 }
+
+// TelemetryEntry represents one line from telemetry.jsonl.
+type TelemetryEntry struct {
+	Ts       string  `json:"ts"`
+	Event    string  `json:"event"`
+	Agent    string  `json:"agent"`
+	Duration int     `json:"duration_ms"`
+	Tools    int     `json:"tool_calls"`
+	CtxPct   float64 `json:"context_usage_pct"`
+}
+
+// ReadTelemetry reads entries from telemetry.jsonl.
+func ReadTelemetry(since time.Time) []TelemetryEntry {
+	path := filepath.Join(os.Getenv("HOME"), ".kiro", "logs", "telemetry.jsonl")
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var entries []TelemetryEntry
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var e TelemetryEntry
+		if json.Unmarshal(scanner.Bytes(), &e) == nil {
+			if t, err := time.Parse(time.RFC3339, e.Ts); err == nil && t.After(since) {
+				entries = append(entries, e)
+			}
+		}
+	}
+	return entries
+}
+
+// PrintTelemetryStats prints session telemetry summary.
+func PrintTelemetryStats(days int) {
+	since := time.Now().AddDate(0, 0, -days)
+	entries := ReadTelemetry(since)
+	if len(entries) == 0 {
+		fmt.Printf("No telemetry data in the last %d days.\n", days)
+		return
+	}
+
+	agentCount := map[string]int{}
+	var totalDuration, totalTools int
+	for _, e := range entries {
+		agentCount[e.Agent]++
+		totalDuration += e.Duration
+		totalTools += e.Tools
+	}
+
+	fmt.Printf("\n📈 Session Telemetry (last %d days)\n\n", days)
+	fmt.Printf("  Sessions: %d | Avg duration: %ds | Total tool calls: %d\n\n", len(entries), totalDuration/len(entries)/1000, totalTools)
+
+	// Top agents
+	type agentStat struct {
+		name  string
+		count int
+	}
+	var stats []agentStat
+	for name, count := range agentCount {
+		stats = append(stats, agentStat{name, count})
+	}
+	sort.Slice(stats, func(i, j int) bool { return stats[i].count > stats[j].count })
+
+	fmt.Printf("  %-25s %6s\n", "Agent", "Sessions")
+	fmt.Printf("  %-25s %6s\n", "─────", "────────")
+	for i, s := range stats {
+		if i >= 10 { break }
+		fmt.Printf("  %-25s %6d\n", s.name, s.count)
+	}
+	fmt.Println()
+}

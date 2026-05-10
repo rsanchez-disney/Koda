@@ -28,6 +28,9 @@ type WorkerSpec struct {
 	DependsOn    []string `json:"dependsOn"`
 	TaskTemplate string   `json:"taskTemplate"`
 	OutputFormat string   `json:"outputFormat,omitempty"`
+	MaxRetries   int      `json:"maxRetries,omitempty"`
+	RetryDelay   string   `json:"retryDelay,omitempty"`
+	OnFailure    string   `json:"onFailure,omitempty"` // "skip" | "abort" (default) | "replan"
 }
 
 // Handoff is the structured payload sent as a worker's first prompt.
@@ -106,3 +109,4 @@ func ListTeamSpecs(dir string) []string {
 	}
 	return names
 }
+

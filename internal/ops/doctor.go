@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 	"strings"
 
 	"github.disney.com/SANCR225/koda/internal/config"
@@ -376,7 +377,61 @@ func RunDoctor(steerRoot, targetDir string) []DoctorResult {
 		Detail: fmt.Sprintf("%dGB RAM — %s tier (max %d concurrent agents)", sp.TotalRAMGB, sp.Tier, sp.MaxAgents),
 	})
 
+	// 15. Memory bank staleness
+	activeCtx := filepath.Join(targetDir, "memory-bank", "active-context.md")
+	if info, err := os.Stat(activeCtx); err == nil {
+		daysSince := int(time.Since(info.ModTime()).Hours() / 24)
+		if daysSince > 7 {
+			results = append(results, DoctorResult{Name: "memory-bank", OK: false, Detail: fmt.Sprintf("active-context.md is %d days stale", daysSince)})
+		} else {
+			results = append(results, DoctorResult{Name: "memory-bank", OK: true, Detail: fmt.Sprintf("active-context.md updated %d days ago", daysSince)})
+		}
+	}
+
+	// 16. Context budget validation
+	budgetIssues := validateContextBudgets(filepath.Join(targetDir, config.AgentsDir))
+	if len(budgetIssues) == 0 {
+		results = append(results, DoctorResult{Name: "context-budgets", OK: true, Detail: "all valid"})
+	} else {
+		results = append(results, DoctorResult{Name: "context-budgets", OK: false, Detail: strings.Join(budgetIssues, "; ")})
+	}
+
 	return results
+}
+
+func validateContextBudgets(agentsDir string) []string {
+	var issues []string
+	entries, err := os.ReadDir(agentsDir)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), "._") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(agentsDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var agent struct {
+			Name          string             `json:"name"`
+			ContextBudget map[string]float64 `json:"contextBudget"`
+		}
+		if json.Unmarshal(data, &agent) != nil || agent.ContextBudget == nil {
+			continue
+		}
+		var sum float64
+		for cat, val := range agent.ContextBudget {
+			if val < 0.05 {
+				issues = append(issues, fmt.Sprintf("%s: %s=%.2f (<0.05)", agent.Name, cat, val))
+			}
+			sum += val
+		}
+		if sum > 1.0 {
+			issues = append(issues, fmt.Sprintf("%s: budget sum=%.2f (>1.0)", agent.Name, sum))
+		}
+	}
+	return issues
 }
 
 // PrintDoctor prints doctor results.

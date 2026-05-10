@@ -41,6 +41,9 @@ type Worker struct {
 	Trust        TrustLevel
 	Task         string
 	DependsOn    []string
+	MaxRetries   int
+	RetryDelay   string
+	OnFailure    string
 	WorktreePath string
 	Branch       string
 	State        WorkerState
@@ -109,7 +112,7 @@ func (w *Worker) Start(handoff string) error {
 	w.StartedAt = time.Now()
 
 	// Spawn ACP client with worktree as cwd
-	client, err := acp.SpawnWithCwd(w.Agent, w.WorktreePath)
+	client, err := acp.SpawnWithCwdAndTrust(w.Agent, w.WorktreePath, acp.TrustLevel(w.Trust))
 	if err != nil {
 		w.Error = err.Error()
 		w.SetState(StateFailed)
@@ -229,6 +232,24 @@ func lastLine(s string) string {
 		return l[:80]
 	}
 	return l
+}
+
+
+// Reset prepares the worker for a retry attempt.
+func (w *Worker) Reset() {
+	w.mu.Lock()
+	if w.Client != nil {
+		w.Client.Close()
+		w.Client = nil
+	}
+	w.State = StateIdle
+	w.Error = ""
+	w.Result = ""
+	w.Output = nil
+	w.LastLine = ""
+	w.ContextUsage = 0
+	w.Events = make(chan WorkerEvent, 100)
+	w.mu.Unlock()
 }
 
 // Snapshot returns a thread-safe copy of volatile fields.

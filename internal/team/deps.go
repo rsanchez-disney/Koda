@@ -12,11 +12,23 @@ func ValidateDeps(spec TeamSpec) error {
 		ids[w.ID] = true
 	}
 
-	// Check for missing deps
+	// Check for missing deps and field values
 	for _, w := range spec.Workers {
 		for _, dep := range w.DependsOn {
 			if !ids[dep] {
 				return fmt.Errorf("worker %q depends on %q which does not exist", w.ID, dep)
+			}
+		}
+		if w.TrustLevel != "" {
+			valid := w.TrustLevel == "autonomous" || w.TrustLevel == "supervised" || w.TrustLevel == "strict"
+			if !valid {
+				return fmt.Errorf("worker %q: invalid trustLevel %q", w.ID, w.TrustLevel)
+			}
+		}
+		if w.OnFailure != "" {
+			valid := w.OnFailure == "skip" || w.OnFailure == "abort" || w.OnFailure == "replan"
+			if !valid {
+				return fmt.Errorf("worker %q: invalid onFailure %q", w.ID, w.OnFailure)
 			}
 		}
 	}

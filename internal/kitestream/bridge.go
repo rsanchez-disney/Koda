@@ -49,7 +49,7 @@ func NewBridge() *Bridge {
 
 // CreateSession spawns a new ACP subprocess for the given agent.
 func (b *Bridge) CreateSession(id, agent, workspace string) (*Session, error) {
-	client, err := acp.Spawn(agent)
+	client, err := acp.SpawnWithTrust(agent, acp.TrustSupervised)
 	if err != nil {
 		return nil, fmt.Errorf("spawn ACP: %w", err)
 	}
@@ -70,6 +70,9 @@ func (b *Bridge) CreateSession(id, agent, workspace string) (*Session, error) {
 
 	// Pump ACP events to WebSocket clients
 	go b.pumpEvents(sess)
+
+	// Pump permission requests to WebSocket clients
+	go b.pumpPermissions(sess)
 
 	return sess, nil
 }
@@ -182,6 +185,40 @@ func (b *Bridge) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 // pumpEvents reads ACP events and broadcasts to all WebSocket clients.
+// pumpPermissions forwards permission requests from ACP to WebSocket clients.
+func (b *Bridge) pumpPermissions(sess *Session) {
+	for evt := range sess.client.PermissionCh {
+		b.broadcast(KiteStreamEvent{
+			Type:      "permission_request",
+			SessionID: sess.ID,
+			Data: map[string]interface{}{
+				"id":       evt.ID,
+				"toolName": evt.ToolName,
+			},
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		})
+		// Wait for response (with timeout)
+		select {
+		case decision := <-evt.ResponseCh:
+			_ = decision // already sent to ACP by the handler
+		case <-time.After(5 * time.Minute):
+			evt.ResponseCh <- "deny"
+		}
+	}
+}
+
+// RespondPermission handles a permission decision from the WebSocket client.
+func (b *Bridge) RespondPermission(sessionID string, permID interface{}, decision string) error {
+	b.mu.RLock()
+	sess, ok := b.sessions[sessionID]
+	b.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	sess.client.RespondPermission(permID, decision)
+	return nil
+}
+
 func (b *Bridge) pumpEvents(sess *Session) {
 	for event := range sess.client.Events {
 		ksEvent := translateEvent(event, sess.ID)
