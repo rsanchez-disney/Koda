@@ -1421,3 +1421,54 @@ func scaffoldWorkspaceMCP(steerRoot, name string) error {
 	fmt.Println("  4. koda workspace use " + s.ActiveWorkspace + "  (to regenerate mcp.json)")
 	return nil
 }
+
+// PromptMissingWorkspaceMCPVars checks if the active workspace has MCP variables
+// that are not yet in tokens.env, and prints a notice for the user to configure them.
+// Non-interactive: prints guidance rather than blocking on stdin.
+func PromptMissingWorkspaceMCPVars(steerRoot string, wsNames []string) {
+	if len(wsNames) == 0 {
+		return
+	}
+	wsName := wsNames[0]
+	wsCfg, err := readWorkspaceMcpConfig(steerRoot, wsName)
+	if err != nil || wsCfg == nil || len(wsCfg.Variables) == 0 {
+		return
+	}
+
+	tokens := ReadTokens()
+	defaults := readWorkspaceDefaultsEnv(steerRoot, wsName)
+
+	var missing []string
+	for varName, decl := range wsCfg.Variables {
+		if !decl.Required {
+			continue
+		}
+		if v := tokens[varName]; v != "" {
+			continue
+		}
+		if v := defaults[varName]; v != "" {
+			continue
+		}
+		if decl.Default != "" {
+			continue
+		}
+		missing = append(missing, varName)
+	}
+
+	if len(missing) == 0 {
+		return
+	}
+
+	sort.Strings(missing)
+	fmt.Printf("\n  ⚠️  Workspace \"%s\" MCP requires %d variable(s):\n", wsName, len(missing))
+	for _, v := range missing {
+		desc := wsCfg.Variables[v].Description
+		if desc != "" {
+			fmt.Printf("     • %s — %s\n", v, desc)
+		} else {
+			fmt.Printf("     • %s\n", v)
+		}
+	}
+	fmt.Println("     Run: koda configure  (press 'm' → set tokens)")
+	fmt.Println()
+}

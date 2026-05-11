@@ -254,6 +254,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 
 	InjectAgentTokens(targetDir)
 	EnrichWelcomeMessages(targetDir)
+	PromptMissingWorkspaceMCPVars(steerRoot, wsNames)
 	GenerateMcpJson(FindNodeExe())
 
 	// Install service and channel banks
