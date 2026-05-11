@@ -62,4 +62,58 @@ func init() {
 	mcpCmd.AddCommand(mcpListCmd)
 	mcpCmd.AddCommand(mcpEnableCmd)
 	mcpCmd.AddCommand(mcpDisableCmd)
+	mcpCmd.AddCommand(mcpStatusCmd)
+}
+
+var mcpStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show MCP servers grouped by source (global, fork, workspace, user)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		servers, err := ops.ListMCPServersBySource()
+		if err != nil {
+			return err
+		}
+		groups := map[string][]ops.MCPServerSourceStatus{
+			"global":    {},
+			"fork":      {},
+			"workspace": {},
+			"user":      {},
+		}
+		for _, srv := range servers {
+			source := srv.Source
+			if source == "" {
+				source = "global"
+			}
+			// Group workspace:X under "workspace"
+			if len(source) > 10 && source[:10] == "workspace:" {
+				groups["workspace"] = append(groups["workspace"], srv)
+			} else if _, ok := groups[source]; ok {
+				groups[source] = append(groups[source], srv)
+			} else {
+				groups["global"] = append(groups["global"], srv)
+			}
+		}
+
+		fmt.Println("📋 MCP Servers:")
+		for _, group := range []string{"global", "fork", "workspace", "user"} {
+			srvs := groups[group]
+			if len(srvs) == 0 {
+				continue
+			}
+			label := group
+			if group == "workspace" && len(srvs) > 0 {
+				label = srvs[0].Source // "workspace:app-team"
+			}
+			fmt.Printf("\n  %s (%d):\n", label, len(srvs))
+			for _, srv := range srvs {
+				icon := "✅"
+				if srv.Disabled {
+					icon = "⏸️"
+				}
+				fmt.Printf("    %s %-24s\n", icon, srv.Name)
+			}
+		}
+		fmt.Println()
+		return nil
+	},
 }

@@ -1221,3 +1221,40 @@ type MCPServerStatus struct {
 	Name     string `json:"name"`
 	Disabled bool   `json:"disabled"`
 }
+
+// MCPServerSourceStatus extends MCPServerStatus with source information.
+type MCPServerSourceStatus struct {
+	Name     string
+	Source   string
+	Disabled bool
+}
+
+// ListMCPServersBySource reads mcp.json and returns servers grouped by _source.
+func ListMCPServersBySource() ([]MCPServerSourceStatus, error) {
+	home, _ := os.UserHomeDir()
+	mcpPath := filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return nil, err
+	}
+	var parsed struct {
+		MCPServers map[string]struct {
+			Disabled bool   `json:"disabled"`
+			Source   string `json:"_source"`
+		} `json:"mcpServers"`
+	}
+	if json.Unmarshal(data, &parsed) != nil {
+		return nil, fmt.Errorf("cannot parse mcp.json")
+	}
+	var result []MCPServerSourceStatus
+	for name, srv := range parsed.MCPServers {
+		result = append(result, MCPServerSourceStatus{Name: name, Source: srv.Source, Disabled: srv.Disabled})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Source != result[j].Source {
+			return result[i].Source < result[j].Source
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result, nil
+}
