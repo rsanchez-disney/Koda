@@ -112,6 +112,7 @@ func GenerateMcpJson(nodeExe string) error {
 		Type     string            `json:"type,omitempty"`
 		Headers  map[string]string `json:"headers,omitempty"`
 		Disabled bool              `json:"disabled,omitempty"`
+		Source   string            `json:"_source,omitempty"`
 	}
 
 	bundleDir := filepath.Join(home, ".kiro", "tools", "mcp-servers")
@@ -274,7 +275,7 @@ func GenerateMcpJson(nodeExe string) error {
 		if wm.Meta.Command != "" {
 			cmd = wm.Meta.Command
 		}
-		entry := mcpServer{Command: cmd, Args: []string{bundle}}
+		entry := mcpServer{Command: cmd, Args: []string{bundle}, Source: "fork"}
 		if len(wm.Meta.Env) > 0 {
 			env := make(map[string]string, len(wm.Meta.Env))
 			hasValue := false
@@ -292,8 +293,18 @@ func GenerateMcpJson(nodeExe string) error {
 		servers[wm.Meta.Name] = entry
 	}
 
+	// Tag all servers built above as "global" if not already tagged
+	for name, srv := range servers {
+		if srv.Source == "" {
+			srv.Source = "global"
+			servers[name] = srv
+		}
+	}
+
 	// Snapshot user customizations (disabled, autoApprove) before overwriting.
 	priorState := readExistingMCPUserState()
+	// Read user-added servers to preserve after writing
+	userServers := readUserAddedServers()
 
 	mcpConfig := map[string]any{"mcpServers": servers}
 	settingsDir := filepath.Join(home, ".kiro", config.SettingsDir)
@@ -307,6 +318,10 @@ func GenerateMcpJson(nodeExe string) error {
 	}
 	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
 		return err
+	}
+	// Merge user-added servers back into the written mcp.json
+	if len(userServers) > 0 {
+		mergeUserServersIntoJSON(mcpPath, userServers)
 	}
 	// Restore user customizations for servers that still exist.
 	if err := mergeUserStateIntoJSON(mcpPath, priorState); err != nil {
@@ -544,6 +559,7 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 		Type     string            `json:"type,omitempty"`
 		Headers  map[string]string `json:"headers,omitempty"`
 		Disabled bool              `json:"disabled,omitempty"`
+		Source   string            `json:"_source,omitempty"`
 	}
 
 	servers := make(map[string]mcpServer)
@@ -826,6 +842,79 @@ func readExistingMCPUserState() map[string]existingServerState {
 		}
 	}
 	return result
+}
+
+// readUserAddedServers reads the existing mcp.json and returns servers that
+// were added by the user (not managed by Koda). These are identified by having
+// _source: "user" or no _source field and not matching any known server name.
+// Returns raw JSON entries to avoid depending on the local mcpServer struct.
+func readUserAddedServers() map[string]json.RawMessage {
+	home, _ := os.UserHomeDir()
+	mcpPath := filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return nil
+	}
+	var parsed struct {
+		MCPServers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if json.Unmarshal(data, &parsed) != nil {
+		return nil
+	}
+
+	// Build set of known server name prefixes
+	knownPrefixes := []string{"jira", "confluence", "github", "mermaid", "bruno",
+		"splunk-mcp", "appdynamics-mcp", "servicenow-mcp", "qtest", "compass",
+		"sharepoint", "chrome", "chrome-devtools", "fetch", "yax", "figma", "memory"}
+
+	isManaged := func(name string) bool {
+		for _, prefix := range knownPrefixes {
+			if name == prefix || (len(name) > len(prefix)+1 && name[:len(prefix)+1] == prefix+"-") {
+				return true
+			}
+		}
+		return false
+	}
+
+	result := make(map[string]json.RawMessage)
+	for name, raw := range parsed.MCPServers {
+		var srv struct {
+			Source string `json:"_source"`
+		}
+		json.Unmarshal(raw, &srv)
+
+		// User server: explicitly tagged as "user" OR no source and not a known prefix
+		if srv.Source == "user" || (srv.Source == "" && !isManaged(name)) {
+			result[name] = raw
+		}
+	}
+	return result
+}
+
+// mergeUserServersIntoJSON reads the written mcp.json and adds user-added
+// servers that were preserved from the previous config.
+func mergeUserServersIntoJSON(mcpPath string, userServers map[string]json.RawMessage) {
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return
+	}
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return
+	}
+	var servers map[string]json.RawMessage
+	if json.Unmarshal(raw["mcpServers"], &servers) != nil {
+		return
+	}
+	for name, srv := range userServers {
+		if _, exists := servers[name]; !exists {
+			servers[name] = srv
+		}
+	}
+	serversJSON, _ := json.Marshal(servers)
+	raw["mcpServers"] = serversJSON
+	out, _ := json.MarshalIndent(raw, "", "  ")
+	os.WriteFile(mcpPath, append(out, '\n'), 0644)
 }
 
 // mergeUserStateIntoJSON reads the written mcp.json, re-applies preserved
