@@ -63,6 +63,25 @@ func init() {
 	mcpCmd.AddCommand(mcpEnableCmd)
 	mcpCmd.AddCommand(mcpDisableCmd)
 	mcpCmd.AddCommand(mcpStatusCmd)
+	mcpCmd.AddCommand(mcpAddCmd)
+	mcpAddCmd.Flags().BoolVar(&mcpAddFork, "fork", false, "Create at fork level (shared/tools/mcp-servers/) instead of workspace level")
+}
+
+var mcpAddFork bool
+
+var mcpAddCmd = &cobra.Command{
+	Use:   "add <name>",
+	Short: "Scaffold a new custom MCP server (workspace or fork level)",
+	Long: `Scaffold a new MCP server in the active workspace or fork.
+
+Examples:
+  koda mcp add team-db              # workspace-level (workspaces/<active>/mcp/)
+  koda mcp add splunkweb --fork     # fork-level (shared/tools/mcp-servers/)`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		return ops.ScaffoldMCP(name, mcpAddFork)
+	},
 }
 
 var mcpStatusCmd = &cobra.Command{

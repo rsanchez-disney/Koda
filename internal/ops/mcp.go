@@ -1258,3 +1258,166 @@ func ListMCPServersBySource() ([]MCPServerSourceStatus, error) {
 	})
 	return result, nil
 }
+
+// ScaffoldMCP creates a new MCP server scaffold at workspace or fork level.
+func ScaffoldMCP(name string, fork bool) error {
+	home, _ := os.UserHomeDir()
+	steerRoot := filepath.Join(home, ".kiro", "steer-runtime")
+
+	if fork {
+		return scaffoldForkMCP(steerRoot, name)
+	}
+	return scaffoldWorkspaceMCP(steerRoot, name)
+}
+
+func scaffoldForkMCP(steerRoot, name string) error {
+	dir := filepath.Join(steerRoot, "shared", "tools", "mcp-servers", name+"-mcp")
+	if err := os.MkdirAll(filepath.Join(dir, "src"), 0755); err != nil {
+		return err
+	}
+
+	meta := fmt.Sprintf(`{
+  "name": "%s",
+  "description": "TODO: describe what this MCP does",
+  "type": "node",
+  "entry": "dist/index.cjs",
+  "env": {
+    "%s_URL": "Base URL for %s",
+    "%s_TOKEN": "API token for %s"
+  },
+  "env_required": ["%s_URL", "%s_TOKEN"],
+  "env_secret": ["%s_TOKEN"],
+  "env_defaults": {
+    "%s_URL": "https://localhost:3000"
+  }
+}
+`, name, strings.ToUpper(name), name, strings.ToUpper(name), name,
+		strings.ToUpper(name), strings.ToUpper(name), strings.ToUpper(name), strings.ToUpper(name))
+
+	os.WriteFile(filepath.Join(dir, "mcp-meta.json"), []byte(meta), 0644)
+	os.WriteFile(filepath.Join(dir, ".env.example"), []byte(fmt.Sprintf("%s_URL=https://localhost:3000\n%s_TOKEN=your-token-here\n", strings.ToUpper(name), strings.ToUpper(name))), 0644)
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte(fmt.Sprintf(`{
+  "name": "%s-mcp",
+  "version": "1.0.0",
+  "main": "dist/index.cjs",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.cjs --format=cjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "typescript": "^5.0.0"
+  }
+}
+`, name)), 0644)
+	os.WriteFile(filepath.Join(dir, "src", "index.ts"), []byte(fmt.Sprintf(`import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
+const server = new Server(
+  { name: "%s", version: "1.0.0" },
+  { capabilities: { tools: {} } }
+);
+
+server.setRequestHandler("tools/list", async () => ({
+  tools: [
+    {
+      name: "%s_query",
+      description: "TODO: describe this tool",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query" }
+        },
+        required: ["query"]
+      }
+    }
+  ]
+}));
+
+server.setRequestHandler("tools/call", async (request) => {
+  const { name, arguments: args } = request.params;
+  const url = process.env.%s_URL;
+  const token = process.env.%s_TOKEN;
+
+  // TODO: implement tool logic
+  return { content: [{ type: "text", text: "TODO: implement" }] };
+});
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
+`, name, name, strings.ToUpper(name), strings.ToUpper(name))), 0644)
+
+	fmt.Printf("✅ Fork MCP scaffolded at:\n   %s\n\n", dir)
+	fmt.Println("Next steps:")
+	fmt.Println("  1. cd " + dir)
+	fmt.Println("  2. npm install")
+	fmt.Println("  3. Edit src/index.ts with your tool logic")
+	fmt.Println("  4. npm run build")
+	fmt.Println("  5. koda mcp-install")
+	return nil
+}
+
+func scaffoldWorkspaceMCP(steerRoot, name string) error {
+	s := config.ReadSteerSettings()
+	if s.ActiveWorkspace == "" {
+		return fmt.Errorf("no active workspace — run 'koda workspace use <name>' first")
+	}
+
+	mcpDir := filepath.Join(steerRoot, config.WorkspacesDir, s.ActiveWorkspace, "mcp")
+	os.MkdirAll(filepath.Join(mcpDir, "servers", name), 0755)
+
+	// Check if mcp.json already exists
+	mcpJsonPath := filepath.Join(mcpDir, "mcp.json")
+	if _, err := os.Stat(mcpJsonPath); err != nil {
+		// Create new mcp.json
+		cfg := fmt.Sprintf(`{
+  "mcpServers": {
+    "%s": {
+      "command": "node",
+      "args": ["${WORKSPACE_MCP_DIR}/servers/%s/index.js"],
+      "env": {
+        "%s_URL": "${%s_URL}",
+        "%s_TOKEN": "${%s_TOKEN}"
+      }
+    }
+  },
+  "variables": {
+    "%s_URL": {
+      "description": "Base URL for %s",
+      "required": true,
+      "default": "http://localhost:3000"
+    },
+    "%s_TOKEN": {
+      "description": "API token for %s",
+      "required": true,
+      "secret": true
+    }
+  }
+}
+`, name, name,
+			strings.ToUpper(name), strings.ToUpper(name),
+			strings.ToUpper(name), strings.ToUpper(name),
+			strings.ToUpper(name), name,
+			strings.ToUpper(name), name)
+		os.WriteFile(mcpJsonPath, []byte(cfg), 0644)
+	} else {
+		fmt.Printf("  ℹ️  %s already exists — add your server entry manually\n", mcpJsonPath)
+	}
+
+	// Create defaults.env if not exists
+	defaultsPath := filepath.Join(mcpDir, "defaults.env")
+	if _, err := os.Stat(defaultsPath); err != nil {
+		os.WriteFile(defaultsPath, []byte(fmt.Sprintf("# Team defaults (non-secret, committed)\n%s_URL=http://localhost:3000\n", strings.ToUpper(name))), 0644)
+	}
+
+	fmt.Printf("✅ Workspace MCP scaffolded at:\n   %s\n\n", mcpDir)
+	fmt.Printf("   Workspace: %s\n", s.ActiveWorkspace)
+	fmt.Println("\nNext steps:")
+	fmt.Println("  1. Edit mcp/mcp.json with your server config")
+	fmt.Println("  2. Add server code to mcp/servers/" + name + "/")
+	fmt.Println("  3. Set defaults in mcp/defaults.env")
+	fmt.Println("  4. koda workspace use " + s.ActiveWorkspace + "  (to regenerate mcp.json)")
+	return nil
+}
