@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.disney.com/SANCR225/koda/internal/config"
 	"github.disney.com/SANCR225/koda/internal/model"
@@ -293,6 +294,47 @@ func GenerateMcpJson(nodeExe string) error {
 		servers[wm.Meta.Name] = entry
 	}
 
+	// Workspace-level MCPs (from workspaces/<active>/mcp/mcp.json)
+	if s := config.ReadSteerSettings(); s.ActiveWorkspace != "" {
+		if wsCfg, err := readWorkspaceMcpConfig(steerRoot, s.ActiveWorkspace); err == nil && wsCfg != nil {
+			wsDefaults := readWorkspaceDefaultsEnv(steerRoot, s.ActiveWorkspace)
+			pathVars := map[string]string{
+				"KIRO_MCP_DIR":      filepath.Join(home, ".kiro", "tools", "mcp-servers"),
+				"WORKSPACE_MCP_DIR": filepath.Join(steerRoot, config.WorkspacesDir, s.ActiveWorkspace, "mcp"),
+				"KIRO_ROOT":         filepath.Join(home, ".kiro"),
+				"WORKSPACE_NAME":    s.ActiveWorkspace,
+			}
+			for srvName, srvDef := range wsCfg.McpServers {
+				// Handle _overrides: remove the global server being replaced
+				if srvDef.Overrides != "" {
+					delete(servers, srvDef.Overrides)
+				}
+				// Resolve variables in args
+				resolvedArgs := make([]string, len(srvDef.Args))
+				for i, arg := range srvDef.Args {
+					resolvedArgs[i] = resolveVariables(arg, tokens, wsDefaults, wsCfg.Variables, pathVars)
+				}
+				// Resolve variables in env
+				resolvedEnv := make(map[string]string, len(srvDef.Env))
+				for k, v := range srvDef.Env {
+					resolvedEnv[k] = resolveVariables(v, tokens, wsDefaults, wsCfg.Variables, pathVars)
+				}
+				cmd := srvDef.Command
+				if cmd == "" {
+					cmd = nodeExe
+				}
+				servers[srvName] = mcpServer{
+					Command: cmd,
+					Args:    resolvedArgs,
+					Env:     resolvedEnv,
+					URL:     srvDef.URL,
+					Type:    srvDef.Type,
+					Source:  "workspace:" + s.ActiveWorkspace,
+				}
+			}
+		}
+	}
+
 	// Tag all servers built above as "global" if not already tagged
 	for name, srv := range servers {
 		if srv.Source == "" {
@@ -496,6 +538,114 @@ func WorkspaceMCPEnvVarKeys(steerRoot string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// --- Workspace-level MCP config (workspaces/<name>/mcp/mcp.json) ---
+
+// WorkspaceMcpConfig represents workspaces/<name>/mcp/mcp.json
+type WorkspaceMcpConfig struct {
+	McpServers map[string]WorkspaceMcpServerDef `json:"mcpServers"`
+	Variables  map[string]VariableDecl          `json:"variables"`
+}
+
+// WorkspaceMcpServerDef is a server definition with ${VAR} placeholders.
+type WorkspaceMcpServerDef struct {
+	Command   string            `json:"command,omitempty"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	URL       string            `json:"url,omitempty"`
+	Type      string            `json:"type,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Overrides string            `json:"_overrides,omitempty"`
+}
+
+// VariableDecl declares a variable needed by a workspace MCP.
+type VariableDecl struct {
+	Description string `json:"description"`
+	Required    bool   `json:"required"`
+	Secret      bool   `json:"secret"`
+	Default     string `json:"default,omitempty"`
+}
+
+// readWorkspaceMcpConfig reads workspaces/<wsName>/mcp/mcp.json if it exists.
+func readWorkspaceMcpConfig(steerRoot, wsName string) (*WorkspaceMcpConfig, error) {
+	mcpPath := filepath.Join(steerRoot, config.WorkspacesDir, wsName, "mcp", "mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return nil, err
+	}
+	var cfg WorkspaceMcpConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// readWorkspaceDefaultsEnv reads workspaces/<wsName>/mcp/defaults.env.
+// Returns a map of KEY=VALUE pairs.
+func readWorkspaceDefaultsEnv(steerRoot, wsName string) map[string]string {
+	envPath := filepath.Join(steerRoot, config.WorkspacesDir, wsName, "mcp", "defaults.env")
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		return nil
+	}
+	result := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			result[parts[0]] = parts[1]
+		}
+	}
+	return result
+}
+
+// resolveVariables substitutes ${VAR} references in a string using 3-tier lookup:
+// 1. tokens (from tokens.env)
+// 2. defaults (from defaults.env)
+// 3. declarations (variable.default)
+// Also resolves built-in path variables.
+func resolveVariables(value string, tokens, defaults map[string]string, declarations map[string]VariableDecl, pathVars map[string]string) string {
+	// Resolve built-in path variables first
+	for k, v := range pathVars {
+		value = strings.ReplaceAll(value, "${"+k+"}", v)
+	}
+	// Resolve declared variables
+	for varName := range declarations {
+		placeholder := "${" + varName + "}"
+		if !strings.Contains(value, placeholder) {
+			continue
+		}
+		resolved := ""
+		if v, ok := tokens[varName]; ok && v != "" {
+			resolved = v
+		} else if v, ok := defaults[varName]; ok && v != "" {
+			resolved = v
+		} else if declarations[varName].Default != "" {
+			resolved = declarations[varName].Default
+		}
+		value = strings.ReplaceAll(value, placeholder, resolved)
+	}
+	// Resolve any remaining ${VAR} from tokens directly
+	for strings.Contains(value, "${") {
+		start := strings.Index(value, "${")
+		end := strings.Index(value[start:], "}")
+		if end < 0 {
+			break
+		}
+		varName := value[start+2 : start+end]
+		resolved := ""
+		if v, ok := tokens[varName]; ok {
+			resolved = v
+		} else if v, ok := defaults[varName]; ok {
+			resolved = v
+		}
+		value = strings.ReplaceAll(value, "${"+varName+"}", resolved)
+	}
+	return value
 }
 
 // knownBundleDirs returns a set of bundle directory names from the built-in server registry.
