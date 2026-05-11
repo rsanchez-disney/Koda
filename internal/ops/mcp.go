@@ -358,7 +358,7 @@ func GenerateMcpJson(nodeExe string) error {
 	if err != nil {
 		return fmt.Errorf("cannot marshal config: %w", err)
 	}
-	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
+	if err := os.WriteFile(mcpPath, append(out, '\n'), 0600); err != nil {
 		return err
 	}
 	// Merge user-added servers back into the written mcp.json
@@ -569,6 +569,7 @@ type VariableDecl struct {
 
 // readWorkspaceMcpConfig reads workspaces/<wsName>/mcp/mcp.json if it exists.
 func readWorkspaceMcpConfig(steerRoot, wsName string) (*WorkspaceMcpConfig, error) {
+	wsName = filepath.Base(filepath.Clean(wsName)) // prevent path traversal
 	mcpPath := filepath.Join(steerRoot, config.WorkspacesDir, wsName, "mcp", "mcp.json")
 	data, err := os.ReadFile(mcpPath)
 	if err != nil {
@@ -584,6 +585,7 @@ func readWorkspaceMcpConfig(steerRoot, wsName string) (*WorkspaceMcpConfig, erro
 // readWorkspaceDefaultsEnv reads workspaces/<wsName>/mcp/defaults.env.
 // Returns a map of KEY=VALUE pairs.
 func readWorkspaceDefaultsEnv(steerRoot, wsName string) map[string]string {
+	wsName = filepath.Base(filepath.Clean(wsName)) // prevent path traversal
 	envPath := filepath.Join(steerRoot, config.WorkspacesDir, wsName, "mcp", "defaults.env")
 	data, err := os.ReadFile(envPath)
 	if err != nil {
@@ -629,8 +631,8 @@ func resolveVariables(value string, tokens, defaults map[string]string, declarat
 		}
 		value = strings.ReplaceAll(value, placeholder, resolved)
 	}
-	// Resolve any remaining ${VAR} from tokens directly
-	for strings.Contains(value, "${") {
+	// Resolve any remaining ${VAR} from tokens directly (max 50 iterations to prevent loops)
+	for i := 0; i < 50 && strings.Contains(value, "${"); i++ {
 		start := strings.Index(value, "${")
 		end := strings.Index(value[start:], "}")
 		if end < 0 {
@@ -865,7 +867,7 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 	if err != nil {
 		return "", fmt.Errorf("cannot marshal config: %w", err)
 	}
-	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
+	if err := os.WriteFile(mcpPath, append(out, '\n'), 0600); err != nil {
 		return "", fmt.Errorf("cannot write mcp.json: %w", err)
 	}
 	// Restore user customizations for servers that still exist.
@@ -1064,7 +1066,7 @@ func mergeUserServersIntoJSON(mcpPath string, userServers map[string]json.RawMes
 	serversJSON, _ := json.Marshal(servers)
 	raw["mcpServers"] = serversJSON
 	out, _ := json.MarshalIndent(raw, "", "  ")
-	os.WriteFile(mcpPath, append(out, '\n'), 0644)
+	os.WriteFile(mcpPath, append(out, '\n'), 0600)
 }
 
 // mergeUserStateIntoJSON reads the written mcp.json, re-applies preserved
@@ -1107,7 +1109,7 @@ func mergeUserStateIntoJSON(mcpPath string, prior map[string]existingServerState
 	serversJSON, _ := json.Marshal(servers)
 	raw["mcpServers"] = serversJSON
 	out, _ := json.MarshalIndent(raw, "", "  ")
-	return os.WriteFile(mcpPath, append(out, '\n'), 0644)
+	return os.WriteFile(mcpPath, append(out, '\n'), 0600)
 }
 
 // --- MCP Overrides (user-level enable/disable) ---
@@ -1189,7 +1191,7 @@ func applyOverridesToMCPJson() error {
 	serversJSON, _ := json.Marshal(servers)
 	raw["mcpServers"] = serversJSON
 	out, _ := json.MarshalIndent(raw, "", "  ")
-	return os.WriteFile(mcpPath, append(out, '\n'), 0644)
+	return os.WriteFile(mcpPath, append(out, '\n'), 0600)
 }
 
 // ListMCPServers returns server names and their disabled status from mcp.json.
@@ -1429,7 +1431,7 @@ func PromptMissingWorkspaceMCPVars(steerRoot string, wsNames []string) {
 	if len(wsNames) == 0 {
 		return
 	}
-	wsName := wsNames[0]
+	wsName := wsNames[len(wsNames)-1] // use leaf (active) workspace, not root ancestor
 	wsCfg, err := readWorkspaceMcpConfig(steerRoot, wsName)
 	if err != nil || wsCfg == nil || len(wsCfg.Variables) == 0 {
 		return

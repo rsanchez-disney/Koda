@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -104,7 +105,7 @@ var mcpStatusCmd = &cobra.Command{
 				source = "global"
 			}
 			// Group workspace:X under "workspace"
-			if len(source) > 10 && source[:10] == "workspace:" {
+			if strings.HasPrefix(source, "workspace:") {
 				groups["workspace"] = append(groups["workspace"], srv)
 			} else if _, ok := groups[source]; ok {
 				groups[source] = append(groups[source], srv)
