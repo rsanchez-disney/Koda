@@ -102,6 +102,7 @@ release: ## Tag + build Koda + yax + scorer + plugins + publish (make release TA
 	@which gh > /dev/null 2>&1 || { echo "Install GitHub CLI: brew install gh"; exit 1; }
 	git tag -a $(TAG) -m "Release $(TAG)"
 	git push origin $(TAG)
+	git push public $(TAG)
 	$(MAKE) cross VERSION=$(TAG)
 	-$(MAKE) yax-cross
 	-$(MAKE) scorer-cross
