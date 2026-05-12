@@ -165,6 +165,7 @@ type mcpItem struct {
 	name      string
 	hasBundle bool
 	disabled  bool
+	source    string // "global", "fork", "workspace:X", "user"
 }
 
 // cleanKey returns printable text from a key event.
@@ -240,7 +241,11 @@ func (m *model) refresh() {
 	}
 	mcpDir := filepath.Join(m.targetDir, "tools", "mcp-servers")
 	m.mcpServers = nil
-	if servers, err := ops.ListMCPServers(); err == nil {
+	if servers, err := ops.ListMCPServersBySource(); err == nil {
+		for _, srv := range servers {
+			m.mcpServers = append(m.mcpServers, mcpItem{name: srv.Name, hasBundle: true, disabled: srv.Disabled, source: srv.Source})
+		}
+	} else if servers, err := ops.ListMCPServers(); err == nil {
 		for _, srv := range servers {
 			m.mcpServers = append(m.mcpServers, mcpItem{name: srv.Name, hasBundle: true, disabled: srv.Disabled})
 		}
@@ -1055,6 +1060,12 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.tokens[tk.Key] = val
 					ops.WriteTokens(m.tokens)
 				}
+			case 5:
+				if m.mcpRow < len(m.wsMCPKeys) && val != "" {
+					k := m.wsMCPKeys[m.mcpRow]
+					m.tokens[k] = val
+					ops.WriteTokens(m.tokens)
+				}
 			}
 			ops.GenerateMcpJson(ops.FindNodeExe())
 			m.ghRemotes = ops.ReadGitHubRemotes()
@@ -1080,10 +1091,10 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenDashboard
 		m.statusMsg = ""
 	case "tab":
-		m.mcpSection = (m.mcpSection + 1) % 5
+		m.mcpSection = (m.mcpSection + 1) % 6
 		m.mcpRow = 0
 	case "shift+tab":
-		m.mcpSection = (m.mcpSection + 4) % 5
+		m.mcpSection = (m.mcpSection + 5) % 6
 		m.mcpRow = 0
 	case "up", "k":
 		if m.mcpRow > 0 {
@@ -1115,6 +1126,9 @@ func (m model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.mcpSection <= 3 && m.mcpSectionLen() > 0 {
 			m.mcpEditing = true
 			m.mcpEditField = 1 // default to token field
+			m.mcpInput = ""
+		} else if m.mcpSection == 5 && m.mcpRow < len(m.wsMCPKeys) {
+			m.mcpEditing = true
 			m.mcpInput = ""
 		}
 	case "d":
@@ -1206,6 +1220,8 @@ func (m model) mcpSectionLen() int {
 		return len(mdl.KnownTokens)
 	case 4:
 		return len(m.mcpServers)
+	case 5:
+		return len(m.wsMCPKeys)
 	}
 	return 0
 }
@@ -1340,7 +1356,7 @@ func (m model) viewMCP() string {
 		title string
 		idx   int
 	}{
-		{"GitHub", 0}, {"Jira", 1}, {"Confluence", 2}, {"Other Tokens", 3}, {"MCP Servers", 4},
+		{"GitHub", 0}, {"Jira", 1}, {"Confluence", 2}, {"Other Tokens", 3}, {"MCP Servers", 4}, {"Workspace Variables", 5},
 	}
 
 	for _, sec := range sections {
@@ -1361,6 +1377,8 @@ func (m model) viewMCP() string {
 			count = len(mdl.KnownTokens)
 		case 4:
 			count = len(m.mcpServers)
+		case 5:
+			count = len(m.wsMCPKeys)
 		}
 		if isActive {
 			header = activeStyle.Render(fmt.Sprintf("▸ %s (%d)", sec.title, count))
@@ -1503,7 +1521,36 @@ func (m model) viewMCP() string {
 				if srv.disabled {
 					name = dimStyle.Render(name)
 				}
-				b.WriteString(fmt.Sprintf("%s%s %s\n", cur, check, name))
+				sourceLabel := ""
+				if srv.source != "" && srv.source != "global" {
+					sourceLabel = dimStyle.Render(" (" + srv.source + ")")
+				}
+				b.WriteString(fmt.Sprintf("%s%s %s%s\n", cur, check, name, sourceLabel))
+			}
+		case 5: // Workspace Variables
+			if len(m.wsMCPKeys) == 0 {
+				b.WriteString("    " + dimStyle.Render("(no workspace MCP variables defined)") + "\n")
+			} else {
+				for i, k := range m.wsMCPKeys {
+					cur := "    "
+					if isActive && m.mcpRow == i {
+						cur = activeStyle.Render("  ▸ ")
+					}
+					val := m.tokens[k]
+					status := errStyle.Render("not set")
+					if val != "" {
+						status = checkStyle.Render(ops.MaskToken(val))
+					}
+					b.WriteString(fmt.Sprintf("%s%-28s %s\n", cur, k, status))
+					if isActive && m.mcpEditing && m.mcpRow == i {
+						b.WriteString("    " + activeStyle.Render("▸ Value: ") + activeStyle.Render(m.mcpInput+"█"))
+						if val != "" {
+							b.WriteString(dimStyle.Render("  (current: " + ops.MaskToken(val) + ")"))
+						}
+						b.WriteString("\n")
+						b.WriteString("    " + dimStyle.Render("enter=save  esc=cancel") + "\n")
+					}
+				}
 			}
 		}
 		b.WriteString("\n")
