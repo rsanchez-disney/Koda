@@ -256,6 +256,7 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	EnrichWelcomeMessages(targetDir)
 	PromptMissingWorkspaceMCPVars(steerRoot, wsNames)
 	GenerateMcpJson(FindNodeExe())
+	PropagateMCPJson()
 
 	// Install service and channel banks
 	if len(resolved.Services) > 0 || len(resolved.Channels) > 0 {

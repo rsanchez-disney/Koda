@@ -72,7 +72,7 @@ func MaterializeWorkspace(steerRoot string, ws model.Workspace) error {
 	localSettings := filepath.Join(targetDir, config.SettingsDir)
 	os.MkdirAll(localSettings, 0755)
 	if data, err := os.ReadFile(globalMCP); err == nil {
-		os.WriteFile(filepath.Join(localSettings, "mcp.json"), data, 0644)
+		os.WriteFile(filepath.Join(localSettings, "mcp.json"), data, 0600)
 	}
 
 	// Write workspace snapshot
@@ -165,7 +165,7 @@ func PropagateMCPJson() {
 	for _, mw := range ListMaterialized() {
 		dst := filepath.Join(mw.Dir, config.SettingsDir, "mcp.json")
 		os.MkdirAll(filepath.Dir(dst), 0755)
-		os.WriteFile(dst, data, 0644)
+		os.WriteFile(dst, data, 0600)
 	}
 }
 

@@ -1196,8 +1196,7 @@ func applyOverridesToMCPJson() error {
 
 // ListMCPServers returns server names and their disabled status from mcp.json.
 func ListMCPServers() ([]MCPServerStatus, error) {
-	home, _ := os.UserHomeDir()
-	mcpPath := filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+	mcpPath := findActiveMCPJson()
 	data, err := os.ReadFile(mcpPath)
 	if err != nil {
 		return nil, err
@@ -1224,6 +1223,20 @@ type MCPServerStatus struct {
 	Disabled bool   `json:"disabled"`
 }
 
+// findActiveMCPJson returns the path to the active mcp.json.
+// Checks workspace-specific path first, falls back to global settings.
+func findActiveMCPJson() string {
+	home, _ := os.UserHomeDir()
+	s := config.ReadSteerSettings()
+	if s.ActiveWorkspace != "" {
+		wsPath := filepath.Join(home, ".kiro", "workspaces", s.ActiveWorkspace, config.SettingsDir, "mcp.json")
+		if _, err := os.Stat(wsPath); err == nil {
+			return wsPath
+		}
+	}
+	return filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+}
+
 // MCPServerSourceStatus extends MCPServerStatus with source information.
 type MCPServerSourceStatus struct {
 	Name     string
@@ -1233,8 +1246,7 @@ type MCPServerSourceStatus struct {
 
 // ListMCPServersBySource reads mcp.json and returns servers grouped by _source.
 func ListMCPServersBySource() ([]MCPServerSourceStatus, error) {
-	home, _ := os.UserHomeDir()
-	mcpPath := filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+	mcpPath := findActiveMCPJson()
 	data, err := os.ReadFile(mcpPath)
 	if err != nil {
 		return nil, err
