@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -62,4 +63,77 @@ func init() {
 	mcpCmd.AddCommand(mcpListCmd)
 	mcpCmd.AddCommand(mcpEnableCmd)
 	mcpCmd.AddCommand(mcpDisableCmd)
+	mcpCmd.AddCommand(mcpStatusCmd)
+	mcpCmd.AddCommand(mcpAddCmd)
+	mcpAddCmd.Flags().BoolVar(&mcpAddFork, "fork", false, "Create at fork level (shared/tools/mcp-servers/) instead of workspace level")
+}
+
+var mcpAddFork bool
+
+var mcpAddCmd = &cobra.Command{
+	Use:   "add <name>",
+	Short: "Scaffold a new custom MCP server (workspace or fork level)",
+	Long: `Scaffold a new MCP server in the active workspace or fork.
+
+Examples:
+  koda mcp add team-db              # workspace-level (workspaces/<active>/mcp/)
+  koda mcp add splunkweb --fork     # fork-level (shared/tools/mcp-servers/)`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		return ops.ScaffoldMCP(name, mcpAddFork)
+	},
+}
+
+var mcpStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show MCP servers grouped by source (global, fork, workspace, user)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		servers, err := ops.ListMCPServersBySource()
+		if err != nil {
+			return err
+		}
+		groups := map[string][]ops.MCPServerSourceStatus{
+			"global":    {},
+			"fork":      {},
+			"workspace": {},
+			"user":      {},
+		}
+		for _, srv := range servers {
+			source := srv.Source
+			if source == "" {
+				source = "global"
+			}
+			// Group workspace:X under "workspace"
+			if strings.HasPrefix(source, "workspace:") {
+				groups["workspace"] = append(groups["workspace"], srv)
+			} else if _, ok := groups[source]; ok {
+				groups[source] = append(groups[source], srv)
+			} else {
+				groups["global"] = append(groups["global"], srv)
+			}
+		}
+
+		fmt.Println("📋 MCP Servers:")
+		for _, group := range []string{"global", "fork", "workspace", "user"} {
+			srvs := groups[group]
+			if len(srvs) == 0 {
+				continue
+			}
+			label := group
+			if group == "workspace" && len(srvs) > 0 {
+				label = srvs[0].Source // "workspace:app-team"
+			}
+			fmt.Printf("\n  %s (%d):\n", label, len(srvs))
+			for _, srv := range srvs {
+				icon := "✅"
+				if srv.Disabled {
+					icon = "⏸️"
+				}
+				fmt.Printf("    %s %-24s\n", icon, srv.Name)
+			}
+		}
+		fmt.Println()
+		return nil
+	},
 }

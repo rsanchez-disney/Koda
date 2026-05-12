@@ -50,9 +50,14 @@ func ReadMCPMeta(dir string) (*MCPMeta, error) {
 
 // WorkspaceMCPMeta describes a workspace-provided MCP server bundle.
 type WorkspaceMCPMeta struct {
-	Name    string            `json:"name"`
-	Command string            `json:"command,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	Command     string            `json:"command,omitempty"`
+	Entry       string            `json:"entry,omitempty"`
+	Env         map[string]string `json:"env,omitempty"`
+	EnvRequired []string          `json:"env_required,omitempty"`
+	EnvSecret   []string          `json:"env_secret,omitempty"`
+	EnvDefaults map[string]string `json:"env_defaults,omitempty"`
 }
 
 // ReadWorkspaceMCPMeta reads mcp-meta.json from a workspace MCP server directory.

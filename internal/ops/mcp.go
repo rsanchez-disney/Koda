@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.disney.com/SANCR225/koda/internal/config"
 	"github.disney.com/SANCR225/koda/internal/model"
@@ -112,6 +113,7 @@ func GenerateMcpJson(nodeExe string) error {
 		Type     string            `json:"type,omitempty"`
 		Headers  map[string]string `json:"headers,omitempty"`
 		Disabled bool              `json:"disabled,omitempty"`
+		Source   string            `json:"_source,omitempty"`
 	}
 
 	bundleDir := filepath.Join(home, ".kiro", "tools", "mcp-servers")
@@ -274,7 +276,7 @@ func GenerateMcpJson(nodeExe string) error {
 		if wm.Meta.Command != "" {
 			cmd = wm.Meta.Command
 		}
-		entry := mcpServer{Command: cmd, Args: []string{bundle}}
+		entry := mcpServer{Command: cmd, Args: []string{bundle}, Source: "fork"}
 		if len(wm.Meta.Env) > 0 {
 			env := make(map[string]string, len(wm.Meta.Env))
 			hasValue := false
@@ -292,8 +294,59 @@ func GenerateMcpJson(nodeExe string) error {
 		servers[wm.Meta.Name] = entry
 	}
 
+	// Workspace-level MCPs (from workspaces/<active>/mcp/mcp.json)
+	if s := config.ReadSteerSettings(); s.ActiveWorkspace != "" {
+		if wsCfg, err := readWorkspaceMcpConfig(steerRoot, s.ActiveWorkspace); err == nil && wsCfg != nil {
+			wsDefaults := readWorkspaceDefaultsEnv(steerRoot, s.ActiveWorkspace)
+			pathVars := map[string]string{
+				"KIRO_MCP_DIR":      filepath.Join(home, ".kiro", "tools", "mcp-servers"),
+				"WORKSPACE_MCP_DIR": filepath.Join(steerRoot, config.WorkspacesDir, s.ActiveWorkspace, "mcp"),
+				"KIRO_ROOT":         filepath.Join(home, ".kiro"),
+				"WORKSPACE_NAME":    s.ActiveWorkspace,
+			}
+			for srvName, srvDef := range wsCfg.McpServers {
+				// Handle _overrides: remove the global server being replaced
+				if srvDef.Overrides != "" {
+					delete(servers, srvDef.Overrides)
+				}
+				// Resolve variables in args
+				resolvedArgs := make([]string, len(srvDef.Args))
+				for i, arg := range srvDef.Args {
+					resolvedArgs[i] = resolveVariables(arg, tokens, wsDefaults, wsCfg.Variables, pathVars)
+				}
+				// Resolve variables in env
+				resolvedEnv := make(map[string]string, len(srvDef.Env))
+				for k, v := range srvDef.Env {
+					resolvedEnv[k] = resolveVariables(v, tokens, wsDefaults, wsCfg.Variables, pathVars)
+				}
+				cmd := srvDef.Command
+				if cmd == "" {
+					cmd = nodeExe
+				}
+				servers[srvName] = mcpServer{
+					Command: cmd,
+					Args:    resolvedArgs,
+					Env:     resolvedEnv,
+					URL:     srvDef.URL,
+					Type:    srvDef.Type,
+					Source:  "workspace:" + s.ActiveWorkspace,
+				}
+			}
+		}
+	}
+
+	// Tag all servers built above as "global" if not already tagged
+	for name, srv := range servers {
+		if srv.Source == "" {
+			srv.Source = "global"
+			servers[name] = srv
+		}
+	}
+
 	// Snapshot user customizations (disabled, autoApprove) before overwriting.
 	priorState := readExistingMCPUserState()
+	// Read user-added servers to preserve after writing
+	userServers := readUserAddedServers()
 
 	mcpConfig := map[string]any{"mcpServers": servers}
 	settingsDir := filepath.Join(home, ".kiro", config.SettingsDir)
@@ -305,8 +358,12 @@ func GenerateMcpJson(nodeExe string) error {
 	if err != nil {
 		return fmt.Errorf("cannot marshal config: %w", err)
 	}
-	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
+	if err := os.WriteFile(mcpPath, append(out, '\n'), 0600); err != nil {
 		return err
+	}
+	// Merge user-added servers back into the written mcp.json
+	if len(userServers) > 0 {
+		mergeUserServersIntoJSON(mcpPath, userServers)
 	}
 	// Restore user customizations for servers that still exist.
 	if err := mergeUserStateIntoJSON(mcpPath, priorState); err != nil {
@@ -483,6 +540,116 @@ func WorkspaceMCPEnvVarKeys(steerRoot string) []string {
 	return keys
 }
 
+// --- Workspace-level MCP config (workspaces/<name>/mcp/mcp.json) ---
+
+// WorkspaceMcpConfig represents workspaces/<name>/mcp/mcp.json
+type WorkspaceMcpConfig struct {
+	McpServers map[string]WorkspaceMcpServerDef `json:"mcpServers"`
+	Variables  map[string]VariableDecl          `json:"variables"`
+}
+
+// WorkspaceMcpServerDef is a server definition with ${VAR} placeholders.
+type WorkspaceMcpServerDef struct {
+	Command   string            `json:"command,omitempty"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	URL       string            `json:"url,omitempty"`
+	Type      string            `json:"type,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Overrides string            `json:"_overrides,omitempty"`
+}
+
+// VariableDecl declares a variable needed by a workspace MCP.
+type VariableDecl struct {
+	Description string `json:"description"`
+	Required    bool   `json:"required"`
+	Secret      bool   `json:"secret"`
+	Default     string `json:"default,omitempty"`
+}
+
+// readWorkspaceMcpConfig reads workspaces/<wsName>/mcp/mcp.json if it exists.
+func readWorkspaceMcpConfig(steerRoot, wsName string) (*WorkspaceMcpConfig, error) {
+	wsName = filepath.Base(filepath.Clean(wsName)) // prevent path traversal
+	mcpPath := filepath.Join(steerRoot, config.WorkspacesDir, wsName, "mcp", "mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return nil, err
+	}
+	var cfg WorkspaceMcpConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// readWorkspaceDefaultsEnv reads workspaces/<wsName>/mcp/defaults.env.
+// Returns a map of KEY=VALUE pairs.
+func readWorkspaceDefaultsEnv(steerRoot, wsName string) map[string]string {
+	wsName = filepath.Base(filepath.Clean(wsName)) // prevent path traversal
+	envPath := filepath.Join(steerRoot, config.WorkspacesDir, wsName, "mcp", "defaults.env")
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		return nil
+	}
+	result := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			result[parts[0]] = parts[1]
+		}
+	}
+	return result
+}
+
+// resolveVariables substitutes ${VAR} references in a string using 3-tier lookup:
+// 1. tokens (from tokens.env)
+// 2. defaults (from defaults.env)
+// 3. declarations (variable.default)
+// Also resolves built-in path variables.
+func resolveVariables(value string, tokens, defaults map[string]string, declarations map[string]VariableDecl, pathVars map[string]string) string {
+	// Resolve built-in path variables first
+	for k, v := range pathVars {
+		value = strings.ReplaceAll(value, "${"+k+"}", v)
+	}
+	// Resolve declared variables
+	for varName := range declarations {
+		placeholder := "${" + varName + "}"
+		if !strings.Contains(value, placeholder) {
+			continue
+		}
+		resolved := ""
+		if v, ok := tokens[varName]; ok && v != "" {
+			resolved = v
+		} else if v, ok := defaults[varName]; ok && v != "" {
+			resolved = v
+		} else if declarations[varName].Default != "" {
+			resolved = declarations[varName].Default
+		}
+		value = strings.ReplaceAll(value, placeholder, resolved)
+	}
+	// Resolve any remaining ${VAR} from tokens directly (max 50 iterations to prevent loops)
+	for i := 0; i < 50 && strings.Contains(value, "${"); i++ {
+		start := strings.Index(value, "${")
+		end := strings.Index(value[start:], "}")
+		if end < 0 {
+			break
+		}
+		varName := value[start+2 : start+end]
+		resolved := ""
+		if v, ok := tokens[varName]; ok {
+			resolved = v
+		} else if v, ok := defaults[varName]; ok {
+			resolved = v
+		}
+		value = strings.ReplaceAll(value, "${"+varName+"}", resolved)
+	}
+	return value
+}
+
 // knownBundleDirs returns a set of bundle directory names from the built-in server registry.
 func knownBundleDirs() map[string]bool {
 	dirs := make(map[string]bool, len(knownServers))
@@ -544,6 +711,7 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 		Type     string            `json:"type,omitempty"`
 		Headers  map[string]string `json:"headers,omitempty"`
 		Disabled bool              `json:"disabled,omitempty"`
+		Source   string            `json:"_source,omitempty"`
 	}
 
 	servers := make(map[string]mcpServer)
@@ -699,7 +867,7 @@ func GenerateMCPConfig(selected []MCPServer, ghRemotes []model.GitHubRemote,
 	if err != nil {
 		return "", fmt.Errorf("cannot marshal config: %w", err)
 	}
-	if err := os.WriteFile(mcpPath, append(out, '\n'), 0644); err != nil {
+	if err := os.WriteFile(mcpPath, append(out, '\n'), 0600); err != nil {
 		return "", fmt.Errorf("cannot write mcp.json: %w", err)
 	}
 	// Restore user customizations for servers that still exist.
@@ -828,6 +996,79 @@ func readExistingMCPUserState() map[string]existingServerState {
 	return result
 }
 
+// readUserAddedServers reads the existing mcp.json and returns servers that
+// were added by the user (not managed by Koda). These are identified by having
+// _source: "user" or no _source field and not matching any known server name.
+// Returns raw JSON entries to avoid depending on the local mcpServer struct.
+func readUserAddedServers() map[string]json.RawMessage {
+	home, _ := os.UserHomeDir()
+	mcpPath := filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return nil
+	}
+	var parsed struct {
+		MCPServers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if json.Unmarshal(data, &parsed) != nil {
+		return nil
+	}
+
+	// Build set of known server name prefixes
+	knownPrefixes := []string{"jira", "confluence", "github", "mermaid", "bruno",
+		"splunk-mcp", "appdynamics-mcp", "servicenow-mcp", "qtest", "compass",
+		"sharepoint", "chrome", "chrome-devtools", "fetch", "yax", "figma", "memory"}
+
+	isManaged := func(name string) bool {
+		for _, prefix := range knownPrefixes {
+			if name == prefix || (len(name) > len(prefix)+1 && name[:len(prefix)+1] == prefix+"-") {
+				return true
+			}
+		}
+		return false
+	}
+
+	result := make(map[string]json.RawMessage)
+	for name, raw := range parsed.MCPServers {
+		var srv struct {
+			Source string `json:"_source"`
+		}
+		json.Unmarshal(raw, &srv)
+
+		// User server: explicitly tagged as "user" OR no source and not a known prefix
+		if srv.Source == "user" || (srv.Source == "" && !isManaged(name)) {
+			result[name] = raw
+		}
+	}
+	return result
+}
+
+// mergeUserServersIntoJSON reads the written mcp.json and adds user-added
+// servers that were preserved from the previous config.
+func mergeUserServersIntoJSON(mcpPath string, userServers map[string]json.RawMessage) {
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return
+	}
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return
+	}
+	var servers map[string]json.RawMessage
+	if json.Unmarshal(raw["mcpServers"], &servers) != nil {
+		return
+	}
+	for name, srv := range userServers {
+		if _, exists := servers[name]; !exists {
+			servers[name] = srv
+		}
+	}
+	serversJSON, _ := json.Marshal(servers)
+	raw["mcpServers"] = serversJSON
+	out, _ := json.MarshalIndent(raw, "", "  ")
+	os.WriteFile(mcpPath, append(out, '\n'), 0600)
+}
+
 // mergeUserStateIntoJSON reads the written mcp.json, re-applies preserved
 // disabled and autoApprove fields for servers that still exist, and writes back.
 // Servers not present in prior are left untouched (new servers default to enabled).
@@ -868,7 +1109,7 @@ func mergeUserStateIntoJSON(mcpPath string, prior map[string]existingServerState
 	serversJSON, _ := json.Marshal(servers)
 	raw["mcpServers"] = serversJSON
 	out, _ := json.MarshalIndent(raw, "", "  ")
-	return os.WriteFile(mcpPath, append(out, '\n'), 0644)
+	return os.WriteFile(mcpPath, append(out, '\n'), 0600)
 }
 
 // --- MCP Overrides (user-level enable/disable) ---
@@ -950,7 +1191,7 @@ func applyOverridesToMCPJson() error {
 	serversJSON, _ := json.Marshal(servers)
 	raw["mcpServers"] = serversJSON
 	out, _ := json.MarshalIndent(raw, "", "  ")
-	return os.WriteFile(mcpPath, append(out, '\n'), 0644)
+	return os.WriteFile(mcpPath, append(out, '\n'), 0600)
 }
 
 // ListMCPServers returns server names and their disabled status from mcp.json.
@@ -981,4 +1222,255 @@ func ListMCPServers() ([]MCPServerStatus, error) {
 type MCPServerStatus struct {
 	Name     string `json:"name"`
 	Disabled bool   `json:"disabled"`
+}
+
+// MCPServerSourceStatus extends MCPServerStatus with source information.
+type MCPServerSourceStatus struct {
+	Name     string
+	Source   string
+	Disabled bool
+}
+
+// ListMCPServersBySource reads mcp.json and returns servers grouped by _source.
+func ListMCPServersBySource() ([]MCPServerSourceStatus, error) {
+	home, _ := os.UserHomeDir()
+	mcpPath := filepath.Join(home, ".kiro", config.SettingsDir, "mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return nil, err
+	}
+	var parsed struct {
+		MCPServers map[string]struct {
+			Disabled bool   `json:"disabled"`
+			Source   string `json:"_source"`
+		} `json:"mcpServers"`
+	}
+	if json.Unmarshal(data, &parsed) != nil {
+		return nil, fmt.Errorf("cannot parse mcp.json")
+	}
+	var result []MCPServerSourceStatus
+	for name, srv := range parsed.MCPServers {
+		result = append(result, MCPServerSourceStatus{Name: name, Source: srv.Source, Disabled: srv.Disabled})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Source != result[j].Source {
+			return result[i].Source < result[j].Source
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result, nil
+}
+
+// ScaffoldMCP creates a new MCP server scaffold at workspace or fork level.
+func ScaffoldMCP(name string, fork bool) error {
+	home, _ := os.UserHomeDir()
+	steerRoot := filepath.Join(home, ".kiro", "steer-runtime")
+
+	if fork {
+		return scaffoldForkMCP(steerRoot, name)
+	}
+	return scaffoldWorkspaceMCP(steerRoot, name)
+}
+
+func scaffoldForkMCP(steerRoot, name string) error {
+	dir := filepath.Join(steerRoot, "shared", "tools", "mcp-servers", name+"-mcp")
+	if err := os.MkdirAll(filepath.Join(dir, "src"), 0755); err != nil {
+		return err
+	}
+
+	meta := fmt.Sprintf(`{
+  "name": "%s",
+  "description": "TODO: describe what this MCP does",
+  "type": "node",
+  "entry": "dist/index.cjs",
+  "env": {
+    "%s_URL": "Base URL for %s",
+    "%s_TOKEN": "API token for %s"
+  },
+  "env_required": ["%s_URL", "%s_TOKEN"],
+  "env_secret": ["%s_TOKEN"],
+  "env_defaults": {
+    "%s_URL": "https://localhost:3000"
+  }
+}
+`, name, strings.ToUpper(name), name, strings.ToUpper(name), name,
+		strings.ToUpper(name), strings.ToUpper(name), strings.ToUpper(name), strings.ToUpper(name))
+
+	os.WriteFile(filepath.Join(dir, "mcp-meta.json"), []byte(meta), 0644)
+	os.WriteFile(filepath.Join(dir, ".env.example"), []byte(fmt.Sprintf("%s_URL=https://localhost:3000\n%s_TOKEN=your-token-here\n", strings.ToUpper(name), strings.ToUpper(name))), 0644)
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte(fmt.Sprintf(`{
+  "name": "%s-mcp",
+  "version": "1.0.0",
+  "main": "dist/index.cjs",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.cjs --format=cjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "typescript": "^5.0.0"
+  }
+}
+`, name)), 0644)
+	os.WriteFile(filepath.Join(dir, "src", "index.ts"), []byte(fmt.Sprintf(`import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
+const server = new Server(
+  { name: "%s", version: "1.0.0" },
+  { capabilities: { tools: {} } }
+);
+
+server.setRequestHandler("tools/list", async () => ({
+  tools: [
+    {
+      name: "%s_query",
+      description: "TODO: describe this tool",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query" }
+        },
+        required: ["query"]
+      }
+    }
+  ]
+}));
+
+server.setRequestHandler("tools/call", async (request) => {
+  const { name, arguments: args } = request.params;
+  const url = process.env.%s_URL;
+  const token = process.env.%s_TOKEN;
+
+  // TODO: implement tool logic
+  return { content: [{ type: "text", text: "TODO: implement" }] };
+});
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
+`, name, name, strings.ToUpper(name), strings.ToUpper(name))), 0644)
+
+	fmt.Printf("✅ Fork MCP scaffolded at:\n   %s\n\n", dir)
+	fmt.Println("Next steps:")
+	fmt.Println("  1. cd " + dir)
+	fmt.Println("  2. npm install")
+	fmt.Println("  3. Edit src/index.ts with your tool logic")
+	fmt.Println("  4. npm run build")
+	fmt.Println("  5. koda mcp-install")
+	return nil
+}
+
+func scaffoldWorkspaceMCP(steerRoot, name string) error {
+	s := config.ReadSteerSettings()
+	if s.ActiveWorkspace == "" {
+		return fmt.Errorf("no active workspace — run 'koda workspace use <name>' first")
+	}
+
+	mcpDir := filepath.Join(steerRoot, config.WorkspacesDir, s.ActiveWorkspace, "mcp")
+	os.MkdirAll(filepath.Join(mcpDir, "servers", name), 0755)
+
+	// Check if mcp.json already exists
+	mcpJsonPath := filepath.Join(mcpDir, "mcp.json")
+	if _, err := os.Stat(mcpJsonPath); err != nil {
+		// Create new mcp.json
+		cfg := fmt.Sprintf(`{
+  "mcpServers": {
+    "%s": {
+      "command": "node",
+      "args": ["${WORKSPACE_MCP_DIR}/servers/%s/index.js"],
+      "env": {
+        "%s_URL": "${%s_URL}",
+        "%s_TOKEN": "${%s_TOKEN}"
+      }
+    }
+  },
+  "variables": {
+    "%s_URL": {
+      "description": "Base URL for %s",
+      "required": true,
+      "default": "http://localhost:3000"
+    },
+    "%s_TOKEN": {
+      "description": "API token for %s",
+      "required": true,
+      "secret": true
+    }
+  }
+}
+`, name, name,
+			strings.ToUpper(name), strings.ToUpper(name),
+			strings.ToUpper(name), strings.ToUpper(name),
+			strings.ToUpper(name), name,
+			strings.ToUpper(name), name)
+		os.WriteFile(mcpJsonPath, []byte(cfg), 0644)
+	} else {
+		fmt.Printf("  ℹ️  %s already exists — add your server entry manually\n", mcpJsonPath)
+	}
+
+	// Create defaults.env if not exists
+	defaultsPath := filepath.Join(mcpDir, "defaults.env")
+	if _, err := os.Stat(defaultsPath); err != nil {
+		os.WriteFile(defaultsPath, []byte(fmt.Sprintf("# Team defaults (non-secret, committed)\n%s_URL=http://localhost:3000\n", strings.ToUpper(name))), 0644)
+	}
+
+	fmt.Printf("✅ Workspace MCP scaffolded at:\n   %s\n\n", mcpDir)
+	fmt.Printf("   Workspace: %s\n", s.ActiveWorkspace)
+	fmt.Println("\nNext steps:")
+	fmt.Println("  1. Edit mcp/mcp.json with your server config")
+	fmt.Println("  2. Add server code to mcp/servers/" + name + "/")
+	fmt.Println("  3. Set defaults in mcp/defaults.env")
+	fmt.Println("  4. koda workspace use " + s.ActiveWorkspace + "  (to regenerate mcp.json)")
+	return nil
+}
+
+// PromptMissingWorkspaceMCPVars checks if the active workspace has MCP variables
+// that are not yet in tokens.env, and prints a notice for the user to configure them.
+// Non-interactive: prints guidance rather than blocking on stdin.
+func PromptMissingWorkspaceMCPVars(steerRoot string, wsNames []string) {
+	if len(wsNames) == 0 {
+		return
+	}
+	wsName := wsNames[len(wsNames)-1] // use leaf (active) workspace, not root ancestor
+	wsCfg, err := readWorkspaceMcpConfig(steerRoot, wsName)
+	if err != nil || wsCfg == nil || len(wsCfg.Variables) == 0 {
+		return
+	}
+
+	tokens := ReadTokens()
+	defaults := readWorkspaceDefaultsEnv(steerRoot, wsName)
+
+	var missing []string
+	for varName, decl := range wsCfg.Variables {
+		if !decl.Required {
+			continue
+		}
+		if v := tokens[varName]; v != "" {
+			continue
+		}
+		if v := defaults[varName]; v != "" {
+			continue
+		}
+		if decl.Default != "" {
+			continue
+		}
+		missing = append(missing, varName)
+	}
+
+	if len(missing) == 0 {
+		return
+	}
+
+	sort.Strings(missing)
+	fmt.Printf("\n  ⚠️  Workspace \"%s\" MCP requires %d variable(s):\n", wsName, len(missing))
+	for _, v := range missing {
+		desc := wsCfg.Variables[v].Description
+		if desc != "" {
+			fmt.Printf("     • %s — %s\n", v, desc)
+		} else {
+			fmt.Printf("     • %s\n", v)
+		}
+	}
+	fmt.Println("     Run: koda configure  (press 'm' → set tokens)")
+	fmt.Println()
 }
