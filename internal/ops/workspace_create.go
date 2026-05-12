@@ -141,11 +141,29 @@ func PublishWorkspaceToUpstream(steerRoot, wsName string, isEdit bool) (string, 
 }
 
 func expandHome(path string) string {
-	if strings.HasPrefix(path, "~/") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, path[2:])
+	if path == "" {
+		return path
 	}
-	return path
+	// Expand ~ to home directory
+	if strings.HasPrefix(path, "~/") || path == "~" {
+		home, _ := os.UserHomeDir()
+		path = filepath.Join(home, path[2:])
+	}
+	// Expand ${VAR} and $VAR (cross-platform: works on macOS, Linux, and Windows)
+	path = os.ExpandEnv(path)
+	// Expand %VAR% for Windows compatibility
+	for strings.Contains(path, "%") {
+		start := strings.Index(path, "%")
+		rest := path[start+1:]
+		end := strings.Index(rest, "%")
+		if end < 0 {
+			break
+		}
+		varName := rest[:end]
+		value := os.Getenv(varName)
+		path = path[:start] + value + rest[end+1:]
+	}
+	return filepath.Clean(path)
 }
 
 // PublishWorkspace creates a branch, commits workspace files, pushes, and opens a PR.
