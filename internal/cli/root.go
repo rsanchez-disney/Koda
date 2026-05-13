@@ -155,6 +155,7 @@ func init() {
 	rootCmd.AddCommand(kiroIDECmd)
 	rootCmd.AddCommand(autopilotCmd)
 	rootCmd.AddCommand(kitestreamCmd)
+	rootCmd.AddCommand(mouseketoolCmd)
 	rootCmd.AddCommand(featuresCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(psCmd)
