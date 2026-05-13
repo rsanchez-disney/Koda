@@ -188,7 +188,9 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	logln("  Syncing steer-runtime...")
 	s := config.ReadSteerSettings()
 	if s.Source == "git" {
+		SkipDirty = true
 		syncGit(steerRoot)
+		SkipDirty = false
 	}
 	config.MarkSynced()
 

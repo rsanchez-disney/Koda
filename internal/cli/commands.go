@@ -228,4 +228,5 @@ func countAgents(targetDir string) int {
 
 func init() {
 	syncCmd.Flags().BoolVar(&syncUpdate, "update", false, "Download latest release before syncing")
+	syncCmd.Flags().BoolVar(&ops.SkipDirty, "skip-dirty", false, "Skip sync if there are uncommitted changes")
 }

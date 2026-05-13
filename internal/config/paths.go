@@ -18,6 +18,7 @@ const (
 	PowersDir     = "powers"
 	SkillsDir     = "skills"
 	SteeringDir   = "steering"
+	TemplatesDir  = "templates"
 	TokensFile            = "tokens.env"
 	EnvVarsFile           = "env.vars"
 	WorkspaceManifestFile = "settings/workspace-files.json"
