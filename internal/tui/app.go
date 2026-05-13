@@ -454,7 +454,9 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusMsg = "⏳ Syncing..."
 			steerRoot, targetDir := m.steerRoot, m.targetDir
 			return m, func() tea.Msg {
+				ops.SkipDirty = true
 				err := ops.SyncSteerRuntime(steerRoot, targetDir)
+				ops.SkipDirty = false
 				return syncDoneMsg{err: err}
 			}
 		}

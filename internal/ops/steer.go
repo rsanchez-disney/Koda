@@ -144,9 +144,17 @@ const (
 	syncActionAbort                      // cancel sync
 )
 
+// SkipDirty when true causes sync to abort silently if there are uncommitted changes.
+var SkipDirty bool
+
 // handleDirtySync shows local changes and prompts the user for action.
 // In non-interactive mode (no TTY), defaults to stash.
 func handleDirtySync(steerRoot string, changes []string) syncAction {
+	if SkipDirty {
+		logln("  ⚠️  Local changes detected — skipping sync (--skip-dirty)")
+		return syncActionAbort
+	}
+
 	logf("  ⚠️  %d local changes detected:\n\n", len(changes))
 	for _, line := range changes {
 		logf("    %s\n", line)

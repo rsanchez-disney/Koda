@@ -158,7 +158,7 @@ func InstallProfile(steerRoot, profileID, targetDir string) (int, error) {
 	}
 
 	// Copy supporting directories
-	for _, sub := range []string{config.PromptsDir, config.ContextDir, config.PowersDir, config.SkillsDir, config.SteeringDir} {
+	for _, sub := range []string{config.PromptsDir, config.ContextDir, config.PowersDir, config.SkillsDir, config.SteeringDir, config.TemplatesDir} {
 		copyDirContents(filepath.Join(srcDir, sub), filepath.Join(targetDir, sub))
 	}
 
@@ -202,7 +202,7 @@ func InstallProfileFrom(srcDir, targetDir string) (int, error) {
 		count++
 	}
 
-	for _, sub := range []string{config.PromptsDir, config.ContextDir, config.RulesDir, config.PowersDir, config.SkillsDir, config.SteeringDir} {
+	for _, sub := range []string{config.PromptsDir, config.ContextDir, config.RulesDir, config.PowersDir, config.SkillsDir, config.SteeringDir, config.TemplatesDir} {
 		copyDirContents(filepath.Join(srcDir, sub), filepath.Join(targetDir, sub))
 	}
 
@@ -303,6 +303,9 @@ func InstallShared(steerRoot, targetDir string) error {
 
 	// Shared context
 	copyDirContents(filepath.Join(steerRoot, "shared", config.ContextDir), filepath.Join(targetDir, config.ContextDir))
+
+	// Shared templates
+	copyDirContents(filepath.Join(steerRoot, "shared", config.TemplatesDir), filepath.Join(targetDir, config.TemplatesDir))
 
 	// MCP server bundles
 	mcpSrc := filepath.Join(steerRoot, "shared", config.ToolsDir, "mcp-servers")

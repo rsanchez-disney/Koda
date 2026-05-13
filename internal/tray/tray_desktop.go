@@ -93,6 +93,7 @@ func onReady() {
 				case <-mSync.ClickedCh:
 					mStatus.SetTitle("⏳ Syncing...")
 					target := config.TargetDir("")
+					ops.SkipDirty = true
 					if err := ops.SyncSteerRuntime(steerRoot, target); err != nil {
 						mStatus.SetTitle("✗ Sync failed")
 					} else {
@@ -104,6 +105,7 @@ func onReady() {
 						}
 						wsItems = refreshWorkspaces(mWorkspaces)
 					}
+					ops.SkipDirty = false
 				case <-mKiteStream.ClickedCh:
 					target := config.TargetDir("")
 					kitestream.Launch(steerRoot, target, kitestream.DefaultPort)
@@ -130,6 +132,7 @@ func onReady() {
 				case <-mSync.ClickedCh:
 					mStatus.SetTitle("⏳ Syncing...")
 					target := config.TargetDir("")
+					ops.SkipDirty = true
 					if err := ops.SyncSteerRuntime(steerRoot, target); err != nil {
 						mStatus.SetTitle("✗ Sync failed")
 					} else {
@@ -141,6 +144,7 @@ func onReady() {
 						}
 						wsItems = refreshWorkspaces(mWorkspaces)
 					}
+					ops.SkipDirty = false
 				case <-tick.C:
 					for _, wi := range wsItems {
 						select {
