@@ -12,8 +12,10 @@ import (
 )
 
 const (
-	mouseketoolRepo = "rsanchez-disney/mouseketool"
-	mouseketoolName = "mouseketool"
+	mouseketoolRepo   = "rsanchez-disney/mouseketool"
+	mouseketoolName   = "mouseketool"
+	mouseketoolApp    = "Mouseketool.app"
+	mouseketoolExe    = "Mouseketool.exe"
 )
 
 var mouseketoolCmd = &cobra.Command{
@@ -74,9 +76,7 @@ var mouseketoolStartCmd = &cobra.Command{
 	Short: "Launch Mouseketool",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !pkg.IsInstalled(mouseketoolName) {
-			fmt.Println("Mouseketool is not installed.")
-			fmt.Println("Run 'koda mouseketool install' to get started.")
-			return nil
+			return fmt.Errorf("Mouseketool is not installed. Run 'koda mouseketool install' to get started")
 		}
 		return launchMouseketool()
 	},
@@ -93,8 +93,32 @@ var mouseketoolUpdateCmd = &cobra.Command{
 		if key == "" {
 			return fmt.Errorf("release key not available in this build")
 		}
-		pkg.UninstallBundle(mouseketoolName)
-		return mouseketoolInstallCmd.RunE(cmd, args)
+		// Fetch release info before uninstalling to fail early
+		rel, err := pkg.FetchLatestRelease(mouseketoolRepo)
+		if err != nil {
+			return fmt.Errorf("fetch release: %w", err)
+		}
+		manifest := &pkg.PackageManifest{
+			Platforms: []pkg.Platform{
+				{OS: "darwin", Arch: "arm64", Artifact: "mouseketool-darwin-arm64.tar.gz.enc"},
+				{OS: "darwin", Arch: "amd64", Artifact: "mouseketool-darwin-amd64.tar.gz.enc"},
+				{OS: "windows", Arch: "amd64", Artifact: "mouseketool-windows-amd64.tar.gz.enc"},
+			},
+		}
+		platform, err := pkg.ResolveArtifact(manifest)
+		if err != nil {
+			return err
+		}
+		url, err := pkg.FindAssetURL(rel, platform.Artifact)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("⚡ Updating Mouseketool to %s...\n", rel.TagName)
+		if err := pkg.InstallBundle(mouseketoolName, url, key); err != nil {
+			return err
+		}
+		fmt.Printf("✅ Mouseketool updated to %s\n", rel.TagName)
+		return nil
 	},
 }
 
@@ -126,9 +150,9 @@ func launchMouseketool() error {
 	base := pkg.BundlePath(mouseketoolName)
 	switch runtime.GOOS {
 	case "darwin":
-		return exec.Command("open", base+"/Mouseketool.app").Start()
+		return exec.Command("open", base+"/"+mouseketoolApp).Start()
 	case "windows":
-		return exec.Command("cmd", "/c", "start", "", base+`\Mouseketool.exe`).Start()
+		return exec.Command("cmd", "/c", "start", "", base+`\`+mouseketoolExe).Start()
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
