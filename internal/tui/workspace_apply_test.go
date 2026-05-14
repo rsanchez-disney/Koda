@@ -23,10 +23,7 @@ func newTestModel(workspaces []mdl.Workspace) model {
 func TestUpdateWorkspaces_EnterSetsApplyingState(t *testing.T) {
 	m := newTestModel([]mdl.Workspace{{Name: "test-ws"}})
 
-	result, cmd := m.updateWorkspaces(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("enter")})
-	// tea.KeyMsg for "enter" is actually tea.KeyEnter
-	// Retry with correct key type
-	result, cmd = m.updateWorkspaces(tea.KeyMsg{Type: tea.KeyEnter})
+	result, cmd := m.updateWorkspaces(tea.KeyMsg{Type: tea.KeyEnter})
 
 	rm := result.(model)
 	if !rm.applyingWS {

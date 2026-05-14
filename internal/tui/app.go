@@ -85,6 +85,7 @@ type model struct {
 	statusMsg     string
 	syncing       bool
 	applyingWS    bool
+	hasActiveWS   bool
 	spinnerTick   int
 	quitting      bool
 	launchChat    bool
@@ -231,6 +232,7 @@ func (m *model) refresh() {
 
 	// First-run: apply recommended kiro settings
 	s := config.ReadSteerSettings()
+	m.hasActiveWS = s.PrimaryWorkspace != "" || len(s.ActiveWorkspaces) > 0
 	if !s.KiroSettingsApplied && len(m.report.Profiles) > 0 {
 		ops.ConfigureKiroSettings(m.steerRoot, m.targetDir)
 		s.KiroSettingsApplied = true
@@ -766,7 +768,7 @@ func (m model) viewDashboard() string {
 	if config.IsTUIEnabled("chat") {
 		b.WriteString(activeStyle.Render("  [enter]") + " Chat       ")
 	}
-	if s := config.ReadSteerSettings(); s.PrimaryWorkspace != "" || len(s.ActiveWorkspaces) > 0 {
+	if m.hasActiveWS {
 		b.WriteString(activeStyle.Render("[R]") + " Reapply WS ")
 	}
 	b.WriteString(activeStyle.Render("[q]") + " Quit\n")
