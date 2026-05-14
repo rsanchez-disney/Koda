@@ -17,6 +17,7 @@ type Workspace struct {
 	Channels      []string           `json:"channels,omitempty"`
 	WorkspacePath string             `json:"workspace_path,omitempty"`
 	Teams         []TeamEntry        `json:"teams,omitempty"`
+	ManagedStudios []string          `json:"managed_studios,omitempty"`
 }
 
 // WorkspaceProject is a repo entry inside a workspace.
