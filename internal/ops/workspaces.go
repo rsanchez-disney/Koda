@@ -189,8 +189,8 @@ func ApplyWorkspace(steerRoot, targetDir string, ws model.Workspace) error {
 	s := config.ReadSteerSettings()
 	if s.Source == "git" {
 		SkipDirty = true
+		defer func() { SkipDirty = false }()
 		syncGit(steerRoot)
-		SkipDirty = false
 	}
 	config.MarkSynced()
 
