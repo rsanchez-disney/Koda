@@ -312,7 +312,7 @@ publish-all: ## Pull, detect changes, auto-version, publish all repos with chang
 			git -C $(KITE_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
 			git -C $(KITE_ROOT) push origin $$NEXT 2>/dev/null; \
 			if [ -f "$(KITE_ROOT)/Makefile" ]; then \
-				$(MAKE) -C $(KITE_ROOT) release TAG=$$NEXT 2>/dev/null || true; \
+				$(MAKE) -C $(KITE_ROOT) release TAG=$$NEXT RELEASE_KEY=$(RELEASE_KEY) 2>/dev/null || true; \
 			fi; \
 			echo "  Cleaning old Kite releases (keeping last 3)..."; \
 			sleep 3; \
@@ -350,7 +350,8 @@ publish-all: ## Pull, detect changes, auto-version, publish all repos with chang
 			git -C $(MOUSEKETOOL_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
 			git -C $(MOUSEKETOOL_ROOT) push origin $$NEXT 2>/dev/null; \
 			if [ -f "$(MOUSEKETOOL_ROOT)/Makefile" ]; then \
-				$(MAKE) -C $(MOUSEKETOOL_ROOT) release TAG=$$NEXT 2>/dev/null || true; \
+				$(MAKE) -C $(MOUSEKETOOL_ROOT) release RELEASE_KEY=$(RELEASE_KEY) 2>/dev/null || true; \
+				$(MAKE) -C $(MOUSEKETOOL_ROOT) publish TAG=$$NEXT RELEASE_KEY=$(RELEASE_KEY) 2>/dev/null || true; \
 			fi; \
 			echo "  Cleaning old Mouseketool releases (keeping last 3)..."; \
 			sleep 3; \
