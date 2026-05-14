@@ -113,9 +113,9 @@ release: ## Tag + build Koda + yax + scorer + plugins + publish (make release TA
 		--generate-notes
 	@echo "Published $(TAG) to github.com/$(PUB_REPO)"
 
-kitestream: build ## Build Koda + KiteStream client, then launch
-	@cd $(KITESTREAM_ROOT) && npm run build --workspace=client
-	KITESTREAM_DEV_DIST=$(KITESTREAM_ROOT)/client/dist $(BIN) kitestream start
+kite-dev: build ## Build Koda + Kite client, then launch
+	@cd $(KITE_ROOT) && npm run build --workspace=client
+	KITESTREAM_DEV_DIST=$(KITE_ROOT)/client/dist $(BIN) kitestream start
 
 plugins-build: ## Build IDE plugins (steer.vsix + steer.zip) from steer-plugins repo
 	@if [ -d "$(PLUGINS_SRC)/vscode" ]; then \
@@ -191,7 +191,8 @@ publish-steer: pack-steer ## Upload steer-runtime tarball to public repo (make p
 
 STEER_ROOT     ?= ../steer-runtime
 AUTOPILOT_ROOT ?= ../steer-autopilot
-KITESTREAM_ROOT ?= ../KiteStream
+KITE_ROOT      ?= ../Kite
+MOUSEKETOOL_ROOT ?= ../mouseketool
 
 publish-all: ## Pull, detect changes, auto-version, publish all repos with changes
 	@echo "=== Pulling latest ==="
@@ -287,42 +288,80 @@ publish-all: ## Pull, detect changes, auto-version, publish all repos with chang
 		echo "steer-autopilot: not found at $(AUTOPILOT_ROOT) — skipping"; \
 	fi
 	@echo ""
-	@# --- KiteStream ---
-	@if [ -d "$(KITESTREAM_ROOT)" ]; then \
-		git -C $(KITESTREAM_ROOT) checkout main 2>/dev/null && git -C $(KITESTREAM_ROOT) pull --ff-only 2>/dev/null || true; \
-		KS_LAST=$$(GH_HOST=github.com gh release list --repo rsanchez-disney/KiteStream --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null); \
-		git -C $(KITESTREAM_ROOT) fetch --tags 2>/dev/null; \
-		if [ -n "$$KS_LAST" ] && git -C $(KITESTREAM_ROOT) rev-parse "$$KS_LAST" >/dev/null 2>&1; then \
-			KS_COMMITS=$$(git -C $(KITESTREAM_ROOT) log $$KS_LAST..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
+	@# --- Kite ---
+	@if [ -d "$(KITE_ROOT)" ]; then \
+		git -C $(KITE_ROOT) checkout main 2>/dev/null && git -C $(KITE_ROOT) pull --ff-only 2>/dev/null || true; \
+		KT_LAST=$$(GH_HOST=github.com gh release list --repo rsanchez-disney/kite --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null); \
+		git -C $(KITE_ROOT) fetch --tags 2>/dev/null; \
+		if [ -n "$$KT_LAST" ] && git -C $(KITE_ROOT) rev-parse "$$KT_LAST" >/dev/null 2>&1; then \
+			KT_COMMITS=$$(git -C $(KITE_ROOT) log $$KT_LAST..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
 		else \
-			KS_COMMITS=999; \
+			KT_COMMITS=999; \
 		fi; \
-		if [ "$$KS_COMMITS" -gt 0 ]; then \
-			if [ -n "$$KS_LAST" ]; then \
-				MAJOR=$$(echo $$KS_LAST | sed 's/v//' | cut -d. -f1); \
-				MINOR=$$(echo $$KS_LAST | sed 's/v//' | cut -d. -f2); \
-				PATCH=$$(echo $$KS_LAST | sed 's/v//' | cut -d. -f3); \
+		if [ "$$KT_COMMITS" -gt 0 ]; then \
+			if [ -n "$$KT_LAST" ]; then \
+				MAJOR=$$(echo $$KT_LAST | sed 's/v//' | cut -d. -f1); \
+				MINOR=$$(echo $$KT_LAST | sed 's/v//' | cut -d. -f2); \
+				PATCH=$$(echo $$KT_LAST | sed 's/v//' | cut -d. -f3); \
 				NEXT="v$$MAJOR.$$MINOR.$$((PATCH + 1))"; \
 			else \
 				NEXT="v0.1.0"; \
 			fi; \
-			echo "KiteStream: $$KS_COMMITS commits since $${KS_LAST:-none} → $$NEXT"; \
-			git -C $(KITESTREAM_ROOT) log $${KS_LAST:+$$KS_LAST..}HEAD --oneline 2>/dev/null | head -5; \
-			git -C $(KITESTREAM_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
-			git -C $(KITESTREAM_ROOT) push origin $$NEXT 2>/dev/null; \
-			if [ -f "$(KITESTREAM_ROOT)/Makefile" ]; then \
-				$(MAKE) -C $(KITESTREAM_ROOT) release TAG=$$NEXT 2>/dev/null || true; \
+			echo "Kite: $$KT_COMMITS commits since $${KT_LAST:-none} → $$NEXT"; \
+			git -C $(KITE_ROOT) log $${KT_LAST:+$$KT_LAST..}HEAD --oneline 2>/dev/null | head -5; \
+			git -C $(KITE_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
+			git -C $(KITE_ROOT) push origin $$NEXT 2>/dev/null; \
+			if [ -f "$(KITE_ROOT)/Makefile" ]; then \
+				$(MAKE) -C $(KITE_ROOT) release TAG=$$NEXT 2>/dev/null || true; \
 			fi; \
-			echo "  Cleaning old KiteStream releases (keeping last 3)..."; \
+			echo "  Cleaning old Kite releases (keeping last 3)..."; \
 			sleep 3; \
-			GH_HOST=github.com gh release list --repo rsanchez-disney/KiteStream --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
+			GH_HOST=github.com gh release list --repo rsanchez-disney/kite --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
 				sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
-				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/KiteStream --yes --cleanup-tag 2>/dev/null || true; done; \
+				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/kite --yes --cleanup-tag 2>/dev/null || true; done; \
 		else \
-			echo "KiteStream: up to date ($$KS_LAST)"; \
+			echo "Kite: up to date ($$KT_LAST)"; \
 		fi; \
 	else \
-		echo "KiteStream: not found at $(KITESTREAM_ROOT) — skipping"; \
+		echo "Kite: not found at $(KITE_ROOT) — skipping"; \
+	fi
+	@echo ""
+	@# --- Mouseketool ---
+	@if [ -d "$(MOUSEKETOOL_ROOT)" ]; then \
+		git -C $(MOUSEKETOOL_ROOT) checkout main 2>/dev/null && git -C $(MOUSEKETOOL_ROOT) pull --ff-only 2>/dev/null || true; \
+		MK_LAST=$$(GH_HOST=github.com gh release list --repo rsanchez-disney/mouseketool --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null); \
+		git -C $(MOUSEKETOOL_ROOT) fetch --tags 2>/dev/null; \
+		if [ -n "$$MK_LAST" ] && git -C $(MOUSEKETOOL_ROOT) rev-parse "$$MK_LAST" >/dev/null 2>&1; then \
+			MK_COMMITS=$$(git -C $(MOUSEKETOOL_ROOT) log $$MK_LAST..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
+		else \
+			MK_COMMITS=999; \
+		fi; \
+		if [ "$$MK_COMMITS" -gt 0 ]; then \
+			if [ -n "$$MK_LAST" ]; then \
+				MAJOR=$$(echo $$MK_LAST | sed 's/v//' | cut -d. -f1); \
+				MINOR=$$(echo $$MK_LAST | sed 's/v//' | cut -d. -f2); \
+				PATCH=$$(echo $$MK_LAST | sed 's/v//' | cut -d. -f3); \
+				NEXT="v$$MAJOR.$$MINOR.$$((PATCH + 1))"; \
+			else \
+				NEXT="v0.1.0"; \
+			fi; \
+			echo "Mouseketool: $$MK_COMMITS commits since $${MK_LAST:-none} → $$NEXT"; \
+			git -C $(MOUSEKETOOL_ROOT) log $${MK_LAST:+$$MK_LAST..}HEAD --oneline 2>/dev/null | head -5; \
+			git -C $(MOUSEKETOOL_ROOT) tag -a $$NEXT -m "Release $$NEXT" 2>/dev/null; \
+			git -C $(MOUSEKETOOL_ROOT) push origin $$NEXT 2>/dev/null; \
+			if [ -f "$(MOUSEKETOOL_ROOT)/Makefile" ]; then \
+				$(MAKE) -C $(MOUSEKETOOL_ROOT) release TAG=$$NEXT 2>/dev/null || true; \
+			fi; \
+			echo "  Cleaning old Mouseketool releases (keeping last 3)..."; \
+			sleep 3; \
+			GH_HOST=github.com gh release list --repo rsanchez-disney/mouseketool --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | \
+				sort -t. -k1,1rn -k2,2rn -k3,3rn | tail -n +4 | \
+				while read old; do echo "    removing $$old"; GH_HOST=github.com gh release delete "$$old" --repo rsanchez-disney/mouseketool --yes --cleanup-tag 2>/dev/null || true; done; \
+		else \
+			echo "Mouseketool: up to date ($$MK_LAST)"; \
+		fi; \
+	else \
+		echo "Mouseketool: not found at $(MOUSEKETOOL_ROOT) — skipping"; \
 	fi
 	@echo ""
 	@echo "Done."
