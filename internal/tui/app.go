@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -83,6 +84,8 @@ type model struct {
 	agentFilter string
 	statusMsg     string
 	syncing       bool
+	applyingWS    bool
+	spinnerTick   int
 	quitting      bool
 	launchChat    bool
 	doctorResults []ops.DoctorResult
@@ -320,6 +323,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = "✅ Synced!"
 		}
 		return m, nil
+	case wsApplyDoneMsg:
+		m.applyingWS = false
+		if msg.err != nil {
+			m.statusMsg = fmt.Sprintf("⚠ Workspace '%s' failed: %v", msg.name, msg.err)
+		} else {
+			m.refresh()
+			m.screen = screenDashboard
+			m.statusMsg = fmt.Sprintf("✅ Workspace '%s' applied!", msg.name)
+		}
+		return m, nil
+	case spinnerTickMsg:
+		if m.applyingWS {
+			m.spinnerTick++
+			return m, tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return spinnerTickMsg{} })
+		}
+		return m, nil
 	case forkDoneMsg:
 		m.forking = false
 		if msg.err != nil {
@@ -533,6 +552,33 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.screen = screenRules
 		m.cursor = 0
+	case "R":
+		s := config.ReadSteerSettings()
+		names := s.ActiveWorkspaces
+		if len(names) == 0 && s.PrimaryWorkspace != "" {
+			names = []string{s.PrimaryWorkspace}
+		}
+		if len(names) > 0 && !m.applyingWS {
+			m.applyingWS = true
+			m.spinnerTick = 0
+			m.statusMsg = ""
+			steerRoot, targetDir := m.steerRoot, m.targetDir
+			return m, tea.Batch(
+				func() tea.Msg {
+					var lastErr error
+					for _, name := range names {
+						if ws, err := ops.GetWorkspace(steerRoot, name); err == nil {
+							if err := ops.ApplyWorkspace(steerRoot, targetDir, ws); err != nil {
+								lastErr = err
+							}
+						}
+					}
+					applied := strings.Join(names, ", ")
+					return wsApplyDoneMsg{err: lastErr, name: applied}
+				},
+				tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return spinnerTickMsg{} }),
+			)
+		}
 	case "k":
 		m.kiroSettings = ops.ReadKiroSettings()
 		m.kiroAgentPick = false
@@ -720,9 +766,16 @@ func (m model) viewDashboard() string {
 	if config.IsTUIEnabled("chat") {
 		b.WriteString(activeStyle.Render("  [enter]") + " Chat       ")
 	}
+	if s := config.ReadSteerSettings(); s.PrimaryWorkspace != "" || len(s.ActiveWorkspaces) > 0 {
+		b.WriteString(activeStyle.Render("[R]") + " Reapply WS ")
+	}
 	b.WriteString(activeStyle.Render("[q]") + " Quit\n")
 
-	if m.statusMsg != "" {
+	if m.applyingWS {
+		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		frame := frames[m.spinnerTick%len(frames)]
+		b.WriteString(fmt.Sprintf("\n  %s %s\n", activeStyle.Render(frame), "Applying workspace..."))
+	} else if m.statusMsg != "" {
 		b.WriteString("\n  " + checkStyle.Render(m.statusMsg) + "\n")
 	}
 
@@ -771,6 +824,11 @@ func (m model) updateDoctor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 type doctorFixDoneMsg struct{ err error }
 type syncDoneMsg struct{ err error }
+type wsApplyDoneMsg struct {
+	err  error
+	name string
+}
+type spinnerTickMsg struct{}
 type forkDoneMsg struct {
 	err  error
 	repo string
@@ -2305,6 +2363,9 @@ func (m model) viewTokens() string {
 // --- Workspaces ---
 
 func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.applyingWS {
+		return m, nil
+	}
 	switch msg.String() {
 	case "esc", "q":
 		m.screen = screenDashboard
@@ -2389,12 +2450,19 @@ func (m model) updateWorkspaces(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusMsg = fmt.Sprintf("'%s' set as primary", ws.Name)
 		}
 	case "enter":
-		if m.cursor < len(m.wsDisplayOrder) {
+		if m.cursor < len(m.wsDisplayOrder) && !m.applyingWS {
 			ws := m.workspaces[m.wsDisplayOrder[m.cursor]]
-			ops.ApplyWorkspace(m.steerRoot, m.targetDir, ws)
-			m.refresh()
-			m.screen = screenDashboard
-			m.statusMsg = fmt.Sprintf("Workspace '%s' applied!", ws.Name)
+			m.applyingWS = true
+			m.spinnerTick = 0
+			m.statusMsg = ""
+			steerRoot, targetDir := m.steerRoot, m.targetDir
+			return m, tea.Batch(
+				func() tea.Msg {
+					err := ops.ApplyWorkspace(steerRoot, targetDir, ws)
+					return wsApplyDoneMsg{err: err, name: ws.Name}
+				},
+				tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return spinnerTickMsg{} }),
+			)
 		}
 	case "e":
 		if m.cursor < len(m.wsDisplayOrder) {
@@ -2579,6 +2647,14 @@ func (m model) viewWorkspaces() string {
 		if !shown[i] {
 			renderWS(i, "", true)
 		}
+	}
+
+	if m.applyingWS {
+		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		frame := frames[m.spinnerTick%len(frames)]
+		b.WriteString(fmt.Sprintf("\n  %s %s\n", activeStyle.Render(frame), "Applying workspace..."))
+	} else if m.statusMsg != "" {
+		b.WriteString(fmt.Sprintf("\n  %s\n", m.statusMsg))
 	}
 
 	return boxStyle.Render(b.String())
