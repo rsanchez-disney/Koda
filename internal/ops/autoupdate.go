@@ -97,7 +97,7 @@ func enableMacOS() error {
 	<array>
 		<string>/bin/sh</string>
 		<string>-c</string>
-		<string>%s upgrade; %s sync --update --skip-dirty; %s kitestream update --if-installed</string>
+		<string>%s upgrade; %s sync --update --skip-dirty</string>
 	</array>
 	<key>StartCalendarInterval</key>
 	<dict>
@@ -111,7 +111,7 @@ func enableMacOS() error {
 	<key>StandardErrorPath</key>
 	<string>/tmp/koda-autoupdate.log</string>
 </dict>
-</plist>`, launchAgentLabel, bin, bin, bin)
+</plist>`, launchAgentLabel, bin, bin)
 
 	path := launchAgentPath()
 	os.MkdirAll(filepath.Dir(path), 0755)
@@ -141,8 +141,8 @@ func enableLinux() error {
 		return nil
 	}
 	bin := kodaBinary()
-	entry := fmt.Sprintf("%s\n0 9 * * * %s upgrade >> /tmp/koda-autoupdate.log 2>&1 && %s sync --update --skip-dirty >> /tmp/koda-autoupdate.log 2>&1 && %s kitestream update --if-installed >> /tmp/koda-autoupdate.log 2>&1",
-		cronComment, bin, bin, bin)
+	entry := fmt.Sprintf("%s\n0 9 * * * %s upgrade >> /tmp/koda-autoupdate.log 2>&1 && %s sync --update --skip-dirty >> /tmp/koda-autoupdate.log 2>&1",
+		cronComment, bin, bin)
 	newCron := existing
 	if newCron != "" {
 		newCron += "\n"
@@ -182,7 +182,7 @@ func enableWindows() error {
 	bin := kodaBinary()
 	cmd := exec.Command("schtasks.exe", "/Create",
 		"/TN", winTaskName,
-		"/TR", fmt.Sprintf(`cmd /c "%s upgrade & %s sync --update --skip-dirty & %s kitestream update --if-installed"`, bin, bin, bin),
+		"/TR", fmt.Sprintf(`cmd /c "%s upgrade & %s sync --update --skip-dirty"`, bin, bin),
 		"/SC", "DAILY",
 		"/ST", "09:00",
 		"/F",

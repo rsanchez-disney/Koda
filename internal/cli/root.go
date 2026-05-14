@@ -154,8 +154,8 @@ func init() {
 	rootCmd.AddCommand(memoryCmd)
 	rootCmd.AddCommand(kiroIDECmd)
 	rootCmd.AddCommand(autopilotCmd)
-	rootCmd.AddCommand(kitestreamCmd)
-	rootCmd.AddCommand(mouseketoolCmd)
+	rootCmd.AddCommand(appsCmd)
+	rootCmd.AddCommand(mouseketoolCmd) // alias → koda apps start mouseketool
 	rootCmd.AddCommand(featuresCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(psCmd)
