@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.disney.com/SANCR225/koda/internal/ops"
 )
@@ -162,8 +163,20 @@ func InstallBundle(name, downloadURL, decryptKey string) error {
 		return fmt.Errorf("extract bundle: %w", err)
 	}
 
-	// Clear quarantine attributes on macOS so the app can launch
-	exec.Command("xattr", "-cr", destDir).Run()
+	// macOS: clear quarantine and re-sign .app bundles so Gatekeeper allows launch
+	if runtime.GOOS == "darwin" {
+		if entries, err := os.ReadDir(destDir); err == nil {
+			for _, e := range entries {
+				if e.IsDir() && filepath.Ext(e.Name()) == ".app" {
+					app := filepath.Join(destDir, e.Name())
+					exec.Command("xattr", "-cr", app).Run()
+					if err := exec.Command("codesign", "--force", "--deep", "--sign", "-", app).Run(); err != nil {
+						fmt.Fprintf(os.Stderr, "  ⚠️  codesign failed for %s: %v\n", e.Name(), err)
+					}
+				}
+			}
+		}
+	}
 
 	return nil
 }
