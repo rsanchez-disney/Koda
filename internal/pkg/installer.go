@@ -162,6 +162,9 @@ func InstallBundle(name, downloadURL, decryptKey string) error {
 		return fmt.Errorf("extract bundle: %w", err)
 	}
 
+	// Clear quarantine attributes on macOS so the app can launch
+	exec.Command("xattr", "-cr", destDir).Run()
+
 	return nil
 }
 
