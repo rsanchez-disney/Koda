@@ -291,12 +291,12 @@ publish-all: ## Pull, detect changes, auto-version, publish all repos with chang
 	@# --- Kite ---
 	@if [ -d "$(KITE_ROOT)" ]; then \
 		git -C $(KITE_ROOT) checkout main 2>/dev/null && git -C $(KITE_ROOT) pull --ff-only 2>/dev/null || true; \
-		KT_LAST=$$(GH_HOST=github.com gh release list --repo rsanchez-disney/kite --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null); \
 		git -C $(KITE_ROOT) fetch --tags 2>/dev/null; \
-		if [ -n "$$KT_LAST" ] && git -C $(KITE_ROOT) rev-parse "$$KT_LAST" >/dev/null 2>&1; then \
+		KT_LAST=$$(git -C $(KITE_ROOT) tag --sort=-v:refname | head -1); \
+		if [ -n "$$KT_LAST" ]; then \
 			KT_COMMITS=$$(git -C $(KITE_ROOT) log $$KT_LAST..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
 		else \
-			KT_COMMITS=999; \
+			KT_COMMITS=$$(git -C $(KITE_ROOT) log --oneline 2>/dev/null | wc -l | tr -d ' '); \
 		fi; \
 		if [ "$$KT_COMMITS" -gt 0 ]; then \
 			if [ -n "$$KT_LAST" ]; then \
@@ -329,12 +329,12 @@ publish-all: ## Pull, detect changes, auto-version, publish all repos with chang
 	@# --- Mouseketool ---
 	@if [ -d "$(MOUSEKETOOL_ROOT)" ]; then \
 		git -C $(MOUSEKETOOL_ROOT) checkout main 2>/dev/null && git -C $(MOUSEKETOOL_ROOT) pull --ff-only 2>/dev/null || true; \
-		MK_LAST=$$(GH_HOST=github.com gh release list --repo rsanchez-disney/mouseketool --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null); \
 		git -C $(MOUSEKETOOL_ROOT) fetch --tags 2>/dev/null; \
-		if [ -n "$$MK_LAST" ] && git -C $(MOUSEKETOOL_ROOT) rev-parse "$$MK_LAST" >/dev/null 2>&1; then \
+		MK_LAST=$$(git -C $(MOUSEKETOOL_ROOT) tag --sort=-v:refname | head -1); \
+		if [ -n "$$MK_LAST" ]; then \
 			MK_COMMITS=$$(git -C $(MOUSEKETOOL_ROOT) log $$MK_LAST..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '); \
 		else \
-			MK_COMMITS=999; \
+			MK_COMMITS=$$(git -C $(MOUSEKETOOL_ROOT) log --oneline 2>/dev/null | wc -l | tr -d ' '); \
 		fi; \
 		if [ "$$MK_COMMITS" -gt 0 ]; then \
 			if [ -n "$$MK_LAST" ]; then \

@@ -14,8 +14,8 @@ var appsCmd = &cobra.Command{
 	Use:   "apps [command]",
 	Short: "Manage Koda apps (install, update, start, uninstall)",
 	Long:  "Browse and manage desktop apps distributed through Koda.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return appsListCmd.RunE(cmd, args)
+	Run: func(cmd *cobra.Command, args []string) {
+		appsListCmd.Run(cmd, args)
 	},
 }
 
@@ -109,25 +109,32 @@ var appsStatusCmd = &cobra.Command{
 }
 
 var appsSearchCmd = &cobra.Command{
-	Use:   "search <query>",
+	Use:   "search [query]",
 	Short: "Search available apps",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		query := strings.ToLower(args[0])
+		query := ""
+		if len(args) > 0 {
+			query = strings.ToLower(args[0])
+		}
 		catalog := apps.Catalog()
-		found := false
+		var matches []string
 		for _, a := range catalog {
-			if strings.Contains(strings.ToLower(a.Name), query) || strings.Contains(strings.ToLower(a.Description), query) {
+			if query == "" || strings.Contains(strings.ToLower(a.Name), query) || strings.Contains(strings.ToLower(a.Description), query) {
 				installed := "  "
 				if pkg.IsInstalled(a.Name) {
 					installed = "✓ "
 				}
 				fmt.Printf("  %s%-14s %s\n", installed, a.Name, a.Description)
-				found = true
+				matches = append(matches, a.Name)
 			}
 		}
-		if !found {
-			fmt.Printf("No apps matching '%s'.\n", args[0])
+		if len(matches) == 0 && query != "" {
+			fmt.Printf("No apps matching '%s'.\n", query)
+		} else if len(matches) == 0 {
+			fmt.Println("No apps available.")
+		} else {
+			fmt.Printf("\nTo install: koda apps install <name>\n")
 		}
 	},
 }
